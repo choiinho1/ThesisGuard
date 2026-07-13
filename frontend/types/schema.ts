@@ -1,5 +1,26 @@
 export type ApiMode = "mock" | "live";
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string | null;
+  created_at: string;
+}
+
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
+export interface SignupInput extends LoginInput {
+  name?: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: "bearer";
+}
+
 export type EvidenceClassification =
   | "SUPPORT"
   | "CONTRADICT"
