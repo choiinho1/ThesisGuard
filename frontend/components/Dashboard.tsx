@@ -36,6 +36,9 @@ export function Dashboard() {
     await Promise.resolve();
     setLoading(true);
     setError(null);
+    setDashboard(null);
+    setSelected(null);
+    setAnalysis(null);
     try {
       const portfolios = await listPortfolios(nextMode);
       if (!portfolios[0]) throw new Error("등록된 포트폴리오가 없습니다.");
@@ -57,6 +60,11 @@ export function Dashboard() {
   }, [loadDashboard, mode]);
 
   const changeMode = (nextMode: ApiMode) => {
+    if (nextMode === mode) return;
+    setDashboard(null);
+    setSelected(null);
+    setAnalysis(null);
+    setError(null);
     setApiMode(nextMode);
     setMode(nextMode);
   };

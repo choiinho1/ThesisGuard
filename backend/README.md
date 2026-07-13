@@ -53,7 +53,8 @@ copy .env.example .env
 
 1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → 프로젝트 선택(또는 생성) →
    "사용자 인증 정보 만들기" → "OAuth 클라이언트 ID" → 애플리케이션 유형 **웹 애플리케이션**.
-2. "승인된 자바스크립트 원본"에 프론트 개발 서버 주소를 추가한다: `http://localhost:3000`.
+2. "승인된 자바스크립트 원본"에 사용하는 프론트 개발 서버 주소를 추가한다:
+   `http://localhost:3000` 또는 `http://127.0.0.1:3000`.
 3. 발급된 Client ID(`....apps.googleusercontent.com`)를 **두 곳에 동일하게** 넣는다:
    - `backend/.env` → `GOOGLE_CLIENT_ID=...`
    - `frontend/.env.local` → `NEXT_PUBLIC_GOOGLE_CLIENT_ID=...` (Client ID는 프론트에 노출돼도 되는
@@ -68,6 +69,10 @@ copy .env.example .env
 
 PostgreSQL이 필요하다(로컬 설치 또는 Docker). `evidence`/`analysis_results` 등은 pgvector 없이도 동작하며,
 RAG용 Vector Store(ADR-0002)는 별도로 붙인다.
+
+PostgreSQL 없이 로컬 화면과 인증 흐름을 확인하려면 `backend/.env`에
+`DATABASE_URL=sqlite+aiosqlite:///./thesisguard.db`를 사용한다. 이 경우 서버 시작 시 로컬 테이블이
+자동 생성된다. 팀·배포 환경에서는 아래와 같이 PostgreSQL과 Alembic 마이그레이션을 사용한다.
 
 ```powershell
 alembic upgrade head

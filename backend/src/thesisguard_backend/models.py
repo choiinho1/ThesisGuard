@@ -13,9 +13,10 @@ import enum
 import uuid
 from datetime import datetime
 
+from sqlalchemy import JSON, Uuid
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import Float, ForeignKey, SmallInteger, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -44,7 +45,13 @@ class AlertDelivery(str, enum.Enum):
 
 
 def _uuid_pk() -> Mapped[uuid.UUID]:
-    return mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    return mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+
+def _json_type():
+    """Use JSONB on PostgreSQL and portable JSON for local SQLite."""
+
+    return JSON().with_variant(JSONB(), "postgresql")
 
 
 def _created_at() -> Mapped[datetime]:
@@ -110,8 +117,8 @@ class Transaction(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     portfolio_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False)
     type: Mapped[TransactionType] = mapped_column(SAEnum(TransactionType, name="transaction_type"), nullable=False)
-    before_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
-    after_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
+    before_snapshot: Mapped[dict] = mapped_column(_json_type(), default=dict)
+    after_snapshot: Mapped[dict] = mapped_column(_json_type(), default=dict)
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
 
@@ -126,10 +133,10 @@ class Thesis(Base):
     holding_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("holdings.id", ondelete="CASCADE"), nullable=False)
     raw_input: Mapped[str] = mapped_column(Text, nullable=False)
     main_thesis: Mapped[str] = mapped_column(Text, nullable=False)
-    key_assumptions: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    positive_signals: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    negative_signals: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    key_risks: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    key_assumptions: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    positive_signals: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    negative_signals: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    key_risks: Mapped[list[str]] = mapped_column(_json_type(), default=list)
     confidence_score: Mapped[int] = mapped_column(SmallInteger, default=50)
     status: Mapped[ThesisStatus] = mapped_column(
         SAEnum(ThesisStatus, name="thesis_status"), default=ThesisStatus.UNCHANGED, nullable=False
@@ -154,9 +161,9 @@ class ThesisVersion(Base):
     confidence_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     status: Mapped[ThesisStatus] = mapped_column(SAEnum(ThesisStatus, name="thesis_status"), nullable=False)
     change_reason: Mapped[str] = mapped_column(Text, nullable=False)
-    conflicting_assumptions: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    observation_points: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
+    conflicting_assumptions: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    observation_points: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    snapshot: Mapped[dict] = mapped_column(_json_type(), default=dict)
     created_at: Mapped[datetime] = _created_at()
 
     thesis: Mapped[Thesis] = relationship(back_populates="versions")
@@ -181,7 +188,7 @@ class Evidence(Base):
         SAEnum(EvidenceImpact, name="evidence_impact"), nullable=False
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    related_assumptions: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    related_assumptions: Mapped[list[str]] = mapped_column(_json_type(), default=list)
     published_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = _created_at()
 
@@ -200,8 +207,8 @@ class AnalysisResult(Base):
     judge_summary: Mapped[str | None] = mapped_column(Text)
     concentration_theme: Mapped[str | None] = mapped_column(String(255))
     concentration_score: Mapped[float | None] = mapped_column(Float)
-    affected_holdings: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    raw_result: Mapped[dict] = mapped_column(JSONB, default=dict)
+    affected_holdings: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    raw_result: Mapped[dict] = mapped_column(_json_type(), default=dict)
     created_at: Mapped[datetime] = _created_at()
 
 

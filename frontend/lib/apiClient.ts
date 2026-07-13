@@ -27,7 +27,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
-    const message = await response.text();
+    const payload = await response.json().catch(() => null) as
+      | { detail?: string | Array<{ msg?: string }> }
+      | null;
+    const detail = payload?.detail;
+    const message = typeof detail === "string"
+      ? detail
+      : Array.isArray(detail)
+        ? detail.map((item) => item.msg).filter(Boolean).join(" ")
+        : null;
     throw new Error(message || `API 요청 실패 (${response.status})`);
   }
   return response.json() as Promise<T>;

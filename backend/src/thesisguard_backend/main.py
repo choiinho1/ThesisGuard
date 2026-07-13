@@ -12,12 +12,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from agents.graph import configure_agent
 from thesisguard_backend.agent_adapters import build_default_agent
-from thesisguard_backend.db import session_factory
+from thesisguard_backend.db import initialize_local_database, session_factory
 from thesisguard_backend.routers import alerts, analysis, auth, holdings, portfolios, theses
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await initialize_local_database()
+
     # Wires C's ThesisGuardAgent with B's DB-backed ContextProvider and
     # MCP-backed ResearchTools exactly once, per docs/api.md.
     # configure_agent() makes the module-level arun_analysis_workflow() work
@@ -33,7 +35,10 @@ app = FastAPI(title="ThesisGuard API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # A(Frontend)의 Next.js dev 서버
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

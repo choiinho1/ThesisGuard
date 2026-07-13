@@ -24,6 +24,27 @@ from thesisguard_backend.security import create_access_token, hash_password, ver
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+def _default_portfolio(user_id: uuid.UUID) -> orm.Portfolio:
+    return orm.Portfolio(
+        user_id=user_id,
+        name="내 포트폴리오",
+        investment_purpose="장기 자산 성장",
+        investment_horizon="장기",
+        cash_ratio=0,
+    )
+
+
+async def _ensure_default_portfolio(db: DbSession, user: orm.User) -> None:
+    portfolio_id = await db.scalar(
+        select(orm.Portfolio.id).where(orm.Portfolio.user_id == user.id).limit(1)
+    )
+    if portfolio_id is not None:
+        return
+
+    db.add(_default_portfolio(user.id))
+    await db.commit()
+
+
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def signup(payload: SignupRequest, db: DbSession) -> orm.User:
     existing = await db.scalar(select(orm.User).where(orm.User.email == payload.email))
@@ -36,6 +57,7 @@ async def signup(payload: SignupRequest, db: DbSession) -> orm.User:
     db.add(user)
     await db.flush()
     db.add(orm.AlertSettings(user_id=user.id))
+    db.add(_default_portfolio(user.id))
     await db.commit()
     await db.refresh(user)
     return user
@@ -83,6 +105,7 @@ async def login_with_google(payload: GoogleLoginRequest, db: DbSession) -> Token
         db.add(user)
         await db.flush()
         db.add(orm.AlertSettings(user_id=user.id))
+        db.add(_default_portfolio(user.id))
         await db.commit()
         await db.refresh(user)
 
@@ -90,5 +113,6 @@ async def login_with_google(payload: GoogleLoginRequest, db: DbSession) -> Token
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(current_user: CurrentUser) -> orm.User:
+async def me(current_user: CurrentUser, db: DbSession) -> orm.User:
+    await _ensure_default_portfolio(db, current_user)
     return current_user
