@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from thesisguard_agent.models import EvidenceItem, ThesisStatus
-from thesisguard_agent.policy import decide_alert
+from agents.models import EvidenceItem, ThesisStatus
+from agents.policy import decide_alert
 
 
 def test_evidence_requires_a_valid_source_url() -> None:
@@ -15,7 +15,7 @@ def test_evidence_requires_a_valid_source_url() -> None:
             source_url="not-a-url",
             content_snippet="citation",
             classification="SUPPORT",
-            impact=0.5,
+            impact="HIGH",
             reason="reason",
         )
 

@@ -1,16 +1,17 @@
-"""Dependency ports owned by Backend(B) or the selected LLM provider."""
+"""Dependency ports implemented by Backend(B) or the selected LLM provider."""
 
 from __future__ import annotations
 
 from typing import Protocol
 
-from thesisguard_agent.models import (
+from agents.models import (
     AnalysisContext,
     DebateReport,
     EvidenceAssessment,
     EvidenceItem,
     JudgeDecision,
     PortfolioAnalysis,
+    PortfolioQueryAnswer,
     PortfolioThesis,
     ResearchRequest,
     SourceDocument,
@@ -23,9 +24,11 @@ class ContextProvider(Protocol):
         self, portfolio_id: str, holding_id: str
     ) -> AnalysisContext: ...
 
+    async def load_portfolio_theses(self, portfolio_id: str) -> list[PortfolioThesis]: ...
+
 
 class ResearchTools(Protocol):
-    """B implements these methods with MCP tools; C never calls data APIs directly."""
+    """B wraps backend/mcp_tools functions behind this boundary."""
 
     async def get_filings(self, request: ResearchRequest) -> list[SourceDocument]: ...
 
@@ -57,6 +60,13 @@ class AnalysisModel(Protocol):
         bear_report: DebateReport,
     ) -> JudgeDecision: ...
 
-    async def analyze_concentration(
+    async def analyze_portfolio(
         self, portfolio_theses: list[PortfolioThesis]
     ) -> PortfolioAnalysis: ...
+
+    async def answer_portfolio_query(
+        self,
+        question: str,
+        portfolio_theses: list[PortfolioThesis],
+        evidence: list[EvidenceItem],
+    ) -> PortfolioQueryAnswer: ...

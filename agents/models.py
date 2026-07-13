@@ -1,4 +1,4 @@
-"""Shared contracts between Backend(B) and AI Agent Core(C)."""
+"""B(Backend) and C(AI Agent) shared Pydantic contracts."""
 
 from __future__ import annotations
 
@@ -10,15 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 
 class ContractModel(BaseModel):
-    """Strict base model used at team ownership boundaries."""
-
     model_config = ConfigDict(extra="forbid", use_enum_values=False)
-
-
-class SourceType(StrEnum):
-    FILING = "FILING"
-    NEWS = "NEWS"
-    MACRO = "MACRO"
 
 
 class EvidenceClassification(StrEnum):
@@ -37,11 +29,31 @@ class ThesisStatus(StrEnum):
     BROKEN = "BROKEN"
 
 
+class EvidenceImpact(StrEnum):
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
+class EvidenceSourceType(StrEnum):
+    SEC_FILING = "SEC_FILING"
+    IR = "IR"
+    EARNINGS = "EARNINGS"
+    NEWS = "NEWS"
+    MACRO = "MACRO"
+
+
 class AlertSeverity(StrEnum):
     CRITICAL = "CRITICAL"
     MAJOR = "MAJOR"
     MINOR = "MINOR"
     NONE = "NONE"
+
+
+class AnalysisType(StrEnum):
+    BULL_BEAR_JUDGE = "BULL_BEAR_JUDGE"
+    THESIS_CONCENTRATION = "THESIS_CONCENTRATION"
+    COMMON_RISK = "COMMON_RISK"
 
 
 class StructuredThesis(ContractModel):
@@ -57,7 +69,7 @@ class StructuredThesis(ContractModel):
 
 class PortfolioThesis(ContractModel):
     holding_id: str
-    ticker: str = Field(min_length=1)
+    ticker: str = Field(min_length=1, max_length=10)
     current_weight: float = Field(default=0, ge=0, le=100)
     thesis: StructuredThesis
 
@@ -65,7 +77,7 @@ class PortfolioThesis(ContractModel):
 class AnalysisContext(ContractModel):
     portfolio_id: str
     holding_id: str
-    ticker: str = Field(min_length=1)
+    ticker: str = Field(min_length=1, max_length=10)
     thesis: StructuredThesis
     portfolio_theses: list[PortfolioThesis] = Field(default_factory=list)
 
@@ -81,8 +93,9 @@ class ResearchRequest(ContractModel):
 
 class SourceDocument(ContractModel):
     document_id: str
-    source_type: SourceType
-    source_url: HttpUrl
+    source_type: EvidenceSourceType
+    source_url: HttpUrl | None = None
+    vector_doc_id: str | None = None
     title: str = Field(min_length=1)
     content: str = Field(min_length=1)
     published_at: datetime | None = None
@@ -91,29 +104,30 @@ class SourceDocument(ContractModel):
 
 class EvidenceItem(ContractModel):
     document_id: str
-    source_type: SourceType
-    source_url: HttpUrl
+    source_type: EvidenceSourceType
+    source_url: HttpUrl | None = None
+    vector_doc_id: str | None = None
     content_snippet: str = Field(min_length=1, max_length=2000)
     classification: EvidenceClassification
-    impact: float = Field(ge=0, le=1)
+    impact: EvidenceImpact
     reason: str = Field(min_length=1)
     related_assumptions: list[str] = Field(default_factory=list)
     published_at: datetime | None = None
 
     @model_validator(mode="after")
-    def require_grounded_directional_claim(self) -> EvidenceItem:
-        if self.classification in {
+    def require_reference_for_directional_evidence(self) -> EvidenceItem:
+        directional = self.classification in {
             EvidenceClassification.SUPPORT,
             EvidenceClassification.CONTRADICT,
-        }:
-            if not self.content_snippet.strip() or not str(self.source_url):
-                raise ValueError("Directional evidence must include a citation and snippet")
+        }
+        if directional and self.source_url is None and self.vector_doc_id is None:
+            raise ValueError("Directional evidence must reference a URL or vector document")
         return self
 
 
 class EvidenceAssessment(ContractModel):
     classification: EvidenceClassification
-    impact: float = Field(ge=0, le=1)
+    impact: EvidenceImpact
     reason: str = Field(min_length=1)
     related_assumptions: list[str] = Field(default_factory=list)
     content_snippet: str = Field(min_length=1, max_length=2000)
@@ -141,10 +155,23 @@ class ConcentrationTheme(ContractModel):
     shared_assumptions: list[str] = Field(default_factory=list)
 
 
+class CommonRisk(ContractModel):
+    risk: str = Field(min_length=1)
+    affected_holdings: list[str] = Field(default_factory=list)
+    evidence_document_ids: list[str] = Field(default_factory=list)
+
+
 class PortfolioAnalysis(ContractModel):
     themes: list[ConcentrationTheme] = Field(default_factory=list)
+    common_risks: list[CommonRisk] = Field(default_factory=list)
     has_concentration_risk: bool = False
     summary: str = "집중 테마 없음"
+
+
+class PortfolioQueryAnswer(ContractModel):
+    answer: str = Field(min_length=1)
+    evidence_document_ids: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
 
 
 class AlertDecision(ContractModel):
