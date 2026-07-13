@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from thesisguard_agent.api import configure_default_agent
+from agents.graph import configure_agent
 from thesisguard_backend.agent_adapters import build_default_agent
 from thesisguard_backend.db import session_factory
 from thesisguard_backend.routers import alerts, analysis, auth, holdings, portfolios, theses
@@ -19,8 +19,13 @@ from thesisguard_backend.routers import alerts, analysis, auth, holdings, portfo
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Wires C's ThesisGuardAgent with B's DB-backed ContextProvider and
-    # MCP-backed ResearchTools exactly once, per docs/AI_AGENT.md.
-    configure_default_agent(build_default_agent(session_factory))
+    # MCP-backed ResearchTools exactly once, per docs/api.md.
+    # configure_agent() makes the module-level arun_analysis_workflow() work
+    # (as docs/api.md documents); app.state.agent keeps our own reference for
+    # instance-only methods C doesn't expose at module level (e.g. astructure_thesis).
+    agent = build_default_agent(session_factory)
+    configure_agent(agent)
+    app.state.agent = agent
     yield
 
 

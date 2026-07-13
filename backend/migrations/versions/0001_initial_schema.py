@@ -32,7 +32,10 @@ alert_delivery = postgresql.ENUM("IMMEDIATE", "WEEKLY", "NONE", name="alert_deli
 evidence_classification = postgresql.ENUM(
     "SUPPORT", "CONTRADICT", "NEUTRAL", "UNCERTAIN", name="evidence_classification"
 )
-evidence_source_type = postgresql.ENUM("FILING", "NEWS", "MACRO", name="evidence_source_type")
+evidence_impact = postgresql.ENUM("HIGH", "MEDIUM", "LOW", name="evidence_impact")
+evidence_source_type = postgresql.ENUM(
+    "SEC_FILING", "IR", "EARNINGS", "NEWS", "MACRO", name="evidence_source_type"
+)
 transaction_type = postgresql.ENUM(
     "BUY", "SELL", "REBALANCE", "CASH_ADJUST", name="transaction_type"
 )
@@ -48,6 +51,7 @@ def upgrade() -> None:
         alert_severity,
         alert_delivery,
         evidence_classification,
+        evidence_impact,
         evidence_source_type,
         transaction_type,
         analysis_type,
@@ -140,11 +144,11 @@ def upgrade() -> None:
         sa.Column("thesis_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("theses.id", ondelete="CASCADE"), nullable=False),
         sa.Column("document_id", sa.String(255), nullable=False),
         sa.Column("source_type", evidence_source_type, nullable=False),
-        sa.Column("source_url", sa.Text(), nullable=False),
+        sa.Column("source_url", sa.Text()),
         sa.Column("vector_doc_id", sa.String(255)),
         sa.Column("content_snippet", sa.Text(), nullable=False),
         sa.Column("classification", evidence_classification, nullable=False),
-        sa.Column("impact", sa.Float(), nullable=False),
+        sa.Column("impact", evidence_impact, nullable=False),
         sa.Column("reason", sa.Text(), nullable=False),
         sa.Column("related_assumptions", postgresql.JSONB(), nullable=False, server_default="[]"),
         sa.Column("published_at", sa.DateTime(timezone=True)),
@@ -208,6 +212,7 @@ def downgrade() -> None:
         analysis_type,
         transaction_type,
         evidence_source_type,
+        evidence_impact,
         evidence_classification,
         alert_delivery,
         alert_severity,

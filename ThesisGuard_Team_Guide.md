@@ -125,6 +125,11 @@ Dashboard 갱신   Email 알림                   (A) / (B)
 
 ## 3. 담당자 간 인터페이스
 
+> **2026-07-13**: C의 Agent 코드가 `src/thesisguard_agent/` → `agents/`(레포 최상위)로 구조가 바뀌었다
+> (`ports.py`→`contracts.py`, `workflow.py`→`graph.py`/`runtime.py`/`state.py`/`nodes/` 등). 아래 내용은
+> 여전히 큰 그림은 맞지만, 정확한 모듈 경로·함수명은 `docs/api.md`·`docs/schema.md`·`agents/__init__.py`가
+> 더 최신이다. `backend/agent_adapters.py`는 이미 최신 계약에 맞춰 구현되어 있다.
+
 겹치지 않게 나눠도, 결국 이 두 지점에서 세 사람의 코드가 만난다. 아래 계약만 먼저 합의하면 나머지는 각자 병렬로 진행할 수 있다.
 
 ### A ⇄ B : REST API

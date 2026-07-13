@@ -22,7 +22,6 @@ class Settings(BaseSettings):
 
     sec_user_agent: str = "ThesisGuard PBL Team <you@example.com>"
     fred_base_url: str = "https://fred.stlouisfed.org/graph/fredgraph.csv"
-    stooq_base_url: str = "https://stooq.com"
 
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587

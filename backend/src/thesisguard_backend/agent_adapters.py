@@ -1,9 +1,9 @@
 """Adapters that let C's ThesisGuardAgent run against B's DB and MCP tools.
 
 C defines the ``ContextProvider`` / ``ResearchTools`` / ``AnalysisModel``
-Protocols in ``thesisguard_agent.ports`` and never calls a database or an
-external API directly. B implements those Protocols here and injects them
-once at application startup via ``thesisguard_agent.api.configure_default_agent``.
+Protocols in ``agents.contracts`` and never calls a database or an external
+API directly. B implements those Protocols here and injects them once at
+application startup (see ``main.py``'s ``lifespan``).
 """
 
 from __future__ import annotations
@@ -16,16 +16,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from thesisguard_agent.llm import LangChainAnalysisModel
-from thesisguard_agent.models import (
+from agents.graph import ThesisGuardAgent
+from agents.model import LangChainAnalysisModel
+from agents.models import (
     AnalysisContext,
+    EvidenceSourceType,
     PortfolioThesis,
     ResearchRequest,
     SourceDocument,
-    SourceType,
     StructuredThesis,
 )
-from thesisguard_agent.workflow import ThesisGuardAgent
 from thesisguard_backend import models as orm
 from thesisguard_backend.config import get_settings
 from thesisguard_backend.mcp_tools import macro, market, news, sec
@@ -47,7 +47,7 @@ def _structured_thesis_from_orm(thesis: orm.Thesis) -> StructuredThesis:
 
 
 class BackendContextProvider:
-    """Implements ``thesisguard_agent.ports.ContextProvider``."""
+    """Implements ``agents.contracts.ContextProvider``."""
 
     def __init__(self, session_factory: async_sessionmaker) -> None:
         self._session_factory = session_factory
@@ -64,21 +64,7 @@ class BackendContextProvider:
             if holding.thesis is None:
                 raise ValueError(f"Holding {holding_id} has no registered thesis yet")
 
-            portfolio_holdings = await session.scalars(
-                select(orm.Holding)
-                .where(orm.Holding.portfolio_id == uuid.UUID(portfolio_id))
-                .options(selectinload(orm.Holding.thesis))
-            )
-            portfolio_theses = [
-                PortfolioThesis(
-                    holding_id=str(item.id),
-                    ticker=item.ticker,
-                    current_weight=item.current_weight,
-                    thesis=_structured_thesis_from_orm(item.thesis),
-                )
-                for item in portfolio_holdings
-                if item.thesis is not None
-            ]
+            portfolio_theses = await self._load_portfolio_theses(session, portfolio_id)
 
             return AnalysisContext(
                 portfolio_id=portfolio_id,
@@ -88,9 +74,31 @@ class BackendContextProvider:
                 portfolio_theses=portfolio_theses,
             )
 
+    async def load_portfolio_theses(self, portfolio_id: str) -> list[PortfolioThesis]:
+        async with self._session_factory() as session:
+            return await self._load_portfolio_theses(session, portfolio_id)
+
+    @staticmethod
+    async def _load_portfolio_theses(session, portfolio_id: str) -> list[PortfolioThesis]:
+        portfolio_holdings = await session.scalars(
+            select(orm.Holding)
+            .where(orm.Holding.portfolio_id == uuid.UUID(portfolio_id))
+            .options(selectinload(orm.Holding.thesis))
+        )
+        return [
+            PortfolioThesis(
+                holding_id=str(item.id),
+                ticker=item.ticker,
+                current_weight=item.current_weight,
+                thesis=_structured_thesis_from_orm(item.thesis),
+            )
+            for item in portfolio_holdings
+            if item.thesis is not None
+        ]
+
 
 class BackendResearchTools:
-    """Implements ``thesisguard_agent.ports.ResearchTools`` using the MCP tool modules."""
+    """Implements ``agents.contracts.ResearchTools`` using the MCP tool modules."""
 
     async def get_filings(self, request: ResearchRequest) -> list[SourceDocument]:
         records = await sec.get_filings(request.ticker, limit=3)
@@ -102,7 +110,7 @@ class BackendResearchTools:
             documents.append(
                 SourceDocument(
                     document_id=record.accession_number,
-                    source_type=SourceType.FILING,
+                    source_type=EvidenceSourceType.SEC_FILING,
                     source_url=record.url,
                     title=record.title,
                     content=content,
@@ -120,7 +128,7 @@ class BackendResearchTools:
         return [
             SourceDocument(
                 document_id=item.url,
-                source_type=SourceType.NEWS,
+                source_type=EvidenceSourceType.NEWS,
                 source_url=item.url,
                 title=item.title,
                 content=item.summary or item.title,
@@ -144,7 +152,7 @@ class BackendResearchTools:
             documents.append(
                 SourceDocument(
                     document_id=f"{point.series_id}:{point.as_of.isoformat()}",
-                    source_type=SourceType.MACRO,
+                    source_type=EvidenceSourceType.MACRO,
                     source_url=f"https://fred.stlouisfed.org/series/{point.series_id}",
                     title=f"FRED {point.series_id} ({label})",
                     content=f"{label} ({point.series_id}) as of {point.as_of.isoformat()}: {point.value}",

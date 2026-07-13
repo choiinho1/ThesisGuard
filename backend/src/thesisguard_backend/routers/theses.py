@@ -8,9 +8,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
-from thesisguard_agent.api import structure_thesis
 from thesisguard_backend import models as orm
-from thesisguard_backend.deps import CurrentUser, DbSession
+from thesisguard_backend.deps import Agent, CurrentUser, DbSession
 from thesisguard_backend.routers.holdings import OwnedHolding
 from thesisguard_backend.schemas import (
     ThesisCreateRequest,
@@ -42,9 +41,9 @@ OwnedThesis = Annotated[orm.Thesis, Depends(get_owned_thesis)]
     status_code=status.HTTP_201_CREATED,
 )
 async def create_thesis(
-    payload: ThesisCreateRequest, holding: OwnedHolding, db: DbSession
+    payload: ThesisCreateRequest, holding: OwnedHolding, db: DbSession, agent: Agent
 ) -> orm.Thesis:
-    structured = await structure_thesis(payload.raw_input)
+    structured = await agent.astructure_thesis(payload.raw_input)
     thesis = orm.Thesis(
         holding_id=holding.id,
         raw_input=structured.raw_input,

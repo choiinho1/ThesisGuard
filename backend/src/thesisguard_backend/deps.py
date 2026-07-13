@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agents.graph import ThesisGuardAgent
 from thesisguard_backend import models as orm
 from thesisguard_backend.db import get_db
 from thesisguard_backend.security import decode_access_token
@@ -37,6 +38,21 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[orm.User, Depends(get_current_user)]
+
+
+def get_agent(request: Request) -> ThesisGuardAgent:
+    """C exposes no module-level ``structure_thesis``, only instance methods.
+
+    B builds one ``ThesisGuardAgent`` at startup (see main.py's lifespan) and
+    keeps the reference on ``app.state`` so routes can call instance methods
+    like ``astructure_thesis`` / ``aanswer_portfolio_query`` directly, instead
+    of only having the module-level ``arun_analysis_workflow`` C exports.
+    """
+
+    return request.app.state.agent
+
+
+Agent = Annotated[ThesisGuardAgent, Depends(get_agent)]
 
 
 async def get_owned_portfolio(

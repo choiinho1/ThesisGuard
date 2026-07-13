@@ -1,10 +1,10 @@
 """SQLAlchemy ORM models (B-owned).
 
 Enums that are part of the A<->B<->C contract (ThesisStatus, AlertSeverity,
-EvidenceClassification, SourceType) are imported directly from
-``thesisguard_agent.models`` so the database can never drift from the
-Pydantic contract C already ships. ``TransactionType`` and ``AnalysisType``
-are backend-only concerns and are defined locally.
+EvidenceClassification, EvidenceImpact, EvidenceSourceType, AnalysisType) are
+imported directly from ``agents.models`` so the database can never drift from
+the Pydantic contract C ships. ``TransactionType`` and ``AlertDelivery`` are
+backend-only concerns and are defined locally.
 """
 
 from __future__ import annotations
@@ -19,7 +19,14 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from thesisguard_agent.models import AlertSeverity, EvidenceClassification, SourceType, ThesisStatus
+from agents.models import (
+    AlertSeverity,
+    AnalysisType,
+    EvidenceClassification,
+    EvidenceImpact,
+    EvidenceSourceType,
+    ThesisStatus,
+)
 from thesisguard_backend.db import Base
 
 
@@ -28,12 +35,6 @@ class TransactionType(str, enum.Enum):
     SELL = "SELL"
     REBALANCE = "REBALANCE"
     CASH_ADJUST = "CASH_ADJUST"
-
-
-class AnalysisType(str, enum.Enum):
-    BULL_BEAR_JUDGE = "BULL_BEAR_JUDGE"
-    THESIS_CONCENTRATION = "THESIS_CONCENTRATION"
-    COMMON_RISK = "COMMON_RISK"
 
 
 class AlertDelivery(str, enum.Enum):
@@ -167,14 +168,18 @@ class Evidence(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     thesis_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), nullable=False)
     document_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    source_type: Mapped[SourceType] = mapped_column(SAEnum(SourceType, name="evidence_source_type"), nullable=False)
-    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_type: Mapped[EvidenceSourceType] = mapped_column(
+        SAEnum(EvidenceSourceType, name="evidence_source_type"), nullable=False
+    )
+    source_url: Mapped[str | None] = mapped_column(Text)
     vector_doc_id: Mapped[str | None] = mapped_column(String(255))
     content_snippet: Mapped[str] = mapped_column(Text, nullable=False)
     classification: Mapped[EvidenceClassification] = mapped_column(
         SAEnum(EvidenceClassification, name="evidence_classification"), nullable=False
     )
-    impact: Mapped[float] = mapped_column(Float, nullable=False)
+    impact: Mapped[EvidenceImpact] = mapped_column(
+        SAEnum(EvidenceImpact, name="evidence_impact"), nullable=False
+    )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     related_assumptions: Mapped[list[str]] = mapped_column(JSONB, default=list)
     published_at: Mapped[datetime | None]

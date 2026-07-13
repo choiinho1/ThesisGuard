@@ -35,9 +35,11 @@ async def _latest(series_id: str) -> MacroSeriesPoint | None:
         for row in reversed(rows):
             raw_value = row.get(series_id, ".")
             if raw_value not in (None, ".", ""):
+                # fredgraph.csv's date column is "observation_date" (older exports used "DATE").
+                raw_date = row.get("observation_date") or row["DATE"]
                 return MacroSeriesPoint(
                     series_id=series_id,
-                    as_of=datetime.strptime(row["DATE"], "%Y-%m-%d").date(),
+                    as_of=datetime.strptime(raw_date, "%Y-%m-%d").date(),
                     value=float(raw_value),
                 )
         return None

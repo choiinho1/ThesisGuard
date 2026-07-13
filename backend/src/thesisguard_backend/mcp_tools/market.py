@@ -1,15 +1,21 @@
-"""Market MCP — quotes and price history via stooq.com CSV endpoints (no API key)."""
+"""Market MCP — quotes and price history via Yahoo Finance's public chart API (no key).
+
+stooq.com's CSV endpoints were the original choice here, but as of 2026-07 they
+sit behind a JavaScript bot-challenge and can no longer be scraped with a plain
+HTTP request (verified with backend/scripts/check_agent_compat.py). Yahoo
+Finance's unofficial `/v8/finance/chart/` endpoint has no such gate and needs
+no API key, so it replaces stooq as the source here.
+"""
 
 from __future__ import annotations
 
-import csv
-import io
 from dataclasses import dataclass
 from datetime import date, datetime
 
 import httpx
 
-from thesisguard_backend.config import get_settings
+_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 
 @dataclass(slots=True)
@@ -29,56 +35,50 @@ class MarketData:
     change_pct_30d: float | None
 
 
-def _symbol(ticker: str) -> str:
-    return f"{ticker.lower()}.us"
+async def _fetch_chart(ticker: str, range_: str, interval: str) -> list[PricePoint]:
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True, headers=_HEADERS) as client:
+            response = await client.get(
+                _CHART_URL.format(ticker=ticker.upper()),
+                params={"range": range_, "interval": interval},
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        result = payload["chart"]["result"][0]
+        timestamps = result["timestamp"]
+        quote = result["indicators"]["quote"][0]
+        points: list[PricePoint] = []
+        for i, ts in enumerate(timestamps):
+            close = quote["close"][i]
+            if close is None:
+                continue
+            points.append(
+                PricePoint(
+                    date=datetime.fromtimestamp(ts).date(),
+                    open=quote["open"][i],
+                    high=quote["high"][i],
+                    low=quote["low"][i],
+                    close=close,
+                    volume=quote["volume"][i] or 0,
+                )
+            )
+        return points
+    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
+        return []
 
 
 async def get_price(ticker: str) -> PricePoint | None:
-    base = get_settings().stooq_base_url
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                f"{base}/q/l/", params={"s": _symbol(ticker), "f": "sd2t2ohlcv", "h": "", "e": "csv"}
-            )
-            response.raise_for_status()
-        rows = list(csv.DictReader(io.StringIO(response.text)))
-        if not rows or rows[0].get("Close") in (None, "N/D"):
-            return None
-        row = rows[0]
-        return PricePoint(
-            date=datetime.strptime(row["Date"], "%Y-%m-%d").date(),
-            open=float(row["Open"]),
-            high=float(row["High"]),
-            low=float(row["Low"]),
-            close=float(row["Close"]),
-            volume=int(float(row["Volume"])),
-        )
-    except (httpx.HTTPError, ValueError, KeyError):
-        return None
+    points = await _fetch_chart(ticker, range_="5d", interval="1d")
+    return points[-1] if points else None
 
 
 async def get_price_history(ticker: str, days: int = 90) -> list[PricePoint]:
-    base = get_settings().stooq_base_url
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(f"{base}/q/d/l/", params={"s": _symbol(ticker), "i": "d"})
-            response.raise_for_status()
-        rows = list(csv.DictReader(io.StringIO(response.text)))
-        points = [
-            PricePoint(
-                date=datetime.strptime(row["Date"], "%Y-%m-%d").date(),
-                open=float(row["Open"]),
-                high=float(row["High"]),
-                low=float(row["Low"]),
-                close=float(row["Close"]),
-                volume=int(float(row["Volume"])),
-            )
-            for row in rows
-            if row.get("Close") not in (None, "N/D")
-        ]
-        return points[-days:]
-    except (httpx.HTTPError, ValueError, KeyError):
-        return []
+    # Yahoo's `range` must cover at least `days` calendar days; pad and let the
+    # caller trim. 1y is the smallest bucket comfortably covering 90 trading days.
+    range_ = "1y" if days > 30 else "3mo"
+    points = await _fetch_chart(ticker, range_=range_, interval="1d")
+    return points[-days:]
 
 
 async def get_market_data(ticker: str) -> MarketData:

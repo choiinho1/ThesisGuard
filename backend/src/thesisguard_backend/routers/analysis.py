@@ -1,6 +1,6 @@
 """POST /api/holdings/{id}/analyze — the B<->C integration point.
 
-Calls C's ``run_analysis_workflow()``, persists every part of
+Calls C's ``arun_analysis_workflow()``, persists every part of
 ``ThesisAnalysisResult`` across theses/thesis_versions/evidence/
 analysis_results/alerts, and returns the same result to the caller.
 """
@@ -12,15 +12,17 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 
-from thesisguard_agent.api import run_analysis_workflow
+from agents.graph import arun_analysis_workflow
+from agents.models import EvidenceItem
 from thesisguard_backend import models as orm
 from thesisguard_backend.alert_engine import handle_alert_decision
-from thesisguard_backend.deps import CurrentUser, DbSession, get_owned_portfolio
+from thesisguard_backend.deps import Agent, CurrentUser, DbSession, get_owned_portfolio
 from thesisguard_backend.routers.holdings import OwnedHolding
 from thesisguard_backend.schemas import (
     AlertDecisionResponse,
     AnalysisResultResponse,
     AnalyzeResponse,
+    CommonRiskResponse,
     ConcentrationThemeResponse,
     EvidenceResponse,
     NaturalLanguageQueryRequest,
@@ -45,7 +47,7 @@ async def analyze_holding(
         )
     portfolio = await db.get(orm.Portfolio, holding.portfolio_id)
 
-    result = await run_analysis_workflow(str(portfolio.id), str(holding.id))
+    result = await arun_analysis_workflow(str(portfolio.id), str(holding.id))
 
     next_version_no = (
         await db.scalar(
@@ -83,7 +85,8 @@ async def analyze_holding(
             thesis_id=thesis.id,
             document_id=item.document_id,
             source_type=item.source_type,
-            source_url=str(item.source_url),
+            source_url=str(item.source_url) if item.source_url else None,
+            vector_doc_id=item.vector_doc_id,
             content_snippet=item.content_snippet,
             classification=item.classification,
             impact=item.impact,
@@ -118,6 +121,19 @@ async def analyze_holding(
             )
         )
 
+    for risk in result.concentration.common_risks:
+        # CommonRisk has no numeric score, so concentration_theme/-score are
+        # reused as a generic label/[unset] pair rather than adding new columns.
+        db.add(
+            orm.AnalysisResult(
+                portfolio_id=portfolio.id,
+                analysis_type=orm.AnalysisType.COMMON_RISK,
+                concentration_theme=risk.risk,
+                affected_holdings=risk.affected_holdings,
+                raw_result=risk.model_dump(mode="json"),
+            )
+        )
+
     await db.commit()
     await db.refresh(thesis)
     await db.refresh(thesis_version)
@@ -146,6 +162,14 @@ async def analyze_holding(
                 shared_assumptions=t.shared_assumptions,
             )
             for t in result.concentration.themes
+        ],
+        common_risks=[
+            CommonRiskResponse(
+                risk=r.risk,
+                affected_holdings=r.affected_holdings,
+                evidence_document_ids=r.evidence_document_ids,
+            )
+            for r in result.concentration.common_risks
         ],
         alert=AlertDecisionResponse(
             severity=result.alert_decision.severity,
@@ -186,12 +210,50 @@ async def get_common_risk(portfolio: OwnedPortfolio, db: DbSession) -> list[orm.
 
 @router.post("/api/portfolios/{portfolio_id}/query", response_model=NaturalLanguageQueryResponse)
 async def query_portfolio(
-    payload: NaturalLanguageQueryRequest, portfolio: OwnedPortfolio
+    payload: NaturalLanguageQueryRequest, portfolio: OwnedPortfolio, db: DbSession, agent: Agent
 ) -> NaturalLanguageQueryResponse:
-    # PRD 5.14 — natural-language portfolio Q&A. C has not exposed a
-    # dedicated query function in ports.py/api.py yet; wire this once C adds
-    # one (e.g. `thesisguard_agent.api.answer_portfolio_query(...)`).
-    raise HTTPException(
-        status.HTTP_501_NOT_IMPLEMENTED,
-        "자연어 질의 기능은 C의 agent API에 아직 노출되어 있지 않습니다.",
+    """PRD 5.14 — natural-language portfolio Q&A.
+
+    NOTE: evidence is picked by recency only (latest 50 rows across the
+    portfolio's theses), not by semantic relevance to the question — there is
+    no Vector Store wired up yet (ADR-0002 is still unresolved). Once one
+    exists, replace this with a similarity search over `question`.
+    """
+
+    thesis_ids = list(
+        await db.scalars(
+            select(orm.Thesis.id)
+            .join(orm.Holding, orm.Holding.id == orm.Thesis.holding_id)
+            .where(orm.Holding.portfolio_id == portfolio.id)
+        )
+    )
+    evidence_rows = list(
+        await db.scalars(
+            select(orm.Evidence)
+            .where(orm.Evidence.thesis_id.in_(thesis_ids))
+            .order_by(orm.Evidence.created_at.desc())
+            .limit(50)
+        )
+    )
+    evidence = [
+        EvidenceItem(
+            document_id=row.document_id,
+            source_type=row.source_type,
+            source_url=row.source_url,
+            vector_doc_id=row.vector_doc_id,
+            content_snippet=row.content_snippet,
+            classification=row.classification,
+            impact=row.impact,
+            reason=row.reason,
+            related_assumptions=row.related_assumptions,
+            published_at=row.published_at,
+        )
+        for row in evidence_rows
+    ]
+
+    answer = await agent.aanswer_portfolio_query(str(portfolio.id), payload.question, evidence)
+    return NaturalLanguageQueryResponse(
+        answer=answer.answer,
+        evidence_document_ids=answer.evidence_document_ids,
+        limitations=answer.limitations,
     )

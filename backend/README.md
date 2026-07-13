@@ -1,21 +1,31 @@
 # ThesisGuard Backend & Data Infra
 
-이 디렉터리는 3인 팀 중 **B(Backend & Data Infra)**가 소유하는 코드다. `../src/thesisguard_agent`(C 소유)를
+이 디렉터리는 3인 팀 중 **B(Backend & Data Infra)**가 소유하는 코드다. `../agents`(C 소유)를
 호출해 분석을 실행하고, 결과를 PostgreSQL에 저장하며, A(Frontend)가 쓸 REST API를 제공한다.
 
 ## 담당 경계
 
-- **A(Frontend)**: 이 API만 호출한다. `thesisguard_agent`나 `thesisguard_backend`를 직접 import하지 않는다.
+- **A(Frontend)**: 이 API만 호출한다. `agents`나 `thesisguard_backend`를 직접 import하지 않는다.
 - **B(Backend, 이 폴더)**: 인증, DB, REST API, MCP Tool(SEC/News/Market/Macro), 결과 저장, 이메일 발송.
-- **C(AI Agent, `../src/thesisguard_agent`)**: Thesis 구조화, 증거 분류, Bull/Bear/Judge, 집중도 분석, 알림 판정.
+- **C(AI Agent, `../agents`)**: Thesis 구조화, 증거 분류, Bull/Bear/Judge, 집중도 분석, 알림 판정.
 
-C는 `ports.py`에 `ContextProvider` / `ResearchTools` / `AnalysisModel` Protocol만 정의해두고 절대 DB나 외부
-API를 직접 호출하지 않는다. 이 폴더의 `agent_adapters.py`가 그 세 Protocol을 구현해서 앱 시작 시 주입한다.
+C는 `agents/contracts.py`에 `ContextProvider` / `ResearchTools` / `AnalysisModel` Protocol만 정의해두고
+절대 DB나 외부 API를 직접 호출하지 않는다. 이 폴더의 `agent_adapters.py`가 그 세 Protocol을 구현해서 앱
+시작 시 주입한다(`main.py`의 `lifespan`).
+
+C가 노출하는 진입점은 두 종류다.
+
+- 모듈 레벨(권장): `agents.graph.arun_analysis_workflow()`, `agents.graph.configure_agent()` — FastAPI처럼
+  이미 이벤트 루프 안에 있는 async 코드에서 쓴다. **동기 버전 `run_analysis_workflow()`는 이벤트 루프
+  안에서 호출하면 `RuntimeError`를 던지도록 막혀 있으니 FastAPI 라우트에서는 쓰지 않는다.**
+- 인스턴스 메서드: `astructure_thesis()`, `aanswer_portfolio_query()` 등은 모듈 레벨로 노출되어 있지 않다.
+  B가 시작 시 만든 `ThesisGuardAgent` 인스턴스를 `app.state.agent`에 들고 있다가(`deps.get_agent`) 그
+  인스턴스에서 직접 호출한다.
 
 ## 설치
 
 ```powershell
-# 1) 저장소 루트에서 C(AI Agent) 패키지를 먼저 editable 설치한다
+# 1) 저장소 루트에서 C(AI Agent) 패키지(agents/)를 먼저 editable 설치한다
 cd ..
 python -m pip install -e ".[dev]"
 
@@ -81,14 +91,30 @@ curl -X POST localhost:8000/api/holdings/$HID/thesis -H "Authorization: Bearer $
 
 # 분석 실행 (C 워크플로 호출 — OPENAI_API_KEY 필요)
 curl -X POST localhost:8000/api/holdings/$HID/analyze -H "Authorization: Bearer $TOKEN"
+
+# 자연어 질의 (evidence는 최신 50건을 그대로 넘김 — 아래 "알려진 한계" 참고)
+curl -X POST localhost:8000/api/portfolios/$PID/query -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"question":"내 포트폴리오에서 가장 위험한 종목은?"}'
 ```
+
+## agents/ 쪽 계약이 바뀌면 항상 확인할 것
+
+C의 `agents/` 패키지는 이미 한 번 구조가 크게 바뀐 적이 있다(모듈 경로, 함수명, 일부 Enum 값). 계약이
+또 바뀌면 아래를 순서대로 맞춘다.
+
+1. `agent_adapters.py`의 `from agents...` import들이 실제로 존재하는지
+2. `deps.get_agent()` / `main.py` lifespan이 여전히 `agents.graph.configure_agent` 시그니처와 맞는지
+3. `models.py`가 재사용하는 Enum(`EvidenceClassification`, `EvidenceImpact`, `EvidenceSourceType`,
+   `ThesisStatus`, `AlertSeverity`, `AnalysisType`)이 `agents.models`와 값이 같은지 — 다르면 새
+   Alembic 마이그레이션 필요
+4. `routers/analysis.py`가 `ThesisAnalysisResult`의 모든 필드(특히 `concentration.common_risks`처럼
+   나중에 추가된 필드)를 빠짐없이 저장하는지
 
 ## 알려진 한계 / TODO
 
-- **자연어 포트폴리오 질의**(`POST /api/portfolios/{id}/query`, PRD 5.14)는 C의 `thesisguard_agent.api`에
-  아직 대응하는 함수가 없어 501을 반환한다. C가 `answer_portfolio_query()` 같은 진입점을 추가하면 연결한다.
-  이런 진입점을 만들 때, 서비스 함수는 반드시 결과를 순수 값으로 반환하고 화면 표시 문자열을 직접 만들지
-  않아야 한다 — 포매팅은 항상 A(Frontend)의 책임으로 남긴다.
+- **자연어 포트폴리오 질의**(`POST /api/portfolios/{id}/query`)는 이제 C의 `aanswer_portfolio_query()`에
+  연결되어 동작한다. 다만 근거로 넘기는 Evidence를 질문과 무관하게 **최근 50건**으로만 뽑는다 — Vector
+  Store(ADR-0002)가 아직 없어서 질문과 의미적으로 관련된 근거만 골라내는 검색이 없다.
 - **주간 요약 발송**(`alert_engine.send_weekly_digest`)은 함수만 있고 스케줄러가 없다. Windows 작업 스케줄러나
   APScheduler로 주 1회 각 사용자에 대해 호출하도록 팀이 정해야 한다.
 - **Vector Store**(ADR-0002, pgvector/Qdrant)는 아직 붙어 있지 않다. 현재 RAG는 SEC EDGAR/뉴스 RSS를
@@ -97,3 +123,10 @@ curl -X POST localhost:8000/api/holdings/$HID/analyze -H "Authorization: Bearer 
   Google News RSS 기반으로 새로 추가했다(`mcp_tools/news.py`).
 - `POST /api/portfolios/{id}/rebalance`는 리밸런싱 기록만 남기고, TDD가 언급한 "집중도 변화 분석"은
   자동으로 트리거하지 않는다. 필요하면 리밸런싱 이후 프론트에서 `/analyze`를 각 종목에 대해 호출한다.
+- **`backend/app/`, `backend/mcp_tools/`(레포 최상위 빈 `.gitkeep` 폴더)는 이 백엔드가 쓰는 폴더가
+  아니다.** 실제 코드는 전부 `backend/src/thesisguard_backend/`(src 레이아웃) 아래에 있다. 두 레이아웃이
+  섞여 있으니 팀에서 하나로 정리하는 걸 권장한다.
+- **`frontend/js/api.js`의 mock과 이 백엔드의 실제 응답 형태가 다르다** (id가 UUID vs 정수, `cash_ratio`/
+  `target_weight`가 0~100 vs 0~1 비율, `raw_input` vs `raw_text`, `/api/holdings/{id}/analyze` vs
+  `/api/theses/{id}/analyze`, `quick-add` 엔드포인트 유무 등). 지금은 의도적으로 그대로 두었다 — 어느
+  쪽 필드명을 기준으로 통일할지는 팀 논의가 필요한 제품 결정이라 백엔드 임의로 바꾸지 않았다.

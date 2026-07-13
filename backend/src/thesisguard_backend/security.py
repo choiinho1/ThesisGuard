@@ -1,23 +1,33 @@
-"""Password hashing and JWT issuance/verification."""
+"""Password hashing and JWT issuance/verification.
+
+Uses the ``bcrypt`` package directly rather than passlib's CryptContext:
+passlib 1.7.4 (last release, 2020) reads ``bcrypt.__about__.__version__`` to
+detect the backend version, which the ``bcrypt`` package removed in 4.1 —
+that combination breaks hashing outright (verified in
+backend/scripts/check_agent_compat.py). Calling ``bcrypt`` directly avoids
+depending on an unmaintained compatibility shim.
+"""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from thesisguard_backend.config import get_settings
 
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_BCRYPT_MAX_BYTES = 72  # bcrypt's hard algorithm limit; longer inputs raise ValueError.
 
 
 def hash_password(raw_password: str) -> str:
-    return _pwd_context.hash(raw_password)
+    truncated = raw_password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    return bcrypt.hashpw(truncated, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(raw_password: str, password_hash: str) -> bool:
-    return _pwd_context.verify(raw_password, password_hash)
+    truncated = raw_password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    return bcrypt.checkpw(truncated, password_hash.encode("utf-8"))
 
 
 def create_access_token(*, subject: str) -> str:

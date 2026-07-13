@@ -11,8 +11,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from thesisguard_agent.models import AlertSeverity, EvidenceClassification, SourceType, ThesisStatus
-from thesisguard_backend.models import AlertDelivery, AnalysisType, TransactionType
+from agents.models import (
+    AlertSeverity,
+    AnalysisType,
+    EvidenceClassification,
+    EvidenceImpact,
+    EvidenceSourceType,
+    ThesisStatus,
+)
+from thesisguard_backend.models import AlertDelivery, TransactionType
 
 
 class ORMModel(BaseModel):
@@ -191,11 +198,12 @@ class EvidenceResponse(ORMModel):
     id: uuid.UUID
     thesis_id: uuid.UUID
     document_id: str
-    source_type: SourceType
-    source_url: str
+    source_type: EvidenceSourceType
+    source_url: str | None
+    vector_doc_id: str | None
     content_snippet: str
     classification: EvidenceClassification
-    impact: float
+    impact: EvidenceImpact
     reason: str
     related_assumptions: list[str]
     published_at: datetime | None
@@ -207,6 +215,12 @@ class ConcentrationThemeResponse(BaseModel):
     concentration_score: float
     affected_holdings: list[str]
     shared_assumptions: list[str]
+
+
+class CommonRiskResponse(BaseModel):
+    risk: str
+    affected_holdings: list[str]
+    evidence_document_ids: list[str]
 
 
 class AlertDecisionResponse(BaseModel):
@@ -224,6 +238,7 @@ class AnalyzeResponse(BaseModel):
     bear_summary: str
     judge_summary: str
     concentration_themes: list[ConcentrationThemeResponse]
+    common_risks: list[CommonRiskResponse]
     alert: AlertDecisionResponse
 
 
@@ -247,6 +262,8 @@ class NaturalLanguageQueryRequest(BaseModel):
 
 class NaturalLanguageQueryResponse(BaseModel):
     answer: str
+    evidence_document_ids: list[str]
+    limitations: list[str]
 
 
 # ------------------------------------------------------------- Alert ----
