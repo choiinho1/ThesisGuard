@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "thesisguard-backend"
+version = "0.1.0"
+description = "FastAPI backend, data infra and MCP tools for ThesisGuard (owned by B)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "thesisguard-agent",
+  "fastapi==0.128.0",
+  "uvicorn[standard]==0.38.0",
+  "sqlalchemy[asyncio]==2.0.44",
+  "asyncpg==0.31.0",
+  "alembic==1.17.2",
+  "pydantic==2.13.4",
+  "pydantic-settings==2.11.0",
+  "python-jose[cryptography]==3.5.0",
+  "passlib[bcrypt]==1.7.4",
+  "httpx==0.28.1",
+  "python-multipart==0.0.20",
+  "beautifulsoup4==4.14.3",
+]
+
+[project.optional-dependencies]
+# 팀이 LLM 제공자를 정하면 이 extra를 채운다. 우선 OpenAI 호환 Chat 모델을 기본값으로 둔다.
+llm-openai = [
+  "langchain-openai==1.1.4",
+]
+dev = [
+  "pytest==9.1.1",
+  "pytest-asyncio>=1.0,<2",
+  "ruff>=0.12,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/thesisguard_backend"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.pytest.ini_options]
+addopts = "-q"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
