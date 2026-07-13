@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"c:/Users/user/Desktop\" -iname \"*thesis*\" -o -iname \"*가드*\" 2>/dev/null | head -50)",
+      "Read(//c/Users/user/Desktop/**)"
+    ]
+  }
+}
