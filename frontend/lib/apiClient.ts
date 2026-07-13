@@ -1,0 +1,91 @@
+import { createMockThesis, getMockDashboard, mockPortfolios, runMockAnalysis } from "@/lib/mockData";
+import type {
+  ApiMode,
+  HoldingAnalysisResponse,
+  Portfolio,
+  PortfolioDashboard,
+  Thesis,
+} from "@/types/schema";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const MODE_KEY = "thesisguard_api_mode";
+
+function delay(ms = 180) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = typeof window === "undefined" ? null : localStorage.getItem("thesisguard_access_token");
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `API 요청 실패 (${response.status})`);
+  }
+  return response.json() as Promise<T>;
+}
+
+export function getApiMode(): ApiMode {
+  if (typeof window === "undefined") return "mock";
+  return (localStorage.getItem(MODE_KEY) as ApiMode | null) ??
+    (process.env.NEXT_PUBLIC_API_MODE === "live" ? "live" : "mock");
+}
+
+export function setApiMode(mode: ApiMode) {
+  localStorage.setItem(MODE_KEY, mode);
+}
+
+export async function listPortfolios(mode = getApiMode()): Promise<Portfolio[]> {
+  if (mode === "mock") {
+    await delay();
+    return structuredClone(mockPortfolios);
+  }
+  return request<Portfolio[]>("/api/portfolios");
+}
+
+export async function getPortfolioDashboard(
+  portfolioId: string,
+  mode = getApiMode(),
+): Promise<PortfolioDashboard> {
+  if (mode === "mock") {
+    await delay();
+    return getMockDashboard();
+  }
+  return request<PortfolioDashboard>(`/api/portfolios/${portfolioId}/dashboard`);
+}
+
+export async function analyzeHolding(
+  holdingId: string,
+  mode = getApiMode(),
+): Promise<HoldingAnalysisResponse> {
+  if (mode === "mock") {
+    await delay(500);
+    return runMockAnalysis(holdingId);
+  }
+  return request<HoldingAnalysisResponse>(`/api/holdings/${holdingId}/analyze`, {
+    method: "POST",
+  });
+}
+
+export async function createHoldingThesis(
+  holdingId: string,
+  rawInput: string,
+  mode = getApiMode(),
+): Promise<Thesis> {
+  if (mode === "mock") {
+    await delay(350);
+    return createMockThesis(holdingId, rawInput);
+  }
+  return request<Thesis>(`/api/holdings/${holdingId}/thesis`, {
+    method: "POST",
+    body: JSON.stringify({ raw_input: rawInput }),
+  });
+}
+
+export { API_BASE_URL };
