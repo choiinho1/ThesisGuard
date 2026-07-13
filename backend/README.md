@@ -126,7 +126,23 @@ C의 `agents/` 패키지는 이미 한 번 구조가 크게 바뀐 적이 있다
 - **`backend/app/`, `backend/mcp_tools/`(레포 최상위 빈 `.gitkeep` 폴더)는 이 백엔드가 쓰는 폴더가
   아니다.** 실제 코드는 전부 `backend/src/thesisguard_backend/`(src 레이아웃) 아래에 있다. 두 레이아웃이
   섞여 있으니 팀에서 하나로 정리하는 걸 권장한다.
-- **`frontend/js/api.js`의 mock과 이 백엔드의 실제 응답 형태가 다르다** (id가 UUID vs 정수, `cash_ratio`/
-  `target_weight`가 0~100 vs 0~1 비율, `raw_input` vs `raw_text`, `/api/holdings/{id}/analyze` vs
-  `/api/theses/{id}/analyze`, `quick-add` 엔드포인트 유무 등). 지금은 의도적으로 그대로 두었다 — 어느
-  쪽 필드명을 기준으로 통일할지는 팀 논의가 필요한 제품 결정이라 백엔드 임의로 바꾸지 않았다.
+- **프론트엔드에 로그인 화면이 아직 없다.** `frontend/lib/apiClient.ts`는 `localStorage`의
+  `thesisguard_access_token`을 읽기만 하고, 그 값을 채워주는 로그인 호출은 프론트 어디에도 없다. 이
+  백엔드는 모든 API에 JWT 인증을 강제하므로(`deps.get_current_user`), 지금 상태로 `live` 모드를 켜면
+  전부 401이 난다. A가 로그인 화면을 추가하거나, 데모용으로 devtools에서 토큰을 수동으로 넣거나 — 팀이
+  정할 문제라 백엔드에서 임의로 인증을 풀지 않았다.
+
+## 프론트엔드(A) 스키마 정합성
+
+`frontend/`는 `feature/fe-schema-alignment` 브랜치에서 가져왔다(2026-07-13). `frontend/types/schema.ts`가
+API 계약의 기준이며, 이 백엔드의 응답 스키마(`schemas.py`)는 그것과 필드 단위로 맞춰져 있다 —
+`PortfolioDashboard`(대시보드)와 `HoldingAnalysisResponse`(`/analyze` 응답)는 프론트 타입 이름과 키
+이름(`version`, `analysis_result`, `latest_change` 등)까지 그대로 따른다.
+
+```powershell
+# 필드셋 대조 + 실제 LangGraph 실행으로 직렬화까지 검증
+PYTHONPATH="..;src" ../.venv/Scripts/python.exe scripts/check_fe_schema_compat.py
+```
+
+`frontend/types/schema.ts`가 바뀌면 `check_fe_schema_compat.py`의 `FRONTEND_INTERFACES` 딕셔너리를 그
+타입 정의에 맞춰 고치고 다시 실행해서 확인한다.

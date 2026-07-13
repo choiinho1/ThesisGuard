@@ -19,12 +19,10 @@ from thesisguard_backend.alert_engine import handle_alert_decision
 from thesisguard_backend.deps import Agent, CurrentUser, DbSession, get_owned_portfolio
 from thesisguard_backend.routers.holdings import OwnedHolding
 from thesisguard_backend.schemas import (
-    AlertDecisionResponse,
+    AlertResponse,
     AnalysisResultResponse,
-    AnalyzeResponse,
-    CommonRiskResponse,
-    ConcentrationThemeResponse,
     EvidenceResponse,
+    HoldingAnalysisResponse,
     NaturalLanguageQueryRequest,
     NaturalLanguageQueryResponse,
     ThesisResponse,
@@ -36,10 +34,10 @@ router = APIRouter(tags=["analysis"])
 OwnedPortfolio = Annotated[orm.Portfolio, Depends(get_owned_portfolio)]
 
 
-@router.post("/api/holdings/{holding_id}/analyze", response_model=AnalyzeResponse)
+@router.post("/api/holdings/{holding_id}/analyze", response_model=HoldingAnalysisResponse)
 async def analyze_holding(
     holding: OwnedHolding, db: DbSession, current_user: CurrentUser
-) -> AnalyzeResponse:
+) -> HoldingAnalysisResponse:
     thesis = await db.scalar(select(orm.Thesis).where(orm.Thesis.holding_id == holding.id))
     if thesis is None:
         raise HTTPException(
@@ -57,6 +55,23 @@ async def analyze_holding(
         )
     ) + 1
 
+    # Snapshot the thesis as it was BEFORE this analysis, shaped like the
+    # frontend's Thesis interface (frontend/types/schema.ts) since
+    # ThesisVersion.snapshot is typed as a full Thesis there.
+    pre_analysis_snapshot = {
+        "id": str(thesis.id),
+        "holding_id": str(thesis.holding_id),
+        "raw_input": thesis.raw_input,
+        "main_thesis": thesis.main_thesis,
+        "key_assumptions": thesis.key_assumptions,
+        "positive_signals": thesis.positive_signals,
+        "negative_signals": thesis.negative_signals,
+        "key_risks": thesis.key_risks,
+        "confidence_score": thesis.confidence_score,
+        "status": thesis.status.value if hasattr(thesis.status, "value") else thesis.status,
+        "created_at": thesis.created_at.isoformat(),
+        "updated_at": thesis.updated_at.isoformat(),
+    }
     thesis_version = orm.ThesisVersion(
         thesis_id=thesis.id,
         version_no=next_version_no,
@@ -65,15 +80,7 @@ async def analyze_holding(
         change_reason=result.change_reason,
         conflicting_assumptions=result.conflicting_assumptions,
         observation_points=result.observation_points,
-        snapshot={
-            "main_thesis": thesis.main_thesis,
-            "key_assumptions": thesis.key_assumptions,
-            "positive_signals": thesis.positive_signals,
-            "negative_signals": thesis.negative_signals,
-            "key_risks": thesis.key_risks,
-            "confidence_score": thesis.confidence_score,
-            "status": thesis.status.value if hasattr(thesis.status, "value") else thesis.status,
-        },
+        snapshot=pre_analysis_snapshot,
     )
     db.add(thesis_version)
 
@@ -98,16 +105,15 @@ async def analyze_holding(
     ]
     db.add_all(evidence_rows)
 
-    db.add(
-        orm.AnalysisResult(
-            thesis_id=thesis.id,
-            analysis_type=orm.AnalysisType.BULL_BEAR_JUDGE,
-            bull_summary=result.bull_summary,
-            bear_summary=result.bear_summary,
-            judge_summary=result.judge_summary,
-            raw_result=result.model_dump(mode="json"),
-        )
+    analysis_result = orm.AnalysisResult(
+        thesis_id=thesis.id,
+        analysis_type=orm.AnalysisType.BULL_BEAR_JUDGE,
+        bull_summary=result.bull_summary,
+        bear_summary=result.bear_summary,
+        judge_summary=result.judge_summary,
+        raw_result=result.model_dump(mode="json"),
     )
+    db.add(analysis_result)
 
     for theme in result.concentration.themes:
         db.add(
@@ -137,8 +143,9 @@ async def analyze_holding(
     await db.commit()
     await db.refresh(thesis)
     await db.refresh(thesis_version)
+    await db.refresh(analysis_result)
 
-    await handle_alert_decision(
+    alert = await handle_alert_decision(
         db,
         user=current_user,
         portfolio=portfolio,
@@ -147,36 +154,12 @@ async def analyze_holding(
         decision=result.alert_decision,
     )
 
-    return AnalyzeResponse(
+    return HoldingAnalysisResponse(
         thesis=ThesisResponse.model_validate(thesis),
-        thesis_version=ThesisVersionResponse.model_validate(thesis_version),
+        version=ThesisVersionResponse.model_validate(thesis_version),
         evidence=[EvidenceResponse.model_validate(row) for row in evidence_rows],
-        bull_summary=result.bull_summary,
-        bear_summary=result.bear_summary,
-        judge_summary=result.judge_summary,
-        concentration_themes=[
-            ConcentrationThemeResponse(
-                theme=t.theme,
-                concentration_score=t.concentration_score,
-                affected_holdings=t.affected_holdings,
-                shared_assumptions=t.shared_assumptions,
-            )
-            for t in result.concentration.themes
-        ],
-        common_risks=[
-            CommonRiskResponse(
-                risk=r.risk,
-                affected_holdings=r.affected_holdings,
-                evidence_document_ids=r.evidence_document_ids,
-            )
-            for r in result.concentration.common_risks
-        ],
-        alert=AlertDecisionResponse(
-            severity=result.alert_decision.severity,
-            should_send=result.alert_decision.should_send,
-            delivery=result.alert_decision.delivery,
-            reason=result.alert_decision.reason,
-        ),
+        analysis_result=AnalysisResultResponse.model_validate(analysis_result),
+        alert=AlertResponse.model_validate(alert) if alert else None,
     )
 
 
