@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
+    # Google Identity Services web Client ID; must match frontend's
+    # NEXT_PUBLIC_GOOGLE_CLIENT_ID (Google Client IDs are not secret, but the
+    # backend needs it to verify the "aud" claim on incoming ID tokens).
+    google_client_id: str | None = None
+
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o-mini"
     openai_api_key: str | None = None
