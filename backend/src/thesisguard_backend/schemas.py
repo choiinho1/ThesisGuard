@@ -1,7 +1,9 @@
 """Pydantic request/response DTOs for the REST API (A<->B contract).
 
 All field names are snake_case per the team naming convention, so the
-frontend can consume these bodies without any key transformation.
+frontend can consume these bodies without any key transformation. Response
+shapes here are aligned 1:1 with frontend/types/schema.ts (branch
+feature/fe-schema-alignment) — keep the two in sync when either changes.
 """
 
 from __future__ import annotations
@@ -74,31 +76,6 @@ class PortfolioResponse(ORMModel):
     cash_ratio: float
     created_at: datetime
     updated_at: datetime
-
-
-class ThesisStatusCard(BaseModel):
-    holding_id: uuid.UUID
-    ticker: str
-    confidence_score: int
-    previous_confidence_score: int | None
-    status: ThesisStatus
-
-
-class ThemeDependency(BaseModel):
-    theme: str
-    concentration_score: float
-    affected_holdings: list[str]
-
-
-class PortfolioDashboardResponse(BaseModel):
-    portfolio: PortfolioResponse
-    total_value: float
-    total_return_pct: float
-    cash_ratio: float
-    allocation: dict[str, float]
-    thesis_status: list[ThesisStatusCard]
-    recent_changes: list["ThesisVersionResponse"]
-    theme_dependency: list[ThemeDependency]
 
 
 # ----------------------------------------------------------- Holding ----
@@ -190,6 +167,7 @@ class ThesisVersionResponse(ORMModel):
     change_reason: str
     conflicting_assumptions: list[str]
     observation_points: list[str]
+    snapshot: dict
     created_at: datetime
 
 
@@ -210,38 +188,6 @@ class EvidenceResponse(ORMModel):
 
 
 # ------------------------------------------------- Analysis / Concentration
-class ConcentrationThemeResponse(BaseModel):
-    theme: str
-    concentration_score: float
-    affected_holdings: list[str]
-    shared_assumptions: list[str]
-
-
-class CommonRiskResponse(BaseModel):
-    risk: str
-    affected_holdings: list[str]
-    evidence_document_ids: list[str]
-
-
-class AlertDecisionResponse(BaseModel):
-    severity: AlertSeverity
-    should_send: bool
-    delivery: str
-    reason: str
-
-
-class AnalyzeResponse(BaseModel):
-    thesis: ThesisResponse
-    thesis_version: ThesisVersionResponse
-    evidence: list[EvidenceResponse]
-    bull_summary: str
-    bear_summary: str
-    judge_summary: str
-    concentration_themes: list[ConcentrationThemeResponse]
-    common_risks: list[CommonRiskResponse]
-    alert: AlertDecisionResponse
-
-
 class AnalysisResultResponse(ORMModel):
     id: uuid.UUID
     portfolio_id: uuid.UUID | None
@@ -253,6 +199,7 @@ class AnalysisResultResponse(ORMModel):
     concentration_theme: str | None
     concentration_score: float | None
     affected_holdings: list[str]
+    raw_result: dict
     created_at: datetime
 
 
@@ -269,6 +216,7 @@ class NaturalLanguageQueryResponse(BaseModel):
 # ------------------------------------------------------------- Alert ----
 class AlertResponse(ORMModel):
     id: uuid.UUID
+    user_id: uuid.UUID
     portfolio_id: uuid.UUID
     thesis_id: uuid.UUID | None
     severity: AlertSeverity
@@ -292,4 +240,28 @@ class AlertSettingsResponse(ORMModel):
     updated_at: datetime
 
 
-PortfolioDashboardResponse.model_rebuild()
+# ---------------------------------------------------- Composite responses
+# These mirror frontend/types/schema.ts's DashboardHolding, PortfolioDashboard
+# and HoldingAnalysisResponse exactly (field-for-field, including key names
+# like "version" instead of "thesis_version").
+
+
+class DashboardHoldingResponse(HoldingResponse):
+    thesis: ThesisResponse | None = None
+    latest_change: ThesisVersionResponse | None = None
+
+
+class PortfolioDashboardResponse(BaseModel):
+    portfolio: PortfolioResponse
+    holdings: list[DashboardHoldingResponse]
+    concentration: AnalysisResultResponse | None
+    common_risks: list[AnalysisResultResponse]
+    recent_alerts: list[AlertResponse]
+
+
+class HoldingAnalysisResponse(BaseModel):
+    thesis: ThesisResponse
+    version: ThesisVersionResponse
+    evidence: list[EvidenceResponse]
+    analysis_result: AnalysisResultResponse
+    alert: AlertResponse | None

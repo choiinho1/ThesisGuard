@@ -417,7 +417,7 @@ A↔B 계약. Request/Response body는 모두 snake_case.
 | `GET /api/portfolios/{id}` | 단건 조회 |
 | `PUT /api/portfolios/{id}` | 수정 |
 | `DELETE /api/portfolios/{id}` | 삭제 |
-| `GET /api/portfolios/{id}/dashboard` | Allocation·Thesis Status·Risk·Theme Dependency 집계 |
+| `GET /api/portfolios/{id}/dashboard` | 종목별 holdings(+thesis, latest_change), concentration, common_risks, recent_alerts — 정확한 응답 형태는 `frontend/types/schema.ts`의 `PortfolioDashboard`와 `backend/schemas.py`의 `PortfolioDashboardResponse` 참고 (서버가 allocation·수익률을 계산해주지 않고, 프론트가 holdings 원본으로 직접 계산한다) |
 
 ### Holdings & Rebalance
 
@@ -436,7 +436,7 @@ A↔B 계약. Request/Response body는 모두 snake_case.
 | `GET /api/theses/{id}` | 현재 Thesis 조회 |
 | `PUT /api/theses/{id}` | 사용자 직접 수정 |
 | `GET /api/theses/{id}/history` | thesis_versions 시계열 |
-| `POST /api/holdings/{id}/analyze` | 신규 정보 분석 파이프라인 실행 (C 워크플로우 호출) |
+| `POST /api/holdings/{id}/analyze` | 신규 정보 분석 파이프라인 실행 (C 워크플로우 호출). 응답 = `{thesis, version, evidence, analysis_result, alert}` (`frontend/types/schema.ts`의 `HoldingAnalysisResponse`와 동일) |
 | `GET /api/portfolios/{id}/concentration` | Thesis Concentration 결과 |
 | `GET /api/portfolios/{id}/common-risk` | 공통 위험 결과 |
 | `POST /api/portfolios/{id}/query` | 자연어 질의 |

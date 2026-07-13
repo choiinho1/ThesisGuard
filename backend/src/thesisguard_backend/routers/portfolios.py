@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from typing import Annotated
 
@@ -11,15 +10,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from thesisguard_backend import models as orm
-from thesisguard_backend.agent_adapters import get_market_snapshot
 from thesisguard_backend.deps import CurrentUser, DbSession, get_owned_portfolio
 from thesisguard_backend.schemas import (
+    AlertResponse,
+    AnalysisResultResponse,
+    DashboardHoldingResponse,
     PortfolioCreateRequest,
     PortfolioDashboardResponse,
     PortfolioResponse,
     PortfolioUpdateRequest,
-    ThemeDependency,
-    ThesisStatusCard,
     ThesisVersionResponse,
 )
 
@@ -73,88 +72,62 @@ async def delete_portfolio(portfolio: OwnedPortfolio, db: DbSession) -> None:
 async def get_dashboard(
     portfolio_id: uuid.UUID, portfolio: OwnedPortfolio, db: DbSession
 ) -> PortfolioDashboardResponse:
+    """Mirrors frontend/types/schema.ts's PortfolioDashboard exactly: the
+    frontend computes allocation/return figures client-side from holdings,
+    so this endpoint returns raw rows rather than server-computed aggregates."""
+
     holdings = list(
         await db.scalars(
             select(orm.Holding)
             .where(orm.Holding.portfolio_id == portfolio_id)
             .options(selectinload(orm.Holding.thesis).selectinload(orm.Thesis.versions))
+            .order_by(orm.Holding.created_at)
         )
     )
-
-    snapshots = await asyncio.gather(
-        *(get_market_snapshot(holding.ticker) for holding in holdings), return_exceptions=True
-    )
-
-    total_value = 0.0
-    total_cost = 0.0
-    allocation: dict[str, float] = {}
-    thesis_status: list[ThesisStatusCard] = []
-    for holding, snapshot in zip(holdings, snapshots, strict=False):
-        price = holding.avg_buy_price
-        if not isinstance(snapshot, Exception) and snapshot.latest is not None:
-            price = snapshot.latest.close
-        market_value = holding.quantity * price
-        total_value += market_value
-        total_cost += holding.quantity * holding.avg_buy_price
-        allocation[holding.ticker] = market_value
-
-        if holding.thesis is not None:
-            versions = holding.thesis.versions
-            previous_confidence = versions[-2].confidence_score if len(versions) >= 2 else None
-            thesis_status.append(
-                ThesisStatusCard(
-                    holding_id=holding.id,
-                    ticker=holding.ticker,
-                    confidence_score=holding.thesis.confidence_score,
-                    previous_confidence_score=previous_confidence,
-                    status=holding.thesis.status,
-                )
+    holding_responses = []
+    for holding in holdings:
+        dashboard_holding = DashboardHoldingResponse.model_validate(holding)
+        if holding.thesis and holding.thesis.versions:
+            dashboard_holding.latest_change = ThesisVersionResponse.model_validate(
+                holding.thesis.versions[-1]
             )
+        holding_responses.append(dashboard_holding)
 
-    if total_value > 0:
-        allocation = {ticker: round(value / total_value * 100, 2) for ticker, value in allocation.items()}
-        for holding in holdings:
-            holding.current_weight = allocation.get(holding.ticker, 0.0)
-        await db.commit()
-    total_return_pct = round((total_value - total_cost) / total_cost * 100, 2) if total_cost > 0 else 0.0
-
-    recent_versions = list(
-        await db.scalars(
-            select(orm.ThesisVersion)
-            .join(orm.Thesis, orm.Thesis.id == orm.ThesisVersion.thesis_id)
-            .join(orm.Holding, orm.Holding.id == orm.Thesis.holding_id)
-            .where(orm.Holding.portfolio_id == portfolio_id)
-            .order_by(orm.ThesisVersion.created_at.desc())
-            .limit(5)
+    concentration = await db.scalar(
+        select(orm.AnalysisResult)
+        .where(
+            orm.AnalysisResult.portfolio_id == portfolio_id,
+            orm.AnalysisResult.analysis_type == orm.AnalysisType.THESIS_CONCENTRATION,
         )
+        .order_by(orm.AnalysisResult.created_at.desc())
+        .limit(1)
     )
-
-    concentration_rows = list(
+    common_risks = list(
         await db.scalars(
             select(orm.AnalysisResult)
             .where(
                 orm.AnalysisResult.portfolio_id == portfolio_id,
-                orm.AnalysisResult.analysis_type == orm.AnalysisType.THESIS_CONCENTRATION,
+                orm.AnalysisResult.analysis_type == orm.AnalysisType.COMMON_RISK,
             )
             .order_by(orm.AnalysisResult.created_at.desc())
-            .limit(5)
+            .limit(10)
+        )
+    )
+    recent_alerts = list(
+        await db.scalars(
+            select(orm.Alert)
+            .where(orm.Alert.portfolio_id == portfolio_id)
+            .order_by(orm.Alert.created_at.desc())
+            .limit(10)
         )
     )
 
     return PortfolioDashboardResponse(
         portfolio=PortfolioResponse.model_validate(portfolio),
-        total_value=round(total_value, 2),
-        total_return_pct=total_return_pct,
-        cash_ratio=portfolio.cash_ratio,
-        allocation=allocation,
-        thesis_status=thesis_status,
-        recent_changes=[ThesisVersionResponse.model_validate(v) for v in recent_versions],
-        theme_dependency=[
-            ThemeDependency(
-                theme=row.concentration_theme or "",
-                concentration_score=row.concentration_score or 0.0,
-                affected_holdings=row.affected_holdings,
-            )
-            for row in concentration_rows
-        ],
+        holdings=holding_responses,
+        concentration=(
+            AnalysisResultResponse.model_validate(concentration) if concentration else None
+        ),
+        common_risks=[AnalysisResultResponse.model_validate(row) for row in common_risks],
+        recent_alerts=[AlertResponse.model_validate(row) for row in recent_alerts],
     )
