@@ -4,22 +4,28 @@ from datetime import UTC, datetime
 
 import pytest
 
-from thesisguard_agent.models import (
+from agents.graph import (
+    ThesisGuardAgent,
+    configure_agent,
+    run_analysis_workflow,
+)
+from agents.models import (
     AnalysisContext,
     DebateReport,
     EvidenceAssessment,
     EvidenceClassification,
+    EvidenceImpact,
     EvidenceItem,
+    EvidenceSourceType,
     JudgeDecision,
     PortfolioAnalysis,
     PortfolioThesis,
     ResearchRequest,
     SourceDocument,
-    SourceType,
     StructuredThesis,
     ThesisStatus,
 )
-from thesisguard_agent.workflow import ThesisGuardAgent, WorkflowConfig
+from agents.runtime import WorkflowConfig
 
 
 def thesis(status: ThesisStatus = ThesisStatus.UNCHANGED) -> StructuredThesis:
@@ -36,9 +42,7 @@ def thesis(status: ThesisStatus = ThesisStatus.UNCHANGED) -> StructuredThesis:
 
 
 class FakeContextProvider:
-    async def load_analysis_context(
-        self, portfolio_id: str, holding_id: str
-    ) -> AnalysisContext:
+    async def load_analysis_context(self, portfolio_id: str, holding_id: str) -> AnalysisContext:
         current = PortfolioThesis(
             holding_id=holding_id,
             ticker="NVDA",
@@ -59,8 +63,12 @@ class FakeContextProvider:
             portfolio_theses=[current, other],
         )
 
+    async def load_portfolio_theses(self, portfolio_id: str) -> list[PortfolioThesis]:
+        context = await self.load_analysis_context(portfolio_id, "holding-1")
+        return context.portfolio_theses
 
-def document(document_id: str, source_type: SourceType, content: str) -> SourceDocument:
+
+def document(document_id: str, source_type: EvidenceSourceType, content: str) -> SourceDocument:
     return SourceDocument(
         document_id=document_id,
         source_type=source_type,
@@ -80,13 +88,31 @@ class FakeResearchTools:
     async def get_filings(self, request: ResearchRequest) -> list[SourceDocument]:
         self.calls.append(("filings", request.round_no))
         doc_id = "uncertain-filing" if self.uncertain_only else "support-filing"
-        return [document(doc_id, SourceType.FILING, "Data center revenue grew 120 percent.")]
+        return [
+            document(
+                doc_id,
+                EvidenceSourceType.SEC_FILING,
+                "Data center revenue grew 120 percent.",
+            )
+        ]
 
     async def get_news(self, request: ResearchRequest) -> list[SourceDocument]:
         self.calls.append(("news", request.round_no))
         if self.uncertain_only or request.round_no == 1:
-            return [document("uncertain-news", SourceType.NEWS, "The outlook remains unclear.")]
-        return [document("contradict-news", SourceType.NEWS, "Major customers reduced CAPEX.")]
+            return [
+                document(
+                    "uncertain-news",
+                    EvidenceSourceType.NEWS,
+                    "The outlook remains unclear.",
+                )
+            ]
+        return [
+            document(
+                "contradict-news",
+                EvidenceSourceType.NEWS,
+                "Major customers reduced CAPEX.",
+            )
+        ]
 
     async def get_macro(self, request: ResearchRequest) -> list[SourceDocument]:
         self.calls.append(("macro", request.round_no))
@@ -107,13 +133,13 @@ class FakeAnalysisModel:
     ) -> EvidenceAssessment:
         if source.document_id.startswith("support"):
             classification = EvidenceClassification.SUPPORT
-            impact = 0.7
+            impact = EvidenceImpact.MEDIUM
         elif source.document_id.startswith("contradict"):
             classification = EvidenceClassification.CONTRADICT
-            impact = 0.9
+            impact = EvidenceImpact.HIGH
         else:
             classification = EvidenceClassification.UNCERTAIN
-            impact = 0.1
+            impact = EvidenceImpact.LOW
         return EvidenceAssessment(
             classification=classification,
             impact=impact,
@@ -159,9 +185,7 @@ class FakeAnalysisModel:
             observation_points=["다음 분기 고객 CAPEX"],
         )
 
-    async def analyze_concentration(
-        self, portfolio_theses: list[PortfolioThesis]
-    ) -> PortfolioAnalysis:
+    async def analyze_portfolio(self, portfolio_theses: list[PortfolioThesis]) -> PortfolioAnalysis:
         return PortfolioAnalysis(
             has_concentration_risk=True,
             summary="AI CAPEX 테마에 집중되어 있습니다.",
@@ -199,7 +223,7 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
         config=WorkflowConfig(max_research_rounds=2, min_grounded_evidence=2),
     )
 
-    result = await agent.run_analysis_workflow("portfolio-1", "holding-1")
+    result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert result.research_rounds == 2
     assert {item.document_id for item in result.evidence} == {
@@ -232,7 +256,7 @@ async def test_no_directional_evidence_keeps_thesis_unchanged_without_llm_judgme
         config=WorkflowConfig(max_research_rounds=1, min_grounded_evidence=1),
     )
 
-    result = await agent.run_analysis_workflow("portfolio-1", "holding-1")
+    result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert result.updated_status == ThesisStatus.UNCHANGED
     assert result.updated_confidence == 70
@@ -249,10 +273,10 @@ async def test_one_source_failure_does_not_abort_the_analysis() -> None:
         config=WorkflowConfig(max_research_rounds=2, min_grounded_evidence=2),
     )
 
-    result = await agent.run_analysis_workflow("portfolio-1", "holding-1")
+    result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert result.updated_status == ThesisStatus.STRONGLY_WEAKENED
-    assert any(item.source_type == SourceType.FILING for item in result.evidence)
+    assert any(item.source_type == EvidenceSourceType.SEC_FILING for item in result.evidence)
 
 
 @pytest.mark.asyncio
@@ -269,9 +293,25 @@ async def test_judge_failure_retries_then_keeps_existing_thesis() -> None:
         ),
     )
 
-    result = await agent.run_analysis_workflow("portfolio-1", "holding-1")
+    result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert model.judge_calls == 2
     assert result.updated_status == ThesisStatus.UNCHANGED
     assert result.updated_confidence == 70
     assert result.alert_decision.should_send is False
+
+
+def test_sync_team_contract_entrypoint() -> None:
+    agent = ThesisGuardAgent(
+        context_provider=FakeContextProvider(),
+        research_tools=FakeResearchTools(),
+        model=FakeAnalysisModel(),
+        config=WorkflowConfig(max_research_rounds=2, min_grounded_evidence=2),
+    )
+    configure_agent(agent)
+
+    result = run_analysis_workflow("portfolio-1", "holding-1")
+
+    assert result.portfolio_id == "portfolio-1"
+    assert result.holding_id == "holding-1"
+    assert result.research_rounds == 2

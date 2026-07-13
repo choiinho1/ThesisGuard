@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from thesisguard_agent.models import (
+from agents.models import (
     AlertDecision,
     AlertSeverity,
     ThesisStatus,
