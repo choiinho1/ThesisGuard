@@ -191,6 +191,12 @@ def create_chat_model():
         from langchain_openai import ChatOpenAI
 
         return ChatOpenAI(model=settings.llm_model, api_key=settings.openai_api_key, temperature=0)
+    if settings.llm_provider == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        return ChatGoogleGenerativeAI(
+            model=settings.llm_model, google_api_key=settings.google_api_key, temperature=0
+        )
     raise ValueError(
         f"Unsupported LLM_PROVIDER={settings.llm_provider!r}. "
         "Add a branch here once the team picks another provider."
