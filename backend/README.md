@@ -46,24 +46,6 @@ copy .env.example .env
 `.env`를 채운다. 로컬 개발 중 이메일을 실제로 보내고 싶지 않다면 `EMAIL_DRY_RUN=true`(기본값)를 유지한다 —
 발송 대신 로그로만 출력된다.
 
-### Google 로그인(선택)
-
-이메일/비밀번호 회원가입·로그인은 `GOOGLE_CLIENT_ID` 없이도 바로 동작한다. 프론트의 "Google로 계속하기"
-버튼까지 쓰려면:
-
-1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → 프로젝트 선택(또는 생성) →
-   "사용자 인증 정보 만들기" → "OAuth 클라이언트 ID" → 애플리케이션 유형 **웹 애플리케이션**.
-2. "승인된 자바스크립트 원본"에 프론트 개발 서버 주소를 추가한다: `http://localhost:3000`.
-3. 발급된 Client ID(`....apps.googleusercontent.com`)를 **두 곳에 동일하게** 넣는다:
-   - `backend/.env` → `GOOGLE_CLIENT_ID=...`
-   - `frontend/.env.local` → `NEXT_PUBLIC_GOOGLE_CLIENT_ID=...` (Client ID는 프론트에 노출돼도 되는
-     공개 값이다; Client Secret은 이 플로우에서 쓰지 않는다)
-4. 백엔드를 재시작하면 `POST /api/auth/google`이 ID 토큰의 `aud` 클레임을 이 Client ID로 검증하고,
-   해당 이메일의 사용자가 없으면 자동으로 새로 만든다.
-
-`GOOGLE_CLIENT_ID`가 비어 있으면 프론트에서 "Google Client ID를 설정하면 Google 가입을 사용할 수
-있습니다"라는 fallback 버튼이 뜨는 게 정상 동작이다(오류 아님) — 위 단계를 거치면 사라진다.
-
 ## DB 준비 & 마이그레이션
 
 PostgreSQL이 필요하다(로컬 설치 또는 Docker). `evidence`/`analysis_results` 등은 pgvector 없이도 동작하며,
@@ -144,9 +126,11 @@ C의 `agents/` 패키지는 이미 한 번 구조가 크게 바뀐 적이 있다
 - **`backend/app/`, `backend/mcp_tools/`(레포 최상위 빈 `.gitkeep` 폴더)는 이 백엔드가 쓰는 폴더가
   아니다.** 실제 코드는 전부 `backend/src/thesisguard_backend/`(src 레이아웃) 아래에 있다. 두 레이아웃이
   섞여 있으니 팀에서 하나로 정리하는 걸 권장한다.
-- **프론트엔드 로그인 화면**(`frontend/components/AuthGate.tsx`, `main` 브랜치 2026-07-13 기준)이 이제
-  있다 — 이메일/비밀번호 로그인·회원가입은 별도 설정 없이 바로 동작한다. Google 로그인 버튼은
-  `GOOGLE_CLIENT_ID`/`NEXT_PUBLIC_GOOGLE_CLIENT_ID`를 설정해야 활성화된다(위 "Google 로그인(선택)" 참고).
+- **프론트엔드에 로그인 화면이 아직 없다.** `frontend/lib/apiClient.ts`는 `localStorage`의
+  `thesisguard_access_token`을 읽기만 하고, 그 값을 채워주는 로그인 호출은 프론트 어디에도 없다. 이
+  백엔드는 모든 API에 JWT 인증을 강제하므로(`deps.get_current_user`), 지금 상태로 `live` 모드를 켜면
+  전부 401이 난다. A가 로그인 화면을 추가하거나, 데모용으로 devtools에서 토큰을 수동으로 넣거나 — 팀이
+  정할 문제라 백엔드에서 임의로 인증을 풀지 않았다.
 
 ## 프론트엔드(A) 스키마 정합성
 
