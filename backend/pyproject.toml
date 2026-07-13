@@ -30,6 +30,9 @@ dependencies = [
 llm-openai = [
   "langchain-openai==1.1.4",
 ]
+llm-gemini = [
+  "langchain-google-genai==4.2.7",
+]
 dev = [
   "pytest==9.1.1",
   "pytest-asyncio>=1.0,<2",
