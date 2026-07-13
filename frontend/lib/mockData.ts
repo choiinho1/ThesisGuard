@@ -1,6 +1,7 @@
 import type {
   Alert,
   AnalysisResult,
+  CreateHoldingInput,
   DashboardHolding,
   Evidence,
   HoldingAnalysisResponse,
@@ -142,6 +143,32 @@ let dashboardState: PortfolioDashboard = {
 
 export function getMockDashboard(): PortfolioDashboard {
   return structuredClone(dashboardState);
+}
+
+export function addMockHolding(portfolioId: string, input: CreateHoldingInput): DashboardHolding {
+  if (dashboardState.holdings.some((item) => item.ticker === input.ticker)) {
+    throw new Error(`${input.ticker}는 이미 포트폴리오에 등록되어 있습니다.`);
+  }
+  const createdAt = new Date().toISOString();
+  const holding: DashboardHolding = {
+    id: crypto.randomUUID(),
+    portfolio_id: portfolioId,
+    ticker: input.ticker,
+    company_name: input.company_name || input.ticker,
+    quantity: input.quantity,
+    avg_buy_price: input.avg_buy_price,
+    target_weight: input.target_weight,
+    current_weight: input.target_weight,
+    created_at: createdAt,
+    updated_at: createdAt,
+    thesis: null,
+    latest_change: null,
+  };
+  dashboardState = {
+    ...dashboardState,
+    holdings: [holding, ...dashboardState.holdings],
+  };
+  return structuredClone(holding);
 }
 
 export function createMockThesis(holdingId: string, rawInput: string): Thesis {

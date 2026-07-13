@@ -1,6 +1,8 @@
-import { createMockThesis, getMockDashboard, mockPortfolios, runMockAnalysis } from "@/lib/mockData";
+import { addMockHolding, createMockThesis, getMockDashboard, mockPortfolios, runMockAnalysis } from "@/lib/mockData";
 import type {
   ApiMode,
+  CreateHoldingInput,
+  DashboardHolding,
   HoldingAnalysisResponse,
   Portfolio,
   PortfolioDashboard,
@@ -86,6 +88,23 @@ export async function createHoldingThesis(
     method: "POST",
     body: JSON.stringify({ raw_input: rawInput }),
   });
+}
+
+export async function addPortfolioHolding(
+  portfolioId: string,
+  input: CreateHoldingInput,
+  mode = getApiMode(),
+): Promise<DashboardHolding> {
+  const normalized = { ...input, ticker: input.ticker.trim().toUpperCase() };
+  if (mode === "mock") {
+    await delay(280);
+    return addMockHolding(portfolioId, normalized);
+  }
+  const holding = await request<DashboardHolding>(`/api/portfolios/${portfolioId}/holdings`, {
+    method: "POST",
+    body: JSON.stringify(normalized),
+  });
+  return { ...holding, thesis: null, latest_change: null };
 }
 
 export { API_BASE_URL };

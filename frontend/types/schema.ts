@@ -43,6 +43,14 @@ export interface Holding {
   updated_at: string;
 }
 
+export interface CreateHoldingInput {
+  ticker: string;
+  company_name: string;
+  quantity: number;
+  avg_buy_price: number;
+  target_weight: number;
+}
+
 export interface Thesis {
   id: string;
   holding_id: string;

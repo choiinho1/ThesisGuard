@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AddHoldingForm } from "@/components/AddHoldingForm";
 import { AllocationPanel } from "@/components/AllocationPanel";
 import { HoldingGrid } from "@/components/HoldingGrid";
 import { InsightPanel } from "@/components/InsightPanel";
@@ -8,6 +9,7 @@ import { PortfolioHeader } from "@/components/PortfolioHeader";
 import { ThesisDetail } from "@/components/ThesisDetail";
 import {
   analyzeHolding,
+  addPortfolioHolding,
   createHoldingThesis,
   getPortfolioDashboard,
   listPortfolios,
@@ -15,6 +17,7 @@ import {
 } from "@/lib/apiClient";
 import type {
   ApiMode,
+  CreateHoldingInput,
   DashboardHolding,
   HoldingAnalysisResponse,
   PortfolioDashboard,
@@ -94,6 +97,29 @@ export function Dashboard() {
     }
   };
 
+  const addHolding = async (input: CreateHoldingInput, rawInput: string) => {
+    const portfolioId = dashboard?.portfolio.id;
+    if (!portfolioId) return;
+    setError(null);
+    try {
+      const holding = await addPortfolioHolding(portfolioId, input, mode);
+      const thesis = rawInput.length >= 10
+        ? await createHoldingThesis(holding.id, rawInput, mode)
+        : null;
+      const created = { ...holding, thesis };
+      setDashboard((current) => current ? {
+        ...current,
+        holdings: [created, ...current.holdings],
+      } : current);
+      setSelected(created);
+      setAnalysis(null);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "종목을 추가하지 못했습니다.";
+      setError(message);
+      throw new Error(message);
+    }
+  };
+
   if (loading && !dashboard) return <main className="loading-screen">ThesisGuard 데이터를 불러오는 중…</main>;
   if (!dashboard) return <main className="loading-screen error-screen">{error ?? "대시보드를 표시할 수 없습니다."}</main>;
 
@@ -101,6 +127,7 @@ export function Dashboard() {
     <main className="app-shell">
       <PortfolioHeader mode={mode} onModeChange={changeMode} portfolio={dashboard.portfolio} />
       {error && <div className="error-banner">{error}</div>}
+      <AddHoldingForm onSubmit={addHolding} />
       <div className="dashboard-grid">
         <div className="main-column">
           <AllocationPanel holdings={dashboard.holdings} portfolio={dashboard.portfolio} />
