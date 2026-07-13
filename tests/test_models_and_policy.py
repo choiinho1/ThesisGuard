@@ -35,4 +35,3 @@ def test_alert_policy(current: ThesisStatus, severity: str, delivery: str) -> No
 
     assert decision.severity == severity
     assert decision.delivery == delivery
-

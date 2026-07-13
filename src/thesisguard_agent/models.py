@@ -170,4 +170,3 @@ class ThesisAnalysisResult(ContractModel):
     concentration: PortfolioAnalysis
     alert_decision: AlertDecision
     research_rounds: int = Field(ge=1)
-
