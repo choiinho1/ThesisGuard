@@ -121,6 +121,9 @@ curl localhost:8000/api/holdings/$HID/analysis -H "Authorization: Bearer $TOKEN"
 # 자연어 질의 (evidence는 최신 50건을 그대로 넘김 — 아래 "알려진 한계" 참고)
 curl -X POST localhost:8000/api/portfolios/$PID/query -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" -d '{"question":"내 포트폴리오에서 가장 위험한 종목은?"}'
+
+# 티커 현재 시세 (일중 고가/저가, 거래량, 30일 등락률 — Yahoo Finance, 지연 시세)
+curl localhost:8000/api/market/NVDA/quote -H "Authorization: Bearer $TOKEN"
 ```
 
 ## 분석 결과 재조회 (`GET /api/holdings/{id}/analysis`)

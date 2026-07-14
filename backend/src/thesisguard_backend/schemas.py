@@ -9,7 +9,7 @@ feature/fe-schema-alignment) — keep the two in sync when either changes.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, time
+from datetime import date, datetime, time
 from re import fullmatch
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -132,6 +132,17 @@ class MarketSnapshotResponse(BaseModel):
     day_high: float | None
     day_low: float | None
     volume: int | None
+
+
+# -------------------------------------------------------- Market Quote ----
+class MarketQuoteResponse(BaseModel):
+    ticker: str
+    as_of: date
+    price: float
+    day_high: float
+    day_low: float
+    volume: int
+    change_pct_30d: float | None
 
 
 # ------------------------------------------------------- Rebalancing ----
