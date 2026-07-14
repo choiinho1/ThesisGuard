@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from sqlalchemy import event
+from sqlalchemy import event, inspect
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -20,6 +21,7 @@ session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 
 if engine.url.get_backend_name() == "sqlite":
+
     @event.listens_for(engine.sync_engine, "connect")
     def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
         cursor = dbapi_connection.cursor()
@@ -35,6 +37,40 @@ async def initialize_local_database() -> None:
 
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(_upgrade_legacy_local_schema)
+
+
+def _upgrade_legacy_local_schema(connection: Connection) -> None:
+    """Add nullable columns introduced after an existing local DB was created.
+
+    ``create_all`` creates missing tables but intentionally does not alter
+    existing ones. Local SQLite installs do not have an Alembic version table,
+    so keep this small compatibility bridge for additive, data-safe changes.
+    Production databases continue to use Alembic migrations.
+    """
+
+    inspector = inspect(connection)
+    additive_columns = {
+        "evidence": (
+            "thesis_version_id",
+            "ALTER TABLE evidence ADD COLUMN thesis_version_id CHAR(32) "
+            "REFERENCES thesis_versions (id) ON DELETE SET NULL",
+            "CREATE INDEX IF NOT EXISTS ix_evidence_thesis_version_id "
+            "ON evidence (thesis_version_id)",
+        ),
+        "analysis_results": (
+            "thesis_version_id",
+            "ALTER TABLE analysis_results ADD COLUMN thesis_version_id CHAR(32) "
+            "REFERENCES thesis_versions (id) ON DELETE SET NULL",
+            "CREATE INDEX IF NOT EXISTS ix_analysis_results_thesis_version_id "
+            "ON analysis_results (thesis_version_id)",
+        ),
+    }
+    for table_name, (column_name, alter_sql, index_sql) in additive_columns.items():
+        existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
+        if column_name not in existing_columns:
+            connection.exec_driver_sql(alter_sql)
+        connection.exec_driver_sql(index_sql)
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:

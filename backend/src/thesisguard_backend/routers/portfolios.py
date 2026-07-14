@@ -74,20 +74,25 @@ async def get_dashboard(
 ) -> PortfolioDashboardResponse:
     """Return the dashboard with current market-value portfolio weights."""
 
-    holdings = list(
-        await db.scalars(
-            select(orm.Holding)
-            .where(orm.Holding.portfolio_id == portfolio_id)
-            .options(selectinload(orm.Holding.thesis).selectinload(orm.Thesis.versions))
-            .order_by(orm.Holding.created_at)
-        )
+    holdings_query = (
+        select(orm.Holding)
+        .where(orm.Holding.portfolio_id == portfolio_id)
+        .options(selectinload(orm.Holding.thesis).selectinload(orm.Thesis.versions))
+        .order_by(orm.Holding.created_at)
     )
+    holdings = list(await db.scalars(holdings_query))
     weights_changed = await refresh_current_weights(
         holdings,
         cash_ratio=portfolio.cash_ratio,
     )
     if weights_changed:
         await db.commit()
+        # Updating current_weight also applies Holding.updated_at's SQL-side
+        # on-update expression. SQLAlchemy expires that generated value even
+        # with expire_on_commit=False, so serializing the pre-commit objects can
+        # trigger an async lazy load and raise MissingGreenlet. Reload the rows
+        # explicitly before Pydantic accesses them.
+        holdings = list(await db.scalars(holdings_query.execution_options(populate_existing=True)))
 
     holding_responses = []
     for holding in holdings:
