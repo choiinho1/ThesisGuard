@@ -1,4 +1,4 @@
-import { addMockHolding, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, mockPortfolios, removeMockHolding, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
+import { addMockHolding, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, getMockThesisHistory, mockPortfolios, removeMockAlert, removeMockHolding, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
 import type {
   ApiMode,
   CreateHoldingInput,
@@ -9,6 +9,7 @@ import type {
   Portfolio,
   PortfolioDashboard,
   Thesis,
+  ThesisVersion,
   UpdateHoldingPositionInput,
 } from "@/types/schema";
 
@@ -144,6 +145,26 @@ export async function deletePortfolioHolding(
     return;
   }
   await request<void>(`/api/holdings/${holdingId}`, { method: "DELETE" });
+}
+
+export async function deleteAlert(alertId: string, mode = getApiMode()): Promise<void> {
+  if (mode === "mock") {
+    await delay(120);
+    removeMockAlert(alertId);
+    return;
+  }
+  await request<void>(`/api/alerts/${alertId}`, { method: "DELETE" });
+}
+
+export async function getThesisHistory(
+  thesisId: string,
+  mode = getApiMode(),
+): Promise<ThesisVersion[]> {
+  if (mode === "mock") {
+    await delay(120);
+    return getMockThesisHistory(thesisId);
+  }
+  return request<ThesisVersion[]>(`/api/theses/${thesisId}/history`);
 }
 
 export async function updateHoldingCurrentWeight(

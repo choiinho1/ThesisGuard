@@ -8,7 +8,6 @@ interface ThesisDetailProps {
   holding: DashboardHolding;
   analysis: HoldingAnalysisResponse | null;
   analyzing: boolean;
-  analysisEstimateSeconds: number;
   onAnalyze: () => void;
   onRegister: (rawInput: string) => Promise<void>;
   onUpdate: (rawInput: string) => Promise<void>;
@@ -18,7 +17,6 @@ export function ThesisDetail({
   holding,
   analysis,
   analyzing,
-  analysisEstimateSeconds,
   onAnalyze,
   onRegister,
   onUpdate,
@@ -154,7 +152,7 @@ export function ThesisDetail({
         </section>
       )}
 
-      {analyzing && <AnalysisProgress estimateSeconds={analysisEstimateSeconds} />}
+      {analyzing && <AnalysisProgress />}
 
       {analysis && (
         <div className="analysis-result">
@@ -180,7 +178,7 @@ export function ThesisDetail({
               <span><span className="result-label">EVIDENCE</span> 주요 근거</span>
               <span className="evidence-count">{visibleEvidence.length}</span>
             </summary>
-            <div className="evidence-list">
+            <div className="evidence-list scrollable-list" role="region" aria-label="분석 근거 목록" tabIndex={0}>
               {visibleEvidence.map((evidence) => (
                 <article className="evidence-link evidence-link--static" key={evidence.id}>
                   <div className="evidence-meta">
@@ -251,7 +249,7 @@ function formatEvidenceDate(value: string) {
   }).format(date);
 }
 
-function AnalysisProgress({ estimateSeconds }: { estimateSeconds: number }) {
+function AnalysisProgress() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => {
@@ -262,7 +260,7 @@ function AnalysisProgress({ estimateSeconds }: { estimateSeconds: number }) {
     return () => window.clearInterval(timer);
   }, []);
 
-  const progress = Math.min(94, Math.max(3, Math.round(elapsedSeconds / estimateSeconds * 100)));
+  const progress = Math.min(94, Math.max(3, Math.round(100 * (1 - Math.exp(-elapsedSeconds / 35)))));
   const phase = progress < 25
     ? "시장 자료 수집"
     : progress < 55
@@ -280,7 +278,7 @@ function AnalysisProgress({ estimateSeconds }: { estimateSeconds: number }) {
         </div>
         <div className="analysis-progress-value">
           <strong>{progress}%</strong>
-          <span>{Math.floor(elapsedSeconds)}초 / 예상 {estimateSeconds}초</span>
+          <span>{Math.floor(elapsedSeconds)}초 경과</span>
         </div>
       </div>
       <div
