@@ -26,6 +26,7 @@ async def bull_agent(state: AnalysisState, runtime: Runtime[AgentDependencies]) 
             runtime.context.model.build_bull_report,
             state["thesis_snapshot"],
             evidence,
+            state.get("evidence_history_summary", ""),
         )
     except Exception:
         report = DebateReport(summary="Bull Agent 응답 실패로 지지 판단을 보류했습니다.")
@@ -44,6 +45,7 @@ async def bear_agent(state: AnalysisState, runtime: Runtime[AgentDependencies]) 
             runtime.context.model.build_bear_report,
             state["thesis_snapshot"],
             evidence,
+            state.get("evidence_history_summary", ""),
         )
     except Exception:
         report = DebateReport(summary="Bear Agent 응답 실패로 반박 판단을 보류했습니다.")
@@ -74,6 +76,7 @@ async def judge_agent(state: AnalysisState, runtime: Runtime[AgentDependencies])
                 directional,
                 state["bull_report_data"],
                 state["bear_report_data"],
+                state.get("evidence_history_summary", ""),
             )
         except Exception:
             decision = JudgeDecision(

@@ -87,6 +87,8 @@ class AnalysisContext(ContractModel):
     ticker: str = Field(min_length=1, max_length=10)
     thesis: StructuredThesis
     portfolio_theses: list[PortfolioThesis] = Field(default_factory=list)
+    evidence_history_summary: str = ""
+    evidence_history_document_ids: list[str] = Field(default_factory=list)
 
 
 class ResearchRequest(ContractModel):

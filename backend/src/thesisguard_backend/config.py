@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,6 +30,11 @@ class Settings(BaseSettings):
     rag_enabled: bool = True
     upstage_embedding_model: str = "solar-embedding-1-large"
     rag_embedding_timeout_seconds: float = 20
+
+    # Materialized, prompt-ready evidence history. Files are derived from DB
+    # state and kept outside source control.
+    evidence_history_dir: Path = Path(__file__).resolve().parents[2] / "data" / "evidence_history"
+    evidence_history_max_items: int = 30
 
     # Optional LLM observability. No data leaves the app unless explicitly
     # enabled and both project keys are configured.

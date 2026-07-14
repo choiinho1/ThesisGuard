@@ -255,8 +255,10 @@ async def test_non_korean_summary_does_not_discard_valid_classification() -> Non
 
 
 class _FailingClassifier:
-    async def classify_evidence(self, thesis, document):  # type: ignore[no-untyped-def]
-        del thesis, document
+    async def classify_evidence(  # type: ignore[no-untyped-def]
+        self, thesis, document, evidence_history_summary=""
+    ):
+        del thesis, document, evidence_history_summary
         raise RuntimeError("temporary model failure")
 
 

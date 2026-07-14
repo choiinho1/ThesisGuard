@@ -61,6 +61,8 @@ class FakeContextProvider:
             ticker="NVDA",
             thesis=current.thesis,
             portfolio_theses=[current, other],
+            evidence_history_summary="과거에는 AI CAPEX 확대 흐름이 이어졌습니다.",
+            evidence_history_document_ids=["historical-filing"],
         )
 
     async def load_portfolio_theses(self, portfolio_id: str) -> list[PortfolioThesis]:
@@ -125,14 +127,19 @@ class FakeAnalysisModel:
     def __init__(self) -> None:
         self.judge_calls = 0
         self.classify_calls = 0
+        self.history_contexts: list[str] = []
 
     async def structure_thesis(self, raw_input: str) -> StructuredThesis:
         return thesis().model_copy(update={"raw_input": raw_input})
 
     async def classify_evidence(
-        self, existing_thesis: StructuredThesis, source: SourceDocument
+        self,
+        existing_thesis: StructuredThesis,
+        source: SourceDocument,
+        evidence_history_summary: str = "",
     ) -> EvidenceAssessment:
         self.classify_calls += 1
+        self.history_contexts.append(evidence_history_summary)
         if source.document_id.startswith("support"):
             classification = EvidenceClassification.SUPPORT
             impact = EvidenceImpact.MEDIUM
@@ -153,8 +160,12 @@ class FakeAnalysisModel:
         )
 
     async def build_bull_report(
-        self, existing_thesis: StructuredThesis, evidence: list[EvidenceItem]
+        self,
+        existing_thesis: StructuredThesis,
+        evidence: list[EvidenceItem],
+        evidence_history_summary: str = "",
     ) -> DebateReport:
+        self.history_contexts.append(evidence_history_summary)
         ids = [
             item.document_id
             for item in evidence
@@ -163,8 +174,12 @@ class FakeAnalysisModel:
         return DebateReport(summary="지지 근거 요약", evidence_document_ids=ids)
 
     async def build_bear_report(
-        self, existing_thesis: StructuredThesis, evidence: list[EvidenceItem]
+        self,
+        existing_thesis: StructuredThesis,
+        evidence: list[EvidenceItem],
+        evidence_history_summary: str = "",
     ) -> DebateReport:
+        self.history_contexts.append(evidence_history_summary)
         ids = [
             item.document_id
             for item in evidence
@@ -178,8 +193,10 @@ class FakeAnalysisModel:
         evidence: list[EvidenceItem],
         bull_report: DebateReport,
         bear_report: DebateReport,
+        evidence_history_summary: str = "",
     ) -> JudgeDecision:
         self.judge_calls += 1
+        self.history_contexts.append(evidence_history_summary)
         return JudgeDecision(
             updated_confidence=45,
             updated_status=ThesisStatus.STRONGLY_WEAKENED,
@@ -211,6 +228,7 @@ class FailingJudgeModel(FakeAnalysisModel):
         evidence: list[EvidenceItem],
         bull_report: DebateReport,
         bear_report: DebateReport,
+        evidence_history_summary: str = "",
     ) -> JudgeDecision:
         self.judge_calls += 1
         raise RuntimeError("temporary model failure")
@@ -246,6 +264,8 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
     assert result.concentration.has_concentration_risk is True
     assert model.judge_calls == 1
     assert model.classify_calls == 3
+    assert model.history_contexts
+    assert set(model.history_contexts) == {"과거에는 AI CAPEX 확대 흐름이 이어졌습니다."}
     assert set(tools.calls) == {
         ("filings", 1),
         ("filings", 2),

@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from thesisguard_backend.agent_adapters import build_default_agent
 from thesisguard_backend.config import get_settings
 from thesisguard_backend.db import initialize_local_database, session_factory
+from thesisguard_backend.evidence_history import refresh_all_evidence_history_files
 from thesisguard_backend.observability import langfuse_status, shutdown_langfuse
 from thesisguard_backend.routers import (
     alerts,
@@ -32,6 +33,7 @@ from thesisguard_backend.scheduler import scheduler_loop
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await initialize_local_database()
+    await refresh_all_evidence_history_files(session_factory)
 
     # Wires C's ThesisGuardAgent with B's DB-backed ContextProvider and
     # MCP-backed ResearchTools exactly once, per docs/api.md.

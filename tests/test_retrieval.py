@@ -156,7 +156,10 @@ def test_extract_relevant_passages_keeps_matching_section_within_budget() -> Non
 
 
 class _LowRelevanceModel:
-    async def classify_evidence(self, thesis, document):  # type: ignore[no-untyped-def]
+    async def classify_evidence(  # type: ignore[no-untyped-def]
+        self, thesis, document, evidence_history_summary=""
+    ):
+        del evidence_history_summary
         return EvidenceAssessment(
             classification=EvidenceClassification.SUPPORT,
             impact=EvidenceImpact.HIGH,
@@ -194,6 +197,37 @@ async def test_low_relevance_directional_result_is_neutralized_before_debate() -
     assert evidence.classification == EvidenceClassification.NEUTRAL
     assert evidence.impact == EvidenceImpact.LOW
     assert result["needs_more_research"] is True
+
+
+@pytest.mark.asyncio
+async def test_historical_document_is_neutralized_without_model_reclassification() -> None:
+    document = _document(
+        "already-scored-document",
+        "The same fact collected in an earlier analysis.",
+        published_at=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+    model = _LowRelevanceModel()
+    dependencies = AgentDependencies(
+        context_provider=None,  # type: ignore[arg-type]
+        research_tools=None,  # type: ignore[arg-type]
+        model=model,  # type: ignore[arg-type]
+        config=WorkflowConfig(),
+    )
+
+    result = await classify_evidence(
+        {
+            "research_data": {"filings": [], "news": [document], "macro": []},
+            "thesis_snapshot": _thesis(),
+            "evidence_history_document_ids": [document.document_id],
+            "evidence_history_summary": "과거 동일 문서가 이미 반영됐습니다.",
+        },
+        SimpleNamespace(context=dependencies),  # type: ignore[arg-type]
+    )
+
+    evidence = result["evidence_list"][0]
+    assert evidence.classification == EvidenceClassification.NEUTRAL
+    assert evidence.impact == EvidenceImpact.LOW
+    assert "중복 제외" in evidence.content_snippet
 
 
 def test_low_impact_directional_evidence_is_not_meaningful() -> None:
