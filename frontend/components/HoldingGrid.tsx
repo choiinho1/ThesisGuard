@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { StatusBadge } from "@/components/StatusBadge";
 import type {
   DashboardHolding,
@@ -9,6 +10,12 @@ import type {
 } from "@/types/schema";
 
 type SortKey = "weight" | "name" | "score";
+
+interface FloatingMarket {
+  holding: DashboardHolding;
+  left: number;
+  top: number;
+}
 
 export function HoldingGrid({
   holdings,
@@ -35,6 +42,7 @@ export function HoldingGrid({
   const [positionDraft, setPositionDraft] = useState({ quantity: "", current: "", target: "" });
   const [marketSnapshots, setMarketSnapshots] = useState<Record<string, MarketSnapshot>>({});
   const [loadingMarketId, setLoadingMarketId] = useState<string | null>(null);
+  const [floatingMarket, setFloatingMarket] = useState<FloatingMarket | null>(null);
 
   const sortedHoldings = useMemo(() => [...holdings].sort((left, right) => {
     if (sortKey === "name") {
@@ -122,7 +130,7 @@ export function HoldingGrid({
           <span className="panel-meta">{holdings.length} HOLDINGS</span>
         </div>
       </div>
-      <div className="holding-table scrollable-list" role="region" aria-label="보유 종목 목록" tabIndex={0}>
+      <div className="holding-table scrollable-list" onScroll={() => setFloatingMarket(null)} role="region" aria-label="보유 종목 목록" tabIndex={0}>
         {sortedHoldings.map((holding) => (
           <div className="holding-item" key={holding.id}>
             <button
@@ -132,15 +140,24 @@ export function HoldingGrid({
             >
               <span
                 className="ticker-cell ticker-hover"
-                onMouseEnter={() => { void loadMarketSnapshot(holding); }}
+                onMouseEnter={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const tooltipWidth = 280;
+                  const tooltipHeight = 230;
+                  const left = rect.right + 12 + tooltipWidth <= window.innerWidth
+                    ? rect.right + 12
+                    : Math.max(12, rect.left - tooltipWidth - 12);
+                  setFloatingMarket({
+                    holding,
+                    left,
+                    top: Math.max(12, Math.min(rect.top, window.innerHeight - tooltipHeight - 12)),
+                  });
+                  void loadMarketSnapshot(holding);
+                }}
+                onMouseLeave={() => setFloatingMarket(null)}
               >
                 <strong>{holding.ticker}</strong>
                 <small>{holding.company_name}</small>
-                <MarketTooltip
-                  holding={holding}
-                  loading={loadingMarketId === holding.id}
-                  snapshot={marketSnapshots[holding.id]}
-                />
               </span>
               <span className="weight-cell">
                 <small>현재 / 목표</small>
@@ -201,6 +218,16 @@ export function HoldingGrid({
         ))}
         {sortedHoldings.length === 0 && <p className="empty-copy holding-empty">등록된 보유 종목이 없습니다.</p>}
       </div>
+      {floatingMarket && typeof document !== "undefined" && createPortal(
+        <MarketTooltip
+          holding={floatingMarket.holding}
+          left={floatingMarket.left}
+          loading={loadingMarketId === floatingMarket.holding.id}
+          snapshot={marketSnapshots[floatingMarket.holding.id]}
+          top={floatingMarket.top}
+        />,
+        document.body,
+      )}
     </section>
   );
 }
@@ -209,16 +236,20 @@ function MarketTooltip({
   holding,
   snapshot,
   loading,
+  left,
+  top,
 }: {
   holding: DashboardHolding;
   snapshot?: MarketSnapshot;
   loading: boolean;
+  left: number;
+  top: number;
 }) {
   const marketValue = snapshot?.current_price != null
     ? snapshot.current_price * holding.quantity
     : null;
   return (
-    <span className="market-tooltip" role="tooltip">
+    <span className="market-tooltip market-tooltip--floating" role="tooltip" style={{ left, top }}>
       {loading && <span className="market-tooltip-loading">시세 불러오는 중…</span>}
       {!loading && !snapshot && <span className="market-tooltip-loading">티커에 올리면 시세를 조회합니다.</span>}
       {!loading && snapshot && (
