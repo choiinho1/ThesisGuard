@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.deps import Agent, CurrentUser, DbSession
+from thesisguard_backend.observability import observe_llm_operation
 from thesisguard_backend.routers.holdings import OwnedHolding
 from thesisguard_backend.schemas import (
     ThesisCreateRequest,
@@ -21,7 +22,9 @@ from thesisguard_backend.schemas import (
 router = APIRouter(tags=["theses"])
 
 
-async def get_owned_thesis(thesis_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> orm.Thesis:
+async def get_owned_thesis(
+    thesis_id: uuid.UUID, db: DbSession, current_user: CurrentUser
+) -> orm.Thesis:
     thesis = await db.get(orm.Thesis, thesis_id)
     if thesis is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Thesis를 찾을 수 없습니다.")
@@ -41,9 +44,32 @@ OwnedThesis = Annotated[orm.Thesis, Depends(get_owned_thesis)]
     status_code=status.HTTP_201_CREATED,
 )
 async def create_thesis(
-    payload: ThesisCreateRequest, holding: OwnedHolding, db: DbSession, agent: Agent
+    payload: ThesisCreateRequest,
+    holding: OwnedHolding,
+    db: DbSession,
+    agent: Agent,
+    current_user: CurrentUser,
 ) -> orm.Thesis:
-    structured = await agent.astructure_thesis(payload.raw_input)
+    with observe_llm_operation(
+        "thesisguard.structure-thesis",
+        user_id=str(current_user.id),
+        session_id=f"portfolio:{holding.portfolio_id}",
+        input={
+            "holding_id": str(holding.id),
+            "ticker": holding.ticker,
+            "raw_input": payload.raw_input,
+        },
+        metadata={
+            "portfolio_id": holding.portfolio_id,
+            "holding_id": holding.id,
+            "ticker": holding.ticker,
+        },
+        tags=["thesis-structure", holding.ticker.lower()],
+    ) as trace:
+        structured = await agent.astructure_thesis(
+            payload.raw_input, runnable_config=trace.runnable_config
+        )
+        trace.set_output(structured.model_dump(mode="json"))
     thesis = orm.Thesis(
         holding_id=holding.id,
         raw_input=structured.raw_input,
@@ -67,7 +93,9 @@ async def get_thesis(thesis: OwnedThesis) -> orm.Thesis:
 
 
 @router.put("/api/theses/{thesis_id}", response_model=ThesisResponse)
-async def update_thesis(payload: ThesisUpdateRequest, thesis: OwnedThesis, db: DbSession) -> orm.Thesis:
+async def update_thesis(
+    payload: ThesisUpdateRequest, thesis: OwnedThesis, db: DbSession
+) -> orm.Thesis:
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(thesis, field, value)
     await db.commit()

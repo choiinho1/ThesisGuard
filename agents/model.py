@@ -23,6 +23,7 @@ from agents.models import (
     StructuredThesis,
     ThesisStatus,
 )
+from agents.runnable_context import get_model_runnable_config
 from agents.sanitization import safe_source_snippet, sanitize_source_text
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
@@ -54,7 +55,8 @@ class LangChainAnalysisModel:
     async def _invoke(self, schema: type[SchemaT], task: str) -> SchemaT:
         runnable = self._model.with_structured_output(schema)
         result = await runnable.ainvoke(
-            [SystemMessage(content=SYSTEM_GUARDRAIL), HumanMessage(content=task)]
+            [SystemMessage(content=SYSTEM_GUARDRAIL), HumanMessage(content=task)],
+            config=get_model_runnable_config(),
         )
         if isinstance(result, schema):
             return result

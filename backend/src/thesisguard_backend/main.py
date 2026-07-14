@@ -7,12 +7,13 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+from agents.graph import configure_agent
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from agents.graph import configure_agent
 from thesisguard_backend.agent_adapters import build_default_agent
 from thesisguard_backend.db import initialize_local_database, session_factory
+from thesisguard_backend.observability import langfuse_status, shutdown_langfuse
 from thesisguard_backend.routers import alerts, analysis, auth, holdings, portfolios, theses
 
 
@@ -28,7 +29,10 @@ async def lifespan(app: FastAPI):
     agent = build_default_agent(session_factory)
     configure_agent(agent)
     app.state.agent = agent
-    yield
+    try:
+        yield
+    finally:
+        shutdown_langfuse()
 
 
 app = FastAPI(title="ThesisGuard API", version="0.1.0", lifespan=lifespan)
@@ -54,4 +58,4 @@ app.include_router(alerts.router)
 
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "langfuse": langfuse_status()}

@@ -9,14 +9,15 @@ from __future__ import annotations
 
 from typing import Annotated
 
+from agents.graph import arun_analysis_workflow
+from agents.models import EvidenceItem
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 
-from agents.graph import arun_analysis_workflow
-from agents.models import EvidenceItem
 from thesisguard_backend import models as orm
 from thesisguard_backend.alert_engine import handle_alert_decision
 from thesisguard_backend.deps import Agent, CurrentUser, DbSession, get_owned_portfolio
+from thesisguard_backend.observability import observe_llm_operation
 from thesisguard_backend.routers.holdings import OwnedHolding
 from thesisguard_backend.schemas import (
     AlertResponse,
@@ -45,7 +46,28 @@ async def analyze_holding(
         )
     portfolio = await db.get(orm.Portfolio, holding.portfolio_id)
 
-    result = await arun_analysis_workflow(str(portfolio.id), str(holding.id))
+    with observe_llm_operation(
+        "thesisguard.analyze-holding",
+        user_id=str(current_user.id),
+        session_id=f"portfolio:{portfolio.id}",
+        input={
+            "portfolio_id": str(portfolio.id),
+            "holding_id": str(holding.id),
+            "ticker": holding.ticker,
+        },
+        metadata={
+            "portfolio_id": portfolio.id,
+            "holding_id": holding.id,
+            "ticker": holding.ticker,
+        },
+        tags=["holding-analysis", holding.ticker.lower()],
+    ) as trace:
+        result = await arun_analysis_workflow(
+            str(portfolio.id),
+            str(holding.id),
+            runnable_config=trace.runnable_config,
+        )
+        trace.set_output(result.model_dump(mode="json"))
 
     next_version_no = (
         await db.scalar(
@@ -178,7 +200,10 @@ async def get_concentration(portfolio: OwnedPortfolio, db: DbSession) -> list[or
     return list(result)
 
 
-@router.get("/api/portfolios/{portfolio_id}/common-risk", response_model=list[AnalysisResultResponse])
+@router.get(
+    "/api/portfolios/{portfolio_id}/common-risk",
+    response_model=list[AnalysisResultResponse],
+)
 async def get_common_risk(portfolio: OwnedPortfolio, db: DbSession) -> list[orm.AnalysisResult]:
     result = await db.scalars(
         select(orm.AnalysisResult)
@@ -234,7 +259,21 @@ async def query_portfolio(
         for row in evidence_rows
     ]
 
-    answer = await agent.aanswer_portfolio_query(str(portfolio.id), payload.question, evidence)
+    with observe_llm_operation(
+        "thesisguard.portfolio-query",
+        user_id=str(portfolio.user_id),
+        session_id=f"portfolio:{portfolio.id}",
+        input={"portfolio_id": str(portfolio.id), "question": payload.question},
+        metadata={"portfolio_id": portfolio.id, "evidence_count": len(evidence)},
+        tags=["portfolio-query"],
+    ) as trace:
+        answer = await agent.aanswer_portfolio_query(
+            str(portfolio.id),
+            payload.question,
+            evidence,
+            runnable_config=trace.runnable_config,
+        )
+        trace.set_output(answer.model_dump(mode="json"))
     return NaturalLanguageQueryResponse(
         answer=answer.answer,
         evidence_document_ids=answer.evidence_document_ids,
