@@ -6,6 +6,8 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.deps import CurrentUser, DbSession, get_owned_portfolio
@@ -48,9 +50,28 @@ OwnedHolding = Annotated[orm.Holding, Depends(get_owned_holding)]
 async def create_holding(
     payload: HoldingCreateRequest, portfolio: OwnedPortfolio, db: DbSession
 ) -> orm.Holding:
+    existing_holding_id = await db.scalar(
+        select(orm.Holding.id).where(
+            orm.Holding.portfolio_id == portfolio.id,
+            func.upper(func.trim(orm.Holding.ticker)) == payload.ticker,
+        )
+    )
+    if existing_holding_id is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{payload.ticker}는 이미 이 포트폴리오에 등록되어 있습니다.",
+        )
+
     holding = orm.Holding(portfolio_id=portfolio.id, **payload.model_dump())
     db.add(holding)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{payload.ticker}는 이미 이 포트폴리오에 등록되어 있습니다.",
+        ) from None
     await db.refresh(holding)
     return holding
 

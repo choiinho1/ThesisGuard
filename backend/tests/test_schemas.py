@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from thesisguard_backend.schemas import (
+    HoldingCreateRequest,
     PortfolioCreateRequest,
     SignupRequest,
     ThesisCreateRequest,
@@ -30,3 +31,9 @@ def test_thesis_raw_input_minimum_length() -> None:
         ThesisCreateRequest(raw_input="too short")
     ok = ThesisCreateRequest(raw_input="NVDA is well positioned for continued AI capex growth.")
     assert "NVDA" in ok.raw_input
+
+
+def test_holding_ticker_is_normalized() -> None:
+    request = HoldingCreateRequest(ticker=" crdo ", quantity=1, avg_buy_price=10, target_weight=5)
+
+    assert request.ticker == "CRDO"

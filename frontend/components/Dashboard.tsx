@@ -135,7 +135,10 @@ export function Dashboard() {
     <main className="app-shell">
       <PortfolioHeader mode={mode} onModeChange={changeMode} portfolio={dashboard.portfolio} />
       {error && <div className="error-banner">{error}</div>}
-      <AddHoldingForm onSubmit={addHolding} />
+      <AddHoldingForm
+        existingTickers={dashboard.holdings.map((holding) => holding.ticker)}
+        onSubmit={addHolding}
+      />
       <div className="dashboard-grid">
         <div className="main-column">
           <AllocationPanel holdings={dashboard.holdings} portfolio={dashboard.portfolio} />

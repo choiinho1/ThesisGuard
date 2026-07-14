@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from re import fullmatch
 
 from agents.models import (
     AlertSeverity,
@@ -21,6 +20,8 @@ from agents.models import (
     EvidenceSourceType,
     ThesisStatus,
 )
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
 from thesisguard_backend.models import AlertDelivery, TransactionType
 
 
@@ -89,6 +90,16 @@ class HoldingCreateRequest(BaseModel):
     quantity: float = Field(ge=0)
     avg_buy_price: float = Field(ge=0)
     target_weight: float = Field(default=0, ge=0, le=100)
+
+    @field_validator("ticker", mode="before")
+    @classmethod
+    def normalize_ticker(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if not normalized:
+            raise ValueError("티커를 입력해주세요.")
+        if fullmatch(r"[A-Z0-9][A-Z0-9.-]*", normalized) is None:
+            raise ValueError("티커에는 영문, 숫자, 점과 하이픈만 사용할 수 있습니다.")
+        return normalized
 
 
 class HoldingUpdateRequest(BaseModel):
