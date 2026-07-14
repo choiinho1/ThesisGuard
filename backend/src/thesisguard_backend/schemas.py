@@ -9,8 +9,9 @@ feature/fe-schema-alignment) — keep the two in sync when either changes.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, time
+from datetime import date, datetime, time
 from re import fullmatch
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agents.models import (
     AlertSeverity,
@@ -131,6 +132,17 @@ class MarketSnapshotResponse(BaseModel):
     day_high: float | None
     day_low: float | None
     volume: int | None
+
+
+# -------------------------------------------------------- Market Quote ----
+class MarketQuoteResponse(BaseModel):
+    ticker: str
+    as_of: date
+    price: float
+    day_high: float
+    day_low: float
+    volume: int
+    change_pct_30d: float | None
 
 
 # ------------------------------------------------------- Rebalancing ----
@@ -299,6 +311,15 @@ class AnalysisScheduleRequest(BaseModel):
     enabled: bool = True
     daily_time: time
     timezone: str = "Asia/Seoul"
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            raise ValueError("올바른 IANA 타임존이 아닙니다.") from None
+        return value
 
 
 class AnalysisScheduleResponse(ORMModel):

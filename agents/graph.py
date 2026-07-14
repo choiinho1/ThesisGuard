@@ -9,7 +9,7 @@ from typing import Any, Literal, TypeVar
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
-from agents.contracts import AnalysisModel, ContextProvider, ResearchTools
+from agents.contracts import AnalysisModel, ContextProvider, DocumentRetriever, ResearchTools
 from agents.models import (
     EvidenceItem,
     PortfolioQueryAnswer,
@@ -30,6 +30,7 @@ from agents.nodes.macro_agent import macro_agent
 from agents.nodes.news_agent import news_agent
 from agents.nodes.portfolio import portfolio_agent
 from agents.nodes.router import prepare_research, request_router
+from agents.nodes.source_selector import select_sources
 from agents.runnable_context import use_model_runnable_config
 from agents.runtime import AgentDependencies, WorkflowConfig, call_model
 from agents.state import AnalysisState, empty_research_data
@@ -44,6 +45,7 @@ def build_analysis_graph(config: WorkflowConfig):
     graph.add_node("filing_agent", filing_agent)
     graph.add_node("news_agent", news_agent)
     graph.add_node("macro_agent", macro_agent)
+    graph.add_node("source_selector", select_sources)
     graph.add_node("evidence_classifier", classify_evidence)
     graph.add_node("debate_start", debate_start)
     graph.add_node("bull_agent", bull_agent)
@@ -58,7 +60,8 @@ def build_analysis_graph(config: WorkflowConfig):
     graph.add_edge("prepare_research", "filing_agent")
     graph.add_edge("prepare_research", "news_agent")
     graph.add_edge("prepare_research", "macro_agent")
-    graph.add_edge(["filing_agent", "news_agent", "macro_agent"], "evidence_classifier")
+    graph.add_edge(["filing_agent", "news_agent", "macro_agent"], "source_selector")
+    graph.add_edge("source_selector", "evidence_classifier")
 
     def route_after_classification(
         state: AnalysisState,
@@ -92,6 +95,7 @@ class ThesisGuardAgent:
         research_tools: ResearchTools,
         model: AnalysisModel,
         config: WorkflowConfig | None = None,
+        retriever: DocumentRetriever | None = None,
     ) -> None:
         self.config = config or WorkflowConfig()
         self.dependencies = AgentDependencies(
@@ -99,6 +103,7 @@ class ThesisGuardAgent:
             research_tools=research_tools,
             model=model,
             config=self.config,
+            retriever=retriever,
         )
         self.graph = build_analysis_graph(self.config)
 

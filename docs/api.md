@@ -27,5 +27,10 @@ result = await arun_analysis_workflow(portfolio_id, holding_id)
 - `ResearchTools.get_news()`: News MCP 조회
 - `ResearchTools.get_macro()`: Macro MCP 조회
 
+`ResearchRequest`는 기본 Thesis와 `focus_points` 외에 뉴스 최신성 기준인
+`lookback_days`(기본 30)와 사전 선별 전 후보 개수인 `candidate_limit`(기본 15)를 제공한다.
+백엔드 어댑터는 재검색 라운드별로 다른 `focus_points`를 사용하고, Agent는 반환된
+후보를 Source Selector에서 최종 선별한다.
+
 모든 요청·응답 필드명은 `snake_case`를 사용한다. C는 `backend/mcp_tools/` 이외의 외부 데이터 API를
 직접 호출하지 않는다.

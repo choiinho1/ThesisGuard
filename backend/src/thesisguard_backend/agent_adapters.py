@@ -8,14 +8,10 @@ application startup (see ``main.py``'s ``lifespan``).
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import httpx
-from bs4 import BeautifulSoup
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.orm import selectinload
-
 from agents.graph import ThesisGuardAgent
 from agents.model import LangChainAnalysisModel
 from agents.models import (
@@ -26,12 +22,41 @@ from agents.models import (
     SourceDocument,
     StructuredThesis,
 )
+from agents.rag import HybridRAGRetriever
+from agents.retrieval import extract_relevant_passages, thesis_search_terms
 from agents.sanitization import sanitize_source_text
+from bs4 import BeautifulSoup
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.orm import selectinload
+
 from thesisguard_backend import models as orm
 from thesisguard_backend.config import get_settings
 from thesisguard_backend.mcp_tools import macro, market, news, sec
 
-_MAX_DOCUMENT_CHARS = 8000
+_MAX_FETCHED_DOCUMENT_CHARS = 120_000
+_MAX_SELECTED_DOCUMENT_CHARS = 6000
+_NEWS_ASSUMPTION_HINTS = (
+    (("경쟁", "competitor", "competition", "rival", "entrant"), "competing app"),
+    (("시장", "market", "industry", "tam"), "market industry growth"),
+    (("실적", "매출", "이익", "revenue", "earnings", "profit"), "revenue earnings growth"),
+)
+
+
+def _assumption_news_query(
+    *,
+    company_name: str | None,
+    ticker: str,
+    assumption: str,
+) -> str:
+    normalized = assumption.casefold()
+    company_keyword = (
+        sanitize_source_text(company_name).split()[0].strip(",") if company_name else ticker
+    )
+    for stems, hint in _NEWS_ASSUMPTION_HINTS:
+        if any(stem in normalized for stem in stems):
+            return f"{company_keyword} {ticker} {hint}"
+    return f'{company_keyword} {ticker} "{assumption}"'
 
 
 def _structured_thesis_from_orm(thesis: orm.Thesis) -> StructuredThesis:
@@ -108,37 +133,104 @@ class BackendResearchTools:
             content = await _fetch_text(record.url)
             if not content:
                 continue
+            selected_content = extract_relevant_passages(
+                content,
+                thesis_search_terms(request.thesis, request.focus_points),
+                max_chars=_MAX_SELECTED_DOCUMENT_CHARS,
+            )
             documents.append(
                 SourceDocument(
                     document_id=record.accession_number,
                     source_type=EvidenceSourceType.SEC_FILING,
                     source_url=record.url,
                     title=record.title,
-                    content=content,
+                    content=selected_content,
                     published_at=record.filed_at,
-                    metadata={"form": record.form},
+                    metadata={
+                        "form": record.form,
+                        "original_chars": len(content),
+                        "selected_chars": len(selected_content),
+                    },
                 )
             )
         return documents
 
     async def get_news(self, request: ResearchRequest) -> list[SourceDocument]:
-        query = request.ticker
-        if request.focus_points:
-            query = f"{request.ticker} {request.focus_points[0]}"
-        items = await news.get_news(query, limit=5)
-        return [
-            SourceDocument(
-                document_id=item.url,
-                source_type=EvidenceSourceType.NEWS,
-                source_url=item.url,
-                title=sanitize_source_text(item.title),
-                content=sanitize_source_text(item.summary or item.title),
-                published_at=item.published_at,
-                metadata={"source": item.source},
-            )
-            for item in items
-            if item.summary or item.title
+        company_name = await sec.get_company_name(request.ticker)
+        company_query = f'"{company_name}" {request.ticker}' if company_name else request.ticker
+        focus_terms = list(dict.fromkeys([*request.focus_points, *request.thesis.key_assumptions]))[
+            :4
         ]
+        queries = [
+            company_query,
+            *(
+                _assumption_news_query(
+                    company_name=company_name,
+                    ticker=request.ticker,
+                    assumption=term,
+                )
+                for term in focus_terms
+            ),
+        ]
+        per_query_limit = max(3, (request.candidate_limit + len(queries) - 1) // len(queries))
+        batches = await asyncio.gather(
+            *(news.get_news(query, limit=per_query_limit) for query in queries)
+        )
+
+        candidates: list[tuple[str, news.NewsItem, str]] = []
+        seen_urls: set[str] = set()
+        seen_titles: set[str] = set()
+        for query, items in zip(queries, batches, strict=True):
+            for item in items:
+                title = sanitize_source_text(item.title)
+                title_key = title.casefold()
+                if item.url in seen_urls or title_key in seen_titles:
+                    continue
+                if not item.summary and not title:
+                    continue
+                seen_urls.add(item.url)
+                seen_titles.add(title_key)
+                candidates.append((query, item, title))
+                if len(candidates) >= request.candidate_limit:
+                    break
+            if len(candidates) >= request.candidate_limit:
+                break
+
+        article_texts = await asyncio.gather(
+            *(_fetch_news_text(item.url) for _, item, _ in candidates)
+        )
+        search_terms = thesis_search_terms(request.thesis, request.focus_points)
+        documents: list[SourceDocument] = []
+        for (query, item, title), article_text in zip(candidates, article_texts, strict=True):
+            summary = sanitize_source_text(item.summary or title)
+            content = (
+                extract_relevant_passages(
+                    article_text,
+                    search_terms,
+                    max_chars=_MAX_SELECTED_DOCUMENT_CHARS,
+                )
+                if article_text
+                else summary
+            )
+            documents.append(
+                SourceDocument(
+                    document_id=item.url,
+                    source_type=EvidenceSourceType.NEWS,
+                    source_url=item.url,
+                    title=title,
+                    content=content,
+                    published_at=item.published_at,
+                    metadata={
+                        "source": item.source,
+                        "company_name": company_name or "",
+                        "search_query": query,
+                        "full_article_fetched": bool(article_text),
+                        "original_chars": len(article_text or summary),
+                        "selected_chars": len(content),
+                    },
+                )
+            )
+        return documents
 
     async def get_macro(self, request: ResearchRequest) -> list[SourceDocument]:
         points = {
@@ -156,7 +248,10 @@ class BackendResearchTools:
                     source_type=EvidenceSourceType.MACRO,
                     source_url=f"https://fred.stlouisfed.org/series/{point.series_id}",
                     title=f"FRED {point.series_id} ({label})",
-                    content=f"{label} ({point.series_id}) as of {point.as_of.isoformat()}: {point.value}",
+                    content=(
+                        f"{label} ({point.series_id}) as of "
+                        f"{point.as_of.isoformat()}: {point.value}"
+                    ),
                     published_at=None,
                     metadata={"label": label, "value": point.value},
                 )
@@ -172,9 +267,32 @@ async def _fetch_text(url: str) -> str:
             response = await client.get(url, headers={"User-Agent": get_settings().sec_user_agent})
             response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        text = " ".join(soup.get_text(separator=" ").split())
-        return text[:_MAX_DOCUMENT_CHARS]
+        lines = [" ".join(line.split()) for line in soup.get_text(separator="\n").splitlines()]
+        text = "\n".join(line for line in lines if line)
+        return text[:_MAX_FETCHED_DOCUMENT_CHARS]
     except Exception:  # noqa: BLE001 — a single filing fetch must not abort research
+        return ""
+
+
+async def _fetch_news_text(url: str) -> str:
+    """Fetch readable publisher text; short/dynamic pages fall back to the RSS summary."""
+
+    try:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+            response = await client.get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+            )
+            response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        for element in soup(["script", "style", "noscript", "nav", "footer", "header", "form"]):
+            element.decompose()
+        container = soup.find("article") or soup.find("main") or soup.body
+        if container is None:
+            return ""
+        text = sanitize_source_text(container.get_text(separator=" "))
+        return text[:_MAX_FETCHED_DOCUMENT_CHARS] if len(text) >= 400 else ""
+    except Exception:  # noqa: BLE001 — a blocked publisher must not abort news research
         return ""
 
 
@@ -198,10 +316,38 @@ def create_chat_model():
         return ChatGoogleGenerativeAI(
             model=settings.llm_model, google_api_key=settings.google_api_key, temperature=0
         )
+    if settings.llm_provider == "upstage":
+        from langchain_upstage import ChatUpstage
+
+        return ChatUpstage(
+            model=settings.llm_model,
+            upstage_api_key=settings.upstage_api_key,
+            temperature=0,
+        )
     raise ValueError(
         f"Unsupported LLM_PROVIDER={settings.llm_provider!r}. "
         "Add a branch here once the team picks another provider."
     )
+
+
+def create_rag_retriever() -> HybridRAGRetriever | None:
+    """Build Upstage hybrid RAG, or retain deterministic retrieval when unavailable."""
+
+    settings = get_settings()
+    if not settings.rag_enabled or not settings.upstage_api_key:
+        return None
+    try:
+        from langchain_upstage import UpstageEmbeddings
+
+        embeddings = UpstageEmbeddings(
+            model=settings.upstage_embedding_model,
+            api_key=settings.upstage_api_key,
+            timeout=settings.rag_embedding_timeout_seconds,
+            embed_batch_size=10,
+        )
+    except (ImportError, ValueError):
+        return None
+    return HybridRAGRetriever(embeddings)
 
 
 def build_default_agent(session_factory: async_sessionmaker) -> ThesisGuardAgent:
@@ -209,4 +355,5 @@ def build_default_agent(session_factory: async_sessionmaker) -> ThesisGuardAgent
         context_provider=BackendContextProvider(session_factory),
         research_tools=BackendResearchTools(),
         model=LangChainAnalysisModel(create_chat_model()),
+        retriever=create_rag_retriever(),
     )

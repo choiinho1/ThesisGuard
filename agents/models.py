@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, model_validator
 
 
 class ContractModel(BaseModel):
@@ -33,6 +33,13 @@ class EvidenceImpact(StrEnum):
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
     LOW = "LOW"
+
+
+class AssumptionAssessment(StrEnum):
+    SUPPORT = "SUPPORT"
+    CONTRADICT = "CONTRADICT"
+    MIXED = "MIXED"
+    NOT_ADDRESSED = "NOT_ADDRESSED"
 
 
 class EvidenceSourceType(StrEnum):
@@ -89,6 +96,8 @@ class ResearchRequest(ContractModel):
     thesis: StructuredThesis
     round_no: int = Field(ge=1)
     focus_points: list[str] = Field(default_factory=list)
+    lookback_days: int = Field(default=30, ge=1, le=365)
+    candidate_limit: int = Field(default=15, ge=1, le=50)
 
 
 class SourceDocument(ContractModel):
@@ -107,7 +116,7 @@ class EvidenceItem(ContractModel):
     source_type: EvidenceSourceType
     source_url: HttpUrl | None = None
     vector_doc_id: str | None = None
-    content_snippet: str = Field(min_length=1, max_length=2000)
+    content_snippet: str = Field(min_length=1, max_length=500)
     classification: EvidenceClassification
     impact: EvidenceImpact
     reason: str = Field(min_length=1)
@@ -128,9 +137,35 @@ class EvidenceItem(ContractModel):
 class EvidenceAssessment(ContractModel):
     classification: EvidenceClassification
     impact: EvidenceImpact
+    relevance_score: float = Field(ge=0, le=1)
     reason: str = Field(min_length=1)
     related_assumptions: list[str] = Field(default_factory=list)
-    content_snippet: str = Field(min_length=1, max_length=2000)
+    source_excerpt: str = Field(min_length=1, max_length=2000)
+    content_snippet: str = Field(min_length=1, max_length=500)
+
+
+class AssumptionFinding(ContractModel):
+    """How one document affects one exact thesis assumption."""
+
+    assumption: str = Field(min_length=1)
+    assessment: AssumptionAssessment
+    impact: EvidenceImpact
+    relevance_score: float = Field(ge=0, le=1)
+    reasoning: str = Field(min_length=1)
+    source_passage_indices: list[NonNegativeInt] = Field(default_factory=list, max_length=3)
+
+
+class EvidenceModelOutput(ContractModel):
+    """Structured model output; the selected passage is resolved by trusted code."""
+
+    classification: EvidenceClassification
+    impact: EvidenceImpact
+    relevance_score: float = Field(ge=0, le=1)
+    reason: str = Field(min_length=1)
+    related_assumptions: list[str] = Field(default_factory=list)
+    assumption_findings: list[AssumptionFinding] = Field(default_factory=list)
+    source_passage_indices: list[NonNegativeInt] = Field(min_length=1, max_length=3)
+    content_snippet: str = Field(min_length=1, max_length=500)
 
 
 class DebateReport(ContractModel):

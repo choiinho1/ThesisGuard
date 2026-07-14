@@ -28,9 +28,9 @@ from agents.models import (
     ThesisStatus,
 )
 from agents.runtime import WorkflowConfig
-from thesisguard_backend.mcp_tools import macro, market, news, sec
 
 from thesisguard_backend.agent_adapters import BackendResearchTools
+from thesisguard_backend.mcp_tools import macro, market, news, sec
 
 
 class FakeContextProvider:
@@ -40,7 +40,9 @@ class FakeContextProvider:
         thesis = StructuredThesis(
             raw_input="NVDA is well positioned as Hyperscaler AI capex keeps growing and "
             "demand for its GPUs stays strong across data center customers.",
-            main_thesis="NVIDIA benefits from continued AI infrastructure investment by Hyperscalers.",
+            main_thesis=(
+                "NVIDIA benefits from continued AI infrastructure investment by Hyperscalers."
+            ),
             key_assumptions=["Hyperscaler AI capex keeps growing"],
             positive_signals=[],
             negative_signals=[],
@@ -76,9 +78,11 @@ class FakeAnalysisModel:
         return EvidenceAssessment(
             classification=EvidenceClassification.NEUTRAL,
             impact=EvidenceImpact.LOW,
+            relevance_score=0.2,
             reason="fake classification — real data, fake LLM judgement",
             related_assumptions=[],
-            content_snippet=(document.content[:80] or "n/a"),
+            source_excerpt=(document.content[:80] or "n/a"),
+            content_snippet="실제 자료를 사용한 테스트용 한글 근거 요약입니다.",
         )
 
     async def build_bull_report(self, thesis, evidence) -> DebateReport:
@@ -98,7 +102,9 @@ class FakeAnalysisModel:
     async def analyze_portfolio(self, portfolio_theses) -> PortfolioAnalysis:
         return PortfolioAnalysis()
 
-    async def answer_portfolio_query(self, question, portfolio_theses, evidence) -> PortfolioQueryAnswer:
+    async def answer_portfolio_query(
+        self, question, portfolio_theses, evidence
+    ) -> PortfolioQueryAnswer:
         return PortfolioQueryAnswer(answer="fake answer", evidence_document_ids=[], limitations=[])
 
 
@@ -136,7 +142,9 @@ async def check_full_graph() -> None:
     print("ThesisAnalysisResult produced successfully:")
     print(f"  ticker={result.ticker}")
     print(f"  evidence collected: {len(result.evidence)}")
-    print(f"  updated_status={result.updated_status}, updated_confidence={result.updated_confidence}")
+    print(
+        f"  updated_status={result.updated_status}, updated_confidence={result.updated_confidence}"
+    )
     print(f"  alert_decision={result.alert_decision}")
     print(f"  research_rounds={result.research_rounds}")
 

@@ -10,11 +10,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 from agents.models import (
+    AssumptionAssessment,
     DebateReport,
     EvidenceAssessment,
     EvidenceClassification,
     EvidenceImpact,
     EvidenceItem,
+    EvidenceModelOutput,
     JudgeDecision,
     PortfolioAnalysis,
     PortfolioQueryAnswer,
@@ -24,7 +26,7 @@ from agents.models import (
     ThesisStatus,
 )
 from agents.runnable_context import get_model_runnable_config
-from agents.sanitization import safe_source_snippet, sanitize_source_text
+from agents.sanitization import normalize_korean_summary, safe_source_snippet, split_source_passages
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
@@ -84,35 +86,124 @@ Leave optional lists empty instead of inventing missing details.
     async def classify_evidence(
         self, thesis: StructuredThesis, document: SourceDocument
     ) -> EvidenceAssessment:
+        passages = split_source_passages(document.content)
+        if not passages:
+            return EvidenceAssessment(
+                classification=EvidenceClassification.UNCERTAIN,
+                impact=EvidenceImpact.LOW,
+                relevance_score=0,
+                reason="검증 가능한 원문 구간이 없어 불확실 처리했습니다.",
+                related_assumptions=thesis.key_assumptions,
+                source_excerpt=safe_source_snippet(document.content, document.title),
+                content_snippet="검증 가능한 원문이 없어 근거 요약을 제공하지 않습니다.",
+            )
+        numbered_passages = "\n".join(
+            f"[{index}] {passage}" for index, passage in enumerate(passages)
+        )
         result = await self._invoke(
-            EvidenceAssessment,
+            EvidenceModelOutput,
             f"""
 Compare one document with the thesis. Classification must be SUPPORT, CONTRADICT,
-NEUTRAL, or UNCERTAIN. Impact must be HIGH, MEDIUM, or LOW. The content_snippet
-must be a short verbatim excerpt from the source document.
+NEUTRAL, or UNCERTAIN. Set relevance_score from 0.0 to 1.0 based on whether the
+document directly tests at least one key assumption. Impact represents materiality
+and must be HIGH, MEDIUM, or LOW. Unrelated market commentary must be NEUTRAL with
+LOW impact. Read every numbered passage before deciding. Evaluate every key assumption
+separately in assumption_findings using its exact input text and SUPPORT, CONTRADICT,
+MIXED, or NOT_ADDRESSED. Indirect causal evidence and credible forward-looking events
+count when they materially change an assumption's plausibility. In particular, a named
+competitor's announced or reported product development directly contradicts a categorical
+"no competitor" assumption even if the product has not launched yet. Separate confirmed
+facts from plans, forecasts, and rumors when assigning impact and relevance.
+
+Select one to three supplied source passages by returning their integer indexes
+in source_passage_indices. content_snippet must explain only those passages in two or three
+Korean sentences within 500 characters. Include the core fact, concrete figures or dates
+when present, and the result for each addressed assumption. Do not add unsupported details,
+translate a free-form quotation, claim that an assumption is unaddressed before checking all
+passages, or give investment advice.
 
 <thesis>{_json(thesis)}</thesis>
 <source_document id="{document.document_id}" type="{document.source_type}">
 title: {document.title}
 published_at: {document.published_at}
-content:
-{document.content}
+numbered_passages:
+{numbered_passages}
 </source_document>
 """.strip(),
         )
-        cleaned_snippet = sanitize_source_text(result.content_snippet, max_length=2000)
-        if result.content_snippet not in document.content or not cleaned_snippet:
-            return result.model_copy(
-                update={
-                    "classification": EvidenceClassification.UNCERTAIN,
-                    "impact": EvidenceImpact.LOW,
-                    "reason": "원문에서 인용문을 검증할 수 없어 불확실 처리했습니다.",
-                    "content_snippet": safe_source_snippet(
-                        document.content, document.title, max_length=500
-                    ),
-                }
+        allowed_assumptions = set(thesis.key_assumptions)
+        findings = [
+            finding
+            for finding in result.assumption_findings
+            if finding.assumption in allowed_assumptions
+        ]
+        selected_indices = list(dict.fromkeys(result.source_passage_indices))
+        cited_indices = [
+            *selected_indices,
+            *(index for finding in findings for index in finding.source_passage_indices),
+        ]
+        if any(index >= len(passages) for index in cited_indices):
+            return EvidenceAssessment(
+                classification=EvidenceClassification.UNCERTAIN,
+                impact=EvidenceImpact.LOW,
+                relevance_score=0,
+                reason="모델이 유효하지 않은 원문 구간을 선택해 불확실 처리했습니다.",
+                related_assumptions=thesis.key_assumptions,
+                source_excerpt=passages[0],
+                content_snippet="원문 구간을 검증할 수 없어 근거 요약을 제공하지 않습니다.",
             )
-        return result.model_copy(update={"content_snippet": cleaned_snippet})
+        directional_findings = [
+            finding
+            for finding in findings
+            if finding.assessment in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+        ]
+        classification = result.classification
+        if classification in {
+            EvidenceClassification.NEUTRAL,
+            EvidenceClassification.UNCERTAIN,
+        }:
+            finding_directions = {finding.assessment for finding in directional_findings}
+            if finding_directions == {AssumptionAssessment.SUPPORT}:
+                classification = EvidenceClassification.SUPPORT
+            elif finding_directions == {AssumptionAssessment.CONTRADICT}:
+                classification = EvidenceClassification.CONTRADICT
+        impact_rank = {
+            EvidenceImpact.LOW: 0,
+            EvidenceImpact.MEDIUM: 1,
+            EvidenceImpact.HIGH: 2,
+        }
+        impact = max(
+            [result.impact, *(finding.impact for finding in directional_findings)],
+            key=lambda item: impact_rank[item],
+        )
+        relevance_score = max(
+            [result.relevance_score, *(finding.relevance_score for finding in directional_findings)]
+        )
+        related_assumptions = (
+            [
+                finding.assumption
+                for finding in findings
+                if finding.assessment != AssumptionAssessment.NOT_ADDRESSED
+            ]
+            if findings
+            else result.related_assumptions
+        )
+        finding_reason = " | ".join(
+            f"{finding.assumption}: {finding.assessment.value} - {finding.reasoning}"
+            for finding in findings
+        )
+        reason = (
+            f"{result.reason} 가정별 검토: {finding_reason}" if finding_reason else result.reason
+        )
+        return EvidenceAssessment(
+            classification=classification,
+            impact=impact,
+            relevance_score=relevance_score,
+            reason=reason,
+            related_assumptions=list(dict.fromkeys(related_assumptions)),
+            source_excerpt="\n".join(passages[index] for index in selected_indices),
+            content_snippet=normalize_korean_summary(result.content_snippet),
+        )
 
     async def build_bull_report(
         self, thesis: StructuredThesis, evidence: list[EvidenceItem]

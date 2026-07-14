@@ -29,6 +29,9 @@ export function ThesisDetail({
   const [savedEvidence, setSavedEvidence] = useState<Evidence[]>([]);
   const thesis = analysis?.thesis ?? holding.thesis;
   const thesisLength = rawInput.trim().length;
+  const visibleEvidence = analysis?.evidence.filter(
+    (evidence) => evidence.classification !== "NEUTRAL" || evidence.impact !== "LOW",
+  ) ?? [];
 
   useEffect(() => {
     const stored = window.localStorage.getItem(`thesisguard_saved_evidence_${holding.id}`);
@@ -173,12 +176,21 @@ export function ThesisDetail({
           <details className="analysis-evidence" open>
             <summary>
               <span><span className="result-label">EVIDENCE</span> 주요 근거</span>
-              <span className="evidence-count">{analysis.evidence.length}</span>
+              <span className="evidence-count">{visibleEvidence.length}</span>
             </summary>
             <div className="evidence-list scrollable-list" role="region" aria-label="분석 근거 목록" tabIndex={0}>
-              {analysis.evidence.map((evidence) => (
+              {visibleEvidence.map((evidence) => (
                 <article className="evidence-link evidence-link--static" key={evidence.id}>
-                  <span>{evidence.classification} · {evidence.impact}</span>
+                  <div className="evidence-meta">
+                    <span>{evidence.classification} · {evidence.impact}</span>
+                    {evidence.published_at ? (
+                      <time dateTime={evidence.published_at}>
+                        {formatEvidenceDate(evidence.published_at)}
+                      </time>
+                    ) : (
+                      <span className="evidence-date">날짜 정보 없음</span>
+                    )}
+                  </div>
                   <p>{evidence.content_snippet}</p>
                   <div className="evidence-actions">
                     {evidence.source_url && (
@@ -205,7 +217,7 @@ export function ThesisDetail({
                   </div>
                 </article>
               ))}
-              {analysis.evidence.length === 0 && <p className="empty-copy">표시할 주요 근거가 없습니다.</p>}
+              {visibleEvidence.length === 0 && <p className="empty-copy">표시할 주요 근거가 없습니다.</p>}
             </div>
           </details>
         </div>
@@ -224,6 +236,17 @@ export function ThesisDetail({
       </div>
     </section>
   );
+}
+
+function formatEvidenceDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "날짜 정보 없음";
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Seoul",
+  }).format(date);
 }
 
 function AnalysisProgress() {

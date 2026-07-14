@@ -22,6 +22,7 @@ from thesisguard_backend.routers import (
     analysis_schedules,
     auth,
     holdings,
+    market,
     portfolios,
     theses,
 )
@@ -73,8 +74,15 @@ app.include_router(theses.router)
 app.include_router(analysis.router)
 app.include_router(alerts.router)
 app.include_router(analysis_schedules.router)
+app.include_router(market.router)
 
 
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
-    return {"status": "ok", "langfuse": langfuse_status()}
+    agent = getattr(app.state, "agent", None)
+    rag_enabled = bool(agent and agent.dependencies.retriever is not None)
+    return {
+        "status": "ok",
+        "langfuse": langfuse_status(),
+        "rag": "enabled" if rag_enabled else "disabled",
+    }

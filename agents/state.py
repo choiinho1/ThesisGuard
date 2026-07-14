@@ -43,6 +43,7 @@ class AnalysisState(TypedDict, total=False):
     ticker: str
     thesis_snapshot: StructuredThesis
     research_data: Annotated[ResearchData, merge_research_data]
+    selected_documents: list[SourceDocument]
     evidence_list: list[EvidenceItem]
     needs_more_research: bool
     bull_report: str

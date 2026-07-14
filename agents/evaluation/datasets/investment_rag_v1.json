@@ -1,0 +1,192 @@
+[
+  {
+    "case_id": "hood-competition-and-growth",
+    "ticker": "HOOD",
+    "thesis": {
+      "raw_input": "Robinhood can sustain growth because revenue is expanding and direct competition remains limited.",
+      "main_thesis": "Robinhood can sustain long-term growth",
+      "key_assumptions": ["revenue and earnings continue to grow", "direct competition remains limited"],
+      "positive_signals": ["transaction-based and subscription revenue growth"],
+      "negative_signals": ["a large platform launches a competing product"],
+      "key_risks": ["new prediction-market competitors"]
+    },
+    "focus_points": ["verify revenue growth and competitor entry"],
+    "source_limits": {"filings": 0, "news": 2, "macro": 0},
+    "reference_document_ids": ["hood-earnings", "hood-meta-competitor"],
+    "documents": [
+      {"document_id": "hood-price", "source_type": "NEWS", "source_url": "https://example.com/hood-price", "title": "Robinhood shares decline in afternoon trading", "content": "Robinhood shares fell 6 percent during the session as technology stocks traded lower. The report did not discuss operating results or competitors.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "hood-earnings", "source_type": "NEWS", "source_url": "https://example.com/hood-earnings", "title": "Robinhood reports higher revenue and earnings", "content": "Robinhood reported that quarterly revenue increased 45 percent year over year while net income more than doubled. Subscription revenue and transaction-based revenue both expanded.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "hood-meta-competitor", "source_type": "NEWS", "source_url": "https://example.com/hood-meta", "title": "Meta develops a rival prediction-markets app", "content": "Meta Platforms is developing a competing prediction-markets application. A launch would introduce a large consumer platform as a direct rival to Robinhood's event-contract business.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "hood-office", "source_type": "NEWS", "source_url": "https://example.com/hood-office", "title": "Robinhood leases additional office space", "content": "The company signed a lease for renovated office space and plans to move several administrative teams next year.", "metadata": {"selection_score": 0.7}}
+    ]
+  },
+  {
+    "case_id": "nvda-capex-and-asic-risk",
+    "ticker": "NVDA",
+    "thesis": {
+      "raw_input": "NVIDIA benefits from sustained hyperscaler AI capital spending, but custom accelerator competition could weaken its share.",
+      "main_thesis": "NVIDIA benefits from continued AI infrastructure investment",
+      "key_assumptions": ["hyperscaler AI capital expenditure keeps growing", "NVIDIA retains share against custom ASICs"],
+      "positive_signals": ["cloud customers raise AI infrastructure budgets"],
+      "negative_signals": ["customers deploy internally designed accelerators"],
+      "key_risks": ["custom ASIC competition"]
+    },
+    "focus_points": ["cloud capex commitments", "custom accelerator adoption"],
+    "source_limits": {"filings": 1, "news": 1, "macro": 0},
+    "reference_document_ids": ["nvda-capex-filing", "nvda-asic-news"],
+    "documents": [
+      {"document_id": "nvda-split", "source_type": "NEWS", "source_url": "https://example.com/nvda-split", "title": "NVIDIA completes stock split", "content": "NVIDIA completed a ten-for-one stock split. The transaction changed the share count but did not change the company's market value or demand outlook.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "nvda-capex-filing", "source_type": "SEC_FILING", "source_url": "https://example.com/nvda-capex", "title": "Cloud customer AI infrastructure commitments expand", "content": "Management reported multi-year purchase commitments from major cloud service providers and said customers increased capital expenditure budgets for accelerated computing infrastructure.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "nvda-asic-news", "source_type": "NEWS", "source_url": "https://example.com/nvda-asic", "title": "Cloud companies expand custom AI accelerator deployments", "content": "Two hyperscalers plan wider deployment of internally designed custom ASIC accelerators. The programs could substitute for some NVIDIA GPU workloads and create pricing pressure.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "nvda-gaming", "source_type": "SEC_FILING", "source_url": "https://example.com/nvda-gaming", "title": "Gaming graphics card channel inventory", "content": "Gaming channel inventory returned to normal levels after holiday promotions. The filing did not quantify cloud infrastructure investment.", "metadata": {"selection_score": 0.7}}
+    ]
+  },
+  {
+    "case_id": "tsla-margin-and-regulation",
+    "ticker": "TSLA",
+    "thesis": {
+      "raw_input": "Tesla's valuation depends on automotive margin recovery and timely regulatory approval for a commercial robotaxi service.",
+      "main_thesis": "Tesla margins recover as robotaxi commercialization advances",
+      "key_assumptions": ["automotive gross margin recovers", "regulators approve commercial robotaxi operations"],
+      "positive_signals": ["lower battery costs", "robotaxi operating permit"],
+      "negative_signals": ["price cuts reduce automotive margin", "permit decision is delayed"],
+      "key_risks": ["autonomous-driving regulation"]
+    },
+    "focus_points": ["automotive margin excluding credits", "robotaxi permit status"],
+    "source_limits": {"filings": 1, "news": 1, "macro": 0},
+    "reference_document_ids": ["tsla-margin", "tsla-permit"],
+    "documents": [
+      {"document_id": "tsla-delivery-price", "source_type": "NEWS", "source_url": "https://example.com/tsla-price", "title": "Tesla shares move after delivery report", "content": "Tesla shares gained during trading after quarterly vehicle deliveries were published. Analysts changed their price targets.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "tsla-margin", "source_type": "EARNINGS", "source_url": "https://example.com/tsla-margin", "title": "Automotive gross margin contracts despite lower battery cost", "content": "Automotive gross margin excluding regulatory credits fell to 14.2 percent from 17.1 percent a year earlier. Battery input costs declined, but vehicle price reductions more than offset those savings.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "tsla-permit", "source_type": "NEWS", "source_url": "https://example.com/tsla-permit", "title": "Regulator delays Tesla commercial robotaxi permit", "content": "The state regulator postponed a decision on Tesla's permit for paid driverless robotaxi service and requested additional safety data. Testing may continue, but commercial rides remain unauthorized.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "tsla-storage", "source_type": "EARNINGS", "source_url": "https://example.com/tsla-storage", "title": "Energy storage deployments reach a record", "content": "Energy storage deployments reached a quarterly record as Megapack production increased at the California factory.", "metadata": {"selection_score": 0.7}}
+    ]
+  },
+  {
+    "case_id": "lly-demand-supply-and-competition",
+    "ticker": "LLY",
+    "thesis": {
+      "raw_input": "Eli Lilly can capture growing obesity demand if manufacturing capacity expands faster than competing therapies.",
+      "main_thesis": "Eli Lilly captures expanding obesity-treatment demand",
+      "key_assumptions": ["GLP-1 demand remains strong and supply capacity expands", "competing therapies do not erode share"],
+      "positive_signals": ["new production lines increase available doses"],
+      "negative_signals": ["a rival obesity drug shows superior efficacy"],
+      "key_risks": ["manufacturing constraints", "clinical competition"]
+    },
+    "focus_points": ["dose supply expansion", "competitor trial efficacy"],
+    "source_limits": {"filings": 1, "news": 1, "macro": 0},
+    "reference_document_ids": ["lly-capacity", "lly-rival-trial"],
+    "documents": [
+      {"document_id": "lly-dividend", "source_type": "NEWS", "source_url": "https://example.com/lly-dividend", "title": "Eli Lilly declares quarterly dividend", "content": "The board declared a regular quarterly cash dividend payable to shareholders of record next month.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "lly-capacity", "source_type": "EARNINGS", "source_url": "https://example.com/lly-capacity", "title": "New production lines lift injectable medicine capacity", "content": "Eli Lilly said two new manufacturing lines began production, increasing available GLP-1 doses by 35 percent. Prescription demand continued to exceed supply during the quarter.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "lly-rival-trial", "source_type": "NEWS", "source_url": "https://example.com/lly-rival", "title": "Rival obesity medicine reports strong phase-three results", "content": "A competing obesity therapy achieved greater average weight loss than the current market leader in a phase-three study. If approved, the rival could pressure Eli Lilly's market share.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "lly-office", "source_type": "SEC_FILING", "source_url": "https://example.com/lly-office", "title": "Administrative office lease renewal", "content": "The company renewed an administrative office lease for five years under terms similar to the previous agreement.", "metadata": {"selection_score": 0.7}}
+    ]
+  },
+  {
+    "case_id": "aapl-korean-cross-language",
+    "ticker": "AAPL",
+    "thesis": {
+      "raw_input": "애플은 서비스 매출이 성장하고 중국 스마트폰 시장에서 경쟁력을 유지하면 안정적으로 성장할 수 있습니다.",
+      "main_thesis": "서비스 성장과 중국 시장 경쟁력이 애플의 성장을 지지한다",
+      "key_assumptions": ["서비스 매출 성장률이 유지된다", "중국 현지 업체와의 경쟁에서 점유율을 방어한다"],
+      "positive_signals": ["유료 구독자와 서비스 매출 증가"],
+      "negative_signals": ["중국 스마트폰 점유율 하락"],
+      "key_risks": ["화웨이 등 현지 경쟁사 성장"]
+    },
+    "focus_points": ["서비스 부문 성장", "중국 경쟁사와 시장 점유율"],
+    "source_limits": {"filings": 1, "news": 1, "macro": 0},
+    "reference_document_ids": ["aapl-services", "aapl-china-share"],
+    "documents": [
+      {"document_id": "aapl-headset", "source_type": "NEWS", "source_url": "https://example.com/aapl-headset", "title": "Apple releases a software update for its headset", "content": "Apple released a software update that adds new window-management features to its mixed-reality headset.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "aapl-services", "source_type": "EARNINGS", "source_url": "https://example.com/aapl-services", "title": "Apple Services revenue reaches a record", "content": "Apple Services revenue grew 14 percent year over year to a quarterly record. Paid subscriptions increased across cloud, music, video, and payment products.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "aapl-china-share", "source_type": "NEWS", "source_url": "https://example.com/aapl-china", "title": "Local smartphone rivals take share from Apple in China", "content": "Apple's smartphone market share in China declined by four percentage points as Huawei and other domestic competitors gained premium handset sales.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "aapl-campus", "source_type": "SEC_FILING", "source_url": "https://example.com/aapl-campus", "title": "Apple acquires land near an existing campus", "content": "Apple acquired land next to an existing corporate campus for possible future office development.", "metadata": {"selection_score": 0.7}}
+    ]
+  },
+  {
+    "case_id": "jpm-margin-and-credit-cycle",
+    "ticker": "JPM",
+    "thesis": {
+      "raw_input": "JPMorgan remains resilient if net interest margin holds up through rate cuts and consumer credit losses stay controlled.",
+      "main_thesis": "JPMorgan remains profitable through the rate and credit cycle",
+      "key_assumptions": ["net interest margin remains resilient as policy rates fall", "consumer credit losses remain controlled"],
+      "positive_signals": ["deposit costs stabilize", "charge-off guidance remains contained"],
+      "negative_signals": ["rapid rate cuts compress margin", "credit losses exceed guidance"],
+      "key_risks": ["interest-rate sensitivity", "consumer credit deterioration"]
+    },
+    "focus_points": ["net interest income guidance", "Federal Reserve rate cuts and charge-offs"],
+    "source_limits": {"filings": 1, "news": 0, "macro": 1},
+    "reference_document_ids": ["jpm-credit", "jpm-fed-rate"],
+    "documents": [
+      {"document_id": "jpm-branch", "source_type": "SEC_FILING", "source_url": "https://example.com/jpm-branch", "title": "JPMorgan opens new retail branches", "content": "JPMorgan plans to open twelve retail branches in growing metropolitan areas over the next two years.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "jpm-credit", "source_type": "EARNINGS", "source_url": "https://example.com/jpm-credit", "title": "Net interest income outlook falls while card charge-offs rise", "content": "JPMorgan lowered net interest income guidance as deposit costs remained elevated. The credit-card net charge-off rate increased to 3.6 percent, near the upper end of management guidance.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "jpm-fed-rate", "source_type": "MACRO", "source_url": "https://example.com/fed-rate", "title": "Federal Reserve projects additional policy-rate cuts", "content": "The Federal Reserve's updated projections indicate two additional policy-rate cuts. Lower short-term rates can compress bank asset yields and net interest margins.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "jpm-cpi", "source_type": "MACRO", "source_url": "https://example.com/cpi", "title": "Headline consumer inflation moderates", "content": "Headline consumer price inflation moderated because gasoline prices declined. The release did not discuss bank margins or consumer loan performance.", "metadata": {"selection_score": 0.7}}
+    ]
+  },
+  {
+    "case_id": "amzn-title-and-hard-negatives",
+    "ticker": "AMZN",
+    "thesis": {
+      "raw_input": "Amazon's thesis requires AWS margin expansion and disciplined spending on AI data-center capacity.",
+      "main_thesis": "AWS earnings growth can fund Amazon's AI infrastructure investment",
+      "key_assumptions": ["AWS operating margin continues to expand", "AI data-center capital expenditure produces cloud growth"],
+      "positive_signals": ["AWS operating income grows faster than sales"],
+      "negative_signals": ["capital expenditure rises without cloud revenue growth"],
+      "key_risks": ["poor returns on AI infrastructure spending"]
+    },
+    "focus_points": ["AWS margin", "AI capital expenditure returns"],
+    "source_limits": {"filings": 1, "news": 1, "macro": 0},
+    "reference_document_ids": ["amzn-aws-margin", "amzn-ai-capex"],
+    "documents": [
+      {"document_id": "amzn-keyword-noise", "source_type": "SEC_FILING", "source_url": "https://example.com/amzn-noise", "title": "AWS margin and AI capital expenditure questions", "content": "This index page lists frequently searched phrases including AWS margin, cloud growth, artificial intelligence, and capital expenditure. It contains no company results, guidance, or management statements.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "amzn-aws-margin", "source_type": "EARNINGS", "source_url": "https://example.com/amzn-margin", "title": "AWS operating margin expands as operating income outpaces sales", "content": "The segment generated 11.8 billion dollars of operating income compared with 9.2 billion dollars one year earlier. Sales increased 18 percent over the same period, reflecting improved cost efficiency.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "amzn-ai-capex", "source_type": "NEWS", "source_url": "https://example.com/amzn-capex", "title": "Amazon ties AI data-center spending to contracted AWS demand", "content": "Amazon said new AI data-center capital expenditure is backed by multi-year customer contracts. Management expects the added capacity to support AWS cloud revenue growth as facilities enter service.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "amzn-delivery", "source_type": "NEWS", "source_url": "https://example.com/amzn-delivery", "title": "Amazon changes same-day delivery zones", "content": "Amazon adjusted same-day delivery zones in several cities and added weekend delivery windows for household products.", "metadata": {"selection_score": 0.7}}
+    ]
+  },
+  {
+    "case_id": "coin-query-coverage-noise",
+    "ticker": "COIN",
+    "thesis": {
+      "raw_input": "Coinbase needs durable subscription revenue and manageable regulation rather than relying only on volatile trading volume.",
+      "main_thesis": "Coinbase diversifies revenue while regulatory risk becomes manageable",
+      "key_assumptions": ["subscription and services revenue offsets trading cyclicality", "regulatory actions do not restrict core products"],
+      "positive_signals": ["stablecoin and custody revenue grows"],
+      "negative_signals": ["regulators restrict staking or stablecoin products"],
+      "key_risks": ["trading-volume contraction", "enforcement actions"]
+    },
+    "focus_points": ["subscription revenue mix", "staking and stablecoin regulation"],
+    "source_limits": {"filings": 1, "news": 1, "macro": 0},
+    "reference_document_ids": ["coin-subscription", "coin-regulation"],
+    "documents": [
+      {"document_id": "coin-topic-index", "source_type": "NEWS", "source_url": "https://example.com/coin-index", "title": "Coinbase revenue, trading volume and regulation overview", "content": "This page links to articles about Coinbase subscription revenue, trading volume, staking, stablecoins and regulation. It does not report new financial figures or a regulatory decision.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "coin-subscription", "source_type": "EARNINGS", "source_url": "https://example.com/coin-subscription", "title": "Subscription revenue offsets lower transaction activity", "content": "Coinbase subscription and services revenue rose 22 percent as stablecoin and custody income increased, partly offsetting a 15 percent decline in transaction revenue caused by lower trading volume.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "coin-regulation", "source_type": "NEWS", "source_url": "https://example.com/coin-regulation", "title": "Court ruling allows Coinbase staking service to continue", "content": "A federal court rejected the request to halt Coinbase's staking service while litigation continues. The decision permits the core product to remain available but does not resolve the full enforcement case.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "coin-price", "source_type": "NEWS", "source_url": "https://example.com/coin-price", "title": "Coinbase shares track a rise in bitcoin", "content": "Coinbase shares rose during the session as the price of bitcoin moved above a technical level watched by traders.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "coin-office", "source_type": "SEC_FILING", "source_url": "https://example.com/coin-office", "title": "Coinbase subleases office space", "content": "Coinbase entered a short-term agreement to sublease unused office space to another technology company.", "metadata": {"selection_score": 0.7}}
+    ]
+  },
+  {
+    "case_id": "nflx-abstain-from-noise",
+    "ticker": "NFLX",
+    "thesis": {
+      "raw_input": "Netflix can compound earnings if advertising revenue scales without weakening engagement or increasing churn.",
+      "main_thesis": "Advertising expands Netflix earnings while engagement remains healthy",
+      "key_assumptions": ["advertising revenue grows", "viewer engagement remains stable and churn stays controlled"],
+      "positive_signals": ["ad-tier revenue and viewing hours increase"],
+      "negative_signals": ["engagement declines or churn rises"],
+      "key_risks": ["advertising execution"]
+    },
+    "focus_points": ["advertising revenue and engagement metrics"],
+    "source_limits": {"filings": 0, "news": 2, "macro": 0},
+    "reference_document_ids": ["nflx-ad-metrics"],
+    "documents": [
+      {"document_id": "nflx-ad-metrics", "source_type": "NEWS", "source_url": "https://example.com/nflx-ads", "title": "Netflix discloses advertising growth and engagement metrics", "content": "Netflix said advertising revenue more than doubled year over year while monthly active users on the ad tier increased 40 percent. Viewing hours per member were stable and quarterly churn declined slightly.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "nflx-topic-page", "source_type": "NEWS", "source_url": "https://example.com/nflx-topic", "title": "Netflix advertising revenue and engagement archive", "content": "An archive page lists links tagged advertising revenue, engagement, viewing hours and subscriber churn. The page itself contains no reported metrics or company statements.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "nflx-actor", "source_type": "NEWS", "source_url": "https://example.com/nflx-actor", "title": "Actor joins a new Netflix drama", "content": "A television actor joined the cast of a drama scheduled to begin production later this year.", "metadata": {"selection_score": 0.7}},
+      {"document_id": "nflx-price", "source_type": "NEWS", "source_url": "https://example.com/nflx-price", "title": "Netflix shares reach a record", "content": "Netflix shares reached a record during afternoon trading after a brokerage raised its price target.", "metadata": {"selection_score": 0.7}}
+    ]
+  }
+]
