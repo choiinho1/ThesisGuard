@@ -5,11 +5,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
+from agents.graph import ThesisGuardAgent
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.graph import ThesisGuardAgent
 from thesisguard_backend import models as orm
 from thesisguard_backend.db import get_db
 from thesisguard_backend.security import decode_access_token

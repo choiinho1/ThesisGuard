@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     openai_api_key: str | None = None
     google_api_key: str | None = None
+    upstage_api_key: str | None = None
+    rag_enabled: bool = True
+    upstage_embedding_model: str = "solar-embedding-1-large"
+    rag_embedding_timeout_seconds: float = 20
 
     # Optional LLM observability. No data leaves the app unless explicitly
     # enabled and both project keys are configured.

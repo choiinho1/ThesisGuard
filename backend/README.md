@@ -34,8 +34,23 @@ cd backend
 python -m pip install -e ".[dev,llm-openai]"
 ```
 
-`llm-openai` extra는 팀이 다른 LLM provider를 쓰기로 하면 `agent_adapters.create_chat_model()`에 분기를
-추가하고 그에 맞는 extra로 바꾸면 된다.
+LLM provider는 `openai`, `gemini`, `upstage`를 지원한다. Upstage는
+`python -m pip install -e ".[dev,llm-upstage]"` 후 `LLM_PROVIDER=upstage`,
+`LLM_MODEL=solar-pro3`, `UPSTAGE_API_KEY=...`로 설정한다.
+
+Hybrid RAG 임베딩도 같은 `UPSTAGE_API_KEY`를 사용한다. 채팅 모델은 다른 provider를 사용해도
+RAG만 Upstage로 실행할 수 있다.
+
+```dotenv
+# backend/.env
+UPSTAGE_API_KEY=up_발급받은_키
+RAG_ENABLED=true
+UPSTAGE_EMBEDDING_MODEL=solar-embedding-1-large
+RAG_EMBEDDING_TIMEOUT_SECONDS=20
+```
+
+키는 저장소 루트가 아니라 `backend/.env`에 넣고 커밋하지 않는다. 키가 없거나 임베딩 요청이
+실패하면 규칙 기반 문서 선별로 자동 대체되어 분석 자체는 계속된다.
 
 ## 환경 설정
 
@@ -67,8 +82,8 @@ copy .env.example .env
 
 ## DB 준비 & 마이그레이션
 
-PostgreSQL이 필요하다(로컬 설치 또는 Docker). `evidence`/`analysis_results` 등은 pgvector 없이도 동작하며,
-RAG용 Vector Store(ADR-0002)는 별도로 붙인다.
+PostgreSQL이 필요하다(로컬 설치 또는 Docker). `evidence`/`analysis_results`와 라이브 Hybrid RAG는
+pgvector 없이도 동작한다. 과거 문서 전체를 영구 보관·검색하는 Vector Store(ADR-0002)는 별도로 붙인다.
 
 PostgreSQL 없이 로컬 화면과 인증 흐름을 확인하려면 `backend/.env`에
 `DATABASE_URL=sqlite+aiosqlite:///./thesisguard.db`를 사용한다. 이 경우 서버 시작 시 로컬 테이블이
@@ -91,7 +106,18 @@ alembic upgrade head
 uvicorn thesisguard_backend.main:app --reload
 ```
 
-`GET /health`로 살아있는지 확인하고, `/docs`에서 전체 API(OpenAPI)를 바로 확인할 수 있다.
+`GET /health`로 서버와 `rag: enabled|disabled` 상태를 확인하고, `/docs`에서 전체 API(OpenAPI)를
+바로 확인할 수 있다.
+
+RAG 검색 성능은 `backend` 디렉터리에서 Upstage 임베딩과 RAGAS 골든셋으로 확인할 수 있다.
+
+```powershell
+$env:PYTHONPATH="..;src"
+..\.venv\Scripts\python.exe scripts\evaluate_rag.py --fail-below 0.9
+```
+
+Context Precision, Context Recall, MRR, nDCG 중 핵심 검색 지표가 기준 미만이면 종료 코드 1을
+반환하므로 CI 회귀 게이트로도 사용할 수 있다.
 
 ## 빠른 동작 확인 (curl)
 
@@ -140,10 +166,16 @@ C의 `agents/` 패키지는 이미 한 번 구조가 크게 바뀐 적이 있다
   Store(ADR-0002)가 아직 없어서 질문과 의미적으로 관련된 근거만 골라내는 검색이 없다.
 - **주간 요약 발송**(`alert_engine.send_weekly_digest`)은 함수만 있고 스케줄러가 없다. Windows 작업 스케줄러나
   APScheduler로 주 1회 각 사용자에 대해 호출하도록 팀이 정해야 한다.
-- **Vector Store**(ADR-0002, pgvector/Qdrant)는 아직 붙어 있지 않다. 현재 RAG는 SEC EDGAR/뉴스 RSS를
-  매 분석 요청마다 실시간으로 조회하는 방식이라 과거 문서 재사용·유사도 검색은 없다.
+- **라이브 Hybrid RAG**는 붙어 있다. 규칙 필터가 넓게 고른 후보를 청크화하고, 핵심 가정별
+  Multi-query dense retrieval + BM25를 RRF로 합친 뒤 MMR로 중복을 제거한다. 선택 청크의 앞뒤 문맥도
+  함께 Evidence Agent에 전달하고 동일 원문 임베딩은 프로세스 메모리에서 재사용한다.
+- **영구 Vector Store**(ADR-0002, pgvector/Qdrant)는 아직 붙어 있지 않다. 서버 재시작 뒤에도 과거
+  문서와 벡터를 재사용하거나 과거 전체 코퍼스에서 검색하는 기능은 다음 단계다.
 - **News MCP**: 원래 TDD의 MCP Tool 표에는 없었지만 `ResearchTools.get_news()` 계약을 채우기 위해
-  Google News RSS 기반으로 새로 추가했다(`mcp_tools/news.py`).
+  Bing News RSS 우선·Google News RSS 대체 구조로 추가했다(`mcp_tools/news.py`). 검색 시 SEC 정식
+  회사명·티커 기본 검색과 핵심 가정별 검색을 병렬 실행하고, Agent Source Selector가 회사명
+  불일치·최소 관련도 미달 결과를 제외한다. 발행사 본문을 읽을 수 있으면 관련 문단을 사용하고,
+  동적 페이지·차단·유료벽에서는 RSS 설명으로 안전하게 대체한다.
 - `POST /api/portfolios/{id}/rebalance`는 리밸런싱 기록만 남기고, TDD가 언급한 "집중도 변화 분석"은
   자동으로 트리거하지 않는다. 필요하면 리밸런싱 이후 프론트에서 `/analyze`를 각 종목에 대해 호출한다.
 - **`backend/app/`, `backend/mcp_tools/`(레포 최상위 빈 `.gitkeep` 폴더)는 이 백엔드가 쓰는 폴더가
@@ -159,6 +191,11 @@ C의 `agents/` 패키지는 이미 한 번 구조가 크게 바뀐 적이 있다
 API 계약의 기준이며, 이 백엔드의 응답 스키마(`schemas.py`)는 그것과 필드 단위로 맞춰져 있다 —
 `PortfolioDashboard`(대시보드)와 `HoldingAnalysisResponse`(`/analyze` 응답)는 프론트 타입 이름과 키
 이름(`version`, `analysis_result`, `latest_change` 등)까지 그대로 따른다.
+
+대시보드의 `current_weight`는 `보유 수량 × Yahoo 최신 종가`로 평가액을 계산한 뒤 전체
+주식 평가액에서 차지하는 비율로 갱신한다. 주가 조회가 실패한 종목은 평균 매수가를 사용하고,
+주식 비중 합계는 `100 - cash_ratio`가 되도록 계산한다. 갱신된 값은 DB에도 동기화되어 Agent의
+포트폴리오 집중도 분석과 같은 값을 사용한다.
 
 ```powershell
 # 필드셋 대조 + 실제 LangGraph 실행으로 직렬화까지 검증
@@ -199,4 +236,4 @@ LANGFUSE_SAMPLE_RATE=1.0
 이메일 대신 내부 사용자 UUID를 `user_id`로 사용하고, 포트폴리오 단위로 Langfuse 세션을
 묶는다. 모델 프롬프트에는 사용자가 작성한 투자 논리와 수집된 근거가 포함되므로 적절한 데이터
 보존 정책을 사용해야 한다. 트래픽이 많아지면 `LANGFUSE_SAMPLE_RATE`를 `1.0`보다 낮춘다.
-`GET /health`에는 키 대신 `enabled`, `disabled`, `missing_credentials` 상태만 표시된다.
+`GET /health`에는 키 대신 Langfuse 상태와 RAG의 `enabled`/`disabled` 상태만 표시된다.

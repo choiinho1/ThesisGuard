@@ -126,6 +126,15 @@ export function Dashboard() {
         ? await createHoldingThesis(holding.id, rawInput, mode)
         : null;
       const created = { ...holding, thesis };
+      if (mode === "live") {
+        const refreshed = await getPortfolioDashboard(portfolioId, mode);
+        const refreshedHolding = refreshed.holdings.find((item) => item.id === holding.id)
+          ?? created;
+        setDashboard(refreshed);
+        setSelected(refreshedHolding);
+        setAnalysis(null);
+        return;
+      }
       setDashboard((current) => current ? {
         ...current,
         holdings: [created, ...current.holdings],
@@ -181,6 +190,13 @@ export function Dashboard() {
     setError(null);
     try {
       await deletePortfolioHolding(holding.id, mode);
+      if (mode === "live") {
+        const refreshed = await getPortfolioDashboard(holding.portfolio_id, mode);
+        setDashboard(refreshed);
+        setSelected(refreshed.holdings[0] ?? null);
+        setAnalysis(null);
+        return;
+      }
       const remaining = dashboard?.holdings.filter((item) => item.id !== holding.id) ?? [];
       setDashboard((current) => current ? { ...current, holdings: remaining } : current);
       setSelected((selectedHolding) => selectedHolding?.id === holding.id

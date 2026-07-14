@@ -22,6 +22,7 @@ _FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 _FULL_TEXT_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
 
 _cik_cache: dict[str, str] | None = None
+_company_name_cache: dict[str, str] | None = None
 
 
 def _headers() -> dict[str, str]:
@@ -48,8 +49,8 @@ class FilingSearchHit:
 
 
 async def _lookup_cik(ticker: str) -> str | None:
-    global _cik_cache
-    if _cik_cache is None:
+    global _cik_cache, _company_name_cache
+    if _cik_cache is None or _company_name_cache is None:
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.get(_TICKERS_URL, headers=_headers())
             response.raise_for_status()
@@ -57,7 +58,46 @@ async def _lookup_cik(ticker: str) -> str | None:
         _cik_cache = {
             row["ticker"].upper(): str(row["cik_str"]).zfill(10) for row in payload.values()
         }
+        _company_name_cache = {
+            row["ticker"].upper(): str(row.get("title", "")).strip() for row in payload.values()
+        }
     return _cik_cache.get(ticker.upper())
+
+
+async def get_company_name(ticker: str) -> str | None:
+    """Return SEC's canonical registrant name for a ticker."""
+
+    try:
+        await _lookup_cik(ticker)
+        if _company_name_cache is None:
+            return None
+        return _company_name_cache.get(ticker.upper()) or None
+    except (httpx.HTTPError, KeyError, ValueError):
+        return None
+
+
+def _prioritize_filings(records: list[FilingRecord], limit: int) -> list[FilingRecord]:
+    """Prefer one current report of each material form, then fill by recency."""
+
+    if limit <= 0:
+        return []
+    ranked = sorted(records, key=lambda item: item.filed_at or datetime.min, reverse=True)
+    selected: list[FilingRecord] = []
+    selected_accessions: set[str] = set()
+    for form in ("10-Q", "10-K", "8-K"):
+        match = next((item for item in ranked if item.form == form), None)
+        if match is not None:
+            selected.append(match)
+            selected_accessions.add(match.accession_number)
+        if len(selected) >= limit:
+            return selected
+    for item in ranked:
+        if item.accession_number in selected_accessions:
+            continue
+        selected.append(item)
+        if len(selected) >= limit:
+            break
+    return selected
 
 
 async def get_filings(ticker: str, limit: int = 5) -> list[FilingRecord]:
@@ -99,9 +139,7 @@ async def get_filings(ticker: str, limit: int = 5) -> list[FilingRecord]:
                     url=url,
                 )
             )
-            if len(records) >= limit:
-                break
-        return records
+        return _prioritize_filings(records, limit)
     except (httpx.HTTPError, KeyError, ValueError):
         return []
 
