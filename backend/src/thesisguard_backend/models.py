@@ -287,6 +287,13 @@ class Evidence(Base):
     thesis_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("theses.id", ondelete="CASCADE"), nullable=False
     )
+    # Nullable: only set for evidence created alongside a ThesisVersion (i.e.
+    # every /analyze run going forward), so "give me the evidence for the
+    # latest analysis" can filter on it instead of returning everything ever
+    # collected for the thesis. Rows from before this column existed stay NULL.
+    thesis_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), index=True
+    )
     # Text, not String(255): Google News RSS article URLs (used as document_id
     # for NEWS evidence) routinely exceed 255 chars.
     document_id: Mapped[str] = mapped_column(Text, nullable=False)
@@ -320,6 +327,12 @@ class AnalysisResult(Base):
         ForeignKey("portfolios.id", ondelete="CASCADE")
     )
     thesis_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"))
+    # Only set for BULL_BEAR_JUDGE rows (one per holding per analysis run);
+    # THESIS_CONCENTRATION/COMMON_RISK rows are portfolio-wide and have no
+    # single thesis version to attach to, so they stay NULL here too.
+    thesis_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), index=True
+    )
     analysis_type: Mapped[AnalysisType] = mapped_column(
         SAEnum(AnalysisType, name="analysis_type"), nullable=False
     )

@@ -105,6 +105,10 @@ async def analyze_holding(
         snapshot=pre_analysis_snapshot,
     )
     db.add(thesis_version)
+    # thesis_version.id's default=uuid.uuid4 only applies at flush time, so
+    # flush now — before it's read below — or every evidence row's
+    # thesis_version_id ends up NULL.
+    await db.flush()
 
     thesis.confidence_score = result.updated_confidence
     thesis.status = result.updated_status
@@ -112,6 +116,7 @@ async def analyze_holding(
     evidence_rows = [
         orm.Evidence(
             thesis_id=thesis.id,
+            thesis_version_id=thesis_version.id,
             document_id=item.document_id,
             source_type=item.source_type,
             source_url=str(item.source_url) if item.source_url else None,
@@ -129,6 +134,7 @@ async def analyze_holding(
 
     analysis_result = orm.AnalysisResult(
         thesis_id=thesis.id,
+        thesis_version_id=thesis_version.id,
         analysis_type=orm.AnalysisType.BULL_BEAR_JUDGE,
         bull_summary=result.bull_summary,
         bear_summary=result.bear_summary,
@@ -174,6 +180,55 @@ async def analyze_holding(
         thesis=thesis,
         ticker=holding.ticker,
         decision=result.alert_decision,
+    )
+
+    return HoldingAnalysisResponse(
+        thesis=ThesisResponse.model_validate(thesis),
+        version=ThesisVersionResponse.model_validate(thesis_version),
+        evidence=[EvidenceResponse.model_validate(row) for row in evidence_rows],
+        analysis_result=AnalysisResultResponse.model_validate(analysis_result),
+        alert=AlertResponse.model_validate(alert) if alert else None,
+    )
+
+
+@router.get("/api/holdings/{holding_id}/analysis", response_model=HoldingAnalysisResponse)
+async def get_latest_analysis(holding: OwnedHolding, db: DbSession) -> HoldingAnalysisResponse:
+    """The persisted counterpart of POST /analyze's response, so the frontend
+    can restore the last analysis (evidence, bull/bear/judge, changes) after
+    navigating away instead of losing it once the in-memory result is gone."""
+
+    thesis = await db.scalar(select(orm.Thesis).where(orm.Thesis.holding_id == holding.id))
+    if thesis is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "이 종목에는 등록된 투자 논리가 없습니다.")
+
+    thesis_version = await db.scalar(
+        select(orm.ThesisVersion)
+        .where(orm.ThesisVersion.thesis_id == thesis.id)
+        .order_by(orm.ThesisVersion.version_no.desc())
+        .limit(1)
+    )
+    if thesis_version is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "이 종목은 아직 분석된 적이 없습니다.")
+
+    analysis_result = await db.scalar(
+        select(orm.AnalysisResult)
+        .where(
+            orm.AnalysisResult.thesis_id == thesis.id,
+            orm.AnalysisResult.analysis_type == orm.AnalysisType.BULL_BEAR_JUDGE,
+        )
+        .order_by(orm.AnalysisResult.created_at.desc())
+        .limit(1)
+    )
+    evidence_rows = list(
+        await db.scalars(
+            select(orm.Evidence).where(orm.Evidence.thesis_version_id == thesis_version.id)
+        )
+    )
+    alert = await db.scalar(
+        select(orm.Alert)
+        .where(orm.Alert.thesis_id == thesis.id)
+        .order_by(orm.Alert.created_at.desc())
+        .limit(1)
     )
 
     return HoldingAnalysisResponse(
