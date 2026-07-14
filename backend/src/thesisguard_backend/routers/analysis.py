@@ -18,6 +18,12 @@ from thesisguard_backend import models as orm
 from thesisguard_backend.alert_engine import handle_alert_decision
 from thesisguard_backend.deps import Agent, CurrentUser, DbSession, get_owned_portfolio
 from thesisguard_backend.observability import observe_llm_operation
+from thesisguard_backend.portfolio_analysis import (
+    load_portfolio_thesis_holding_ids,
+    matches_portfolio_snapshot,
+    replace_portfolio_analysis_results,
+)
+from thesisguard_backend.portfolio_weights import refresh_current_weights
 from thesisguard_backend.routers.holdings import OwnedHolding
 from thesisguard_backend.schemas import (
     AlertResponse,
@@ -45,6 +51,11 @@ async def analyze_holding(
             status.HTTP_400_BAD_REQUEST, "이 종목에는 아직 등록된 투자 논리가 없습니다."
         )
     portfolio = await db.get(orm.Portfolio, holding.portfolio_id)
+    portfolio_holdings = list(
+        await db.scalars(select(orm.Holding).where(orm.Holding.portfolio_id == portfolio.id))
+    )
+    if await refresh_current_weights(portfolio_holdings, cash_ratio=portfolio.cash_ratio):
+        await db.commit()
 
     with observe_llm_operation(
         "thesisguard.analyze-holding",
@@ -143,30 +154,13 @@ async def analyze_holding(
     )
     db.add(analysis_result)
 
-    for theme in result.concentration.themes:
-        db.add(
-            orm.AnalysisResult(
-                portfolio_id=portfolio.id,
-                analysis_type=orm.AnalysisType.THESIS_CONCENTRATION,
-                concentration_theme=theme.theme,
-                concentration_score=theme.concentration_score,
-                affected_holdings=theme.affected_holdings,
-                raw_result=theme.model_dump(mode="json"),
-            )
-        )
-
-    for risk in result.concentration.common_risks:
-        # CommonRisk has no numeric score, so concentration_theme/-score are
-        # reused as a generic label/[unset] pair rather than adding new columns.
-        db.add(
-            orm.AnalysisResult(
-                portfolio_id=portfolio.id,
-                analysis_type=orm.AnalysisType.COMMON_RISK,
-                concentration_theme=risk.risk,
-                affected_holdings=risk.affected_holdings,
-                raw_result=risk.model_dump(mode="json"),
-            )
-        )
+    portfolio_thesis_holding_ids = await load_portfolio_thesis_holding_ids(db, portfolio.id)
+    await replace_portfolio_analysis_results(
+        db,
+        portfolio_id=portfolio.id,
+        analysis=result.concentration,
+        portfolio_holding_ids=portfolio_thesis_holding_ids,
+    )
 
     await db.commit()
     await db.refresh(thesis)
@@ -252,7 +246,8 @@ async def get_concentration(portfolio: OwnedPortfolio, db: DbSession) -> list[or
         )
         .order_by(orm.AnalysisResult.created_at.desc())
     )
-    return list(result)
+    current_holding_ids = await load_portfolio_thesis_holding_ids(db, portfolio.id)
+    return [row for row in result if matches_portfolio_snapshot(row, current_holding_ids)]
 
 
 @router.get(
@@ -268,7 +263,8 @@ async def get_common_risk(portfolio: OwnedPortfolio, db: DbSession) -> list[orm.
         )
         .order_by(orm.AnalysisResult.created_at.desc())
     )
-    return list(result)
+    current_holding_ids = await load_portfolio_thesis_holding_ids(db, portfolio.id)
+    return [row for row in result if matches_portfolio_snapshot(row, current_holding_ids)]
 
 
 @router.post("/api/portfolios/{portfolio_id}/query", response_model=NaturalLanguageQueryResponse)

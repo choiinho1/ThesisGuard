@@ -90,6 +90,18 @@ export function Dashboard() {
     setMode(nextMode);
   };
 
+  const refreshPortfolioAnalysis = async (portfolioId: string) => {
+    try {
+      const refreshed = await getPortfolioDashboard(portfolioId, mode);
+      setDashboard(refreshed);
+      setSelected((current) => refreshed.holdings.find((item) => item.id === current?.id)
+        ?? refreshed.holdings[0]
+        ?? null);
+    } catch {
+      setError("분석은 완료됐지만 포트폴리오 집중도 화면을 새로고침하지 못했습니다.");
+    }
+  };
+
   const runAnalysis = async () => {
     if (!selected) return;
     const holdingId = selected.id;
@@ -110,6 +122,7 @@ export function Dashboard() {
           : current.recent_alerts,
       } : current);
       if (selectedIdRef.current === holdingId) setAnalysis(result);
+      await refreshPortfolioAnalysis(selected.portfolio_id);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "분석을 실행하지 못했습니다.");
     } finally {
@@ -191,6 +204,7 @@ export function Dashboard() {
           ? { ...item, thesis: result.thesis, latest_change: result.version }
           : item),
       } : current);
+      await refreshPortfolioAnalysis(selected.portfolio_id);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "투자 논리를 수정하지 못했습니다.";
       setError(message);
@@ -288,7 +302,13 @@ export function Dashboard() {
           <AllocationPanel holdings={dashboard.holdings} portfolio={dashboard.portfolio} />
           <HoldingGrid holdings={dashboard.holdings} onDelete={deleteHolding} onLoadMarketSnapshot={(holding) => getHoldingMarketSnapshot(holding.id, holding.ticker, mode)} onSelect={(holding) => { setSelected(holding); setAnalysis(null); }} onUpdatePosition={updatePosition} selectedId={selected?.id ?? null} />
         </div>
-        <InsightPanel alerts={dashboard.recent_alerts} concentration={dashboard.concentration} onDeleteAlert={removeAlert} />
+        <InsightPanel
+          alerts={dashboard.recent_alerts}
+          commonRisks={dashboard.common_risks}
+          concentration={dashboard.concentration}
+          holdings={dashboard.holdings}
+          onDeleteAlert={removeAlert}
+        />
       </div>
       <nav className="workspace-tabs" aria-label="Thesis workspace">
         <button

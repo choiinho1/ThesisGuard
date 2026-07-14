@@ -25,6 +25,7 @@ from agents.models import (
     StructuredThesis,
     ThesisStatus,
 )
+from agents.portfolio_validation import is_absence_label
 from agents.runnable_context import get_model_runnable_config
 from agents.sanitization import normalize_korean_summary, safe_source_snippet, split_source_passages
 
@@ -279,8 +280,11 @@ of a key assumption. Explain the result without investment advice.
         result = await self._invoke(
             PortfolioAnalysis,
             f"""
-Find shared assumptions and common risks across the portfolio. Return only holding IDs
-from the input. Concentration scores will be recalculated by code from actual weights.
+Find shared assumptions and common risks across the portfolio. A concentration theme must
+represent at least one concrete shared assumption affecting two or more holdings. If no such
+theme exists, return an empty themes list; never return placeholders such as "no theme",
+"none", or "테마 없음" as a theme. Apply the same rule to common risks. Return only holding
+IDs from the input. Concentration scores will be recalculated by code from actual weights.
 <portfolio_theses>{_json(portfolio_theses)}</portfolio_theses>
 """.strip(),
         )
@@ -288,12 +292,16 @@ from the input. Concentration scores will be recalculated by code from actual we
         weights = {item.holding_id: item.current_weight for item in portfolio_theses}
         themes = []
         for theme in result.themes:
-            holding_ids = [item for item in theme.affected_holdings if item in allowed]
-            if len(holding_ids) >= 2:
+            holding_ids = list(
+                dict.fromkeys(item for item in theme.affected_holdings if item in allowed)
+            )
+            shared_assumptions = [item.strip() for item in theme.shared_assumptions if item.strip()]
+            if len(holding_ids) >= 2 and shared_assumptions and not is_absence_label(theme.theme):
                 themes.append(
                     theme.model_copy(
                         update={
                             "affected_holdings": holding_ids,
+                            "shared_assumptions": list(dict.fromkeys(shared_assumptions)),
                             "concentration_score": min(
                                 100, sum(weights[item] for item in holding_ids)
                             ),
@@ -302,8 +310,10 @@ from the input. Concentration scores will be recalculated by code from actual we
                 )
         common_risks = []
         for risk in result.common_risks:
-            holding_ids = [item for item in risk.affected_holdings if item in allowed]
-            if len(holding_ids) >= 2:
+            holding_ids = list(
+                dict.fromkeys(item for item in risk.affected_holdings if item in allowed)
+            )
+            if len(holding_ids) >= 2 and not is_absence_label(risk.risk):
                 common_risks.append(
                     risk.model_copy(
                         update={

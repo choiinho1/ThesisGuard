@@ -1,14 +1,44 @@
-import type { Alert, AnalysisResult } from "@/types/schema";
+import type { Alert, AnalysisResult, DashboardHolding } from "@/types/schema";
+
+function resolveAffectedTickers(
+  affectedHoldings: string[] | null | undefined,
+  holdings: DashboardHolding[],
+) {
+  const tickerByHoldingId = new Map(holdings.map((holding) => [holding.id, holding.ticker]));
+  const canonicalTicker = new Map(
+    holdings.map((holding) => [holding.ticker.toUpperCase(), holding.ticker]),
+  );
+
+  return Array.from(new Set(
+    (affectedHoldings ?? []).flatMap((value) => {
+      const ticker = tickerByHoldingId.get(value)
+        ?? canonicalTicker.get(value.toUpperCase());
+      return ticker ? [ticker] : [];
+    }),
+  ));
+}
 
 export function InsightPanel({
   concentration,
+  commonRisks,
   alerts,
   onDeleteAlert,
+  holdings,
 }: {
   concentration: AnalysisResult | null;
+  commonRisks: AnalysisResult[];
   alerts: Alert[];
   onDeleteAlert: (alert: Alert) => Promise<void>;
+  holdings: DashboardHolding[];
 }) {
+  const affectedTickers = resolveAffectedTickers(concentration?.affected_holdings, holdings);
+  const visibleCommonRisks = commonRisks.flatMap((risk) => {
+    const tickers = resolveAffectedTickers(risk.affected_holdings, holdings);
+    return risk.concentration_theme && tickers.length >= 2
+      ? [{ id: risk.id, label: risk.concentration_theme, tickers }]
+      : [];
+  });
+
   return (
     <aside className="insight-column">
       <section className="panel concentration-card">
@@ -21,8 +51,19 @@ export function InsightPanel({
         <h2>{concentration?.concentration_theme ?? "집중 테마 없음"}</h2>
         <p>{concentration?.judge_summary ?? "공통 전제가 감지되지 않았습니다."}</p>
         <div className="ticker-chips">
-          {concentration?.affected_holdings?.map((ticker) => <span key={ticker}>{ticker}</span>)}
+          {affectedTickers.map((ticker) => <span key={ticker}>{ticker}</span>)}
         </div>
+        {visibleCommonRisks.length > 0 && (
+          <div className="common-risk-list">
+            <h3>공통 위험</h3>
+            {visibleCommonRisks.map((risk) => (
+              <article key={risk.id}>
+                <strong>{risk.label}</strong>
+                <span>{risk.tickers.join(" · ")}</span>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="panel alert-card">

@@ -216,6 +216,11 @@ class FailingJudgeModel(FakeAnalysisModel):
         raise RuntimeError("temporary model failure")
 
 
+class FailingPortfolioModel(FakeAnalysisModel):
+    async def analyze_portfolio(self, portfolio_theses: list[PortfolioThesis]) -> PortfolioAnalysis:
+        raise RuntimeError("portfolio model failure")
+
+
 @pytest.mark.asyncio
 async def test_full_workflow_researches_again_and_returns_db_ready_result() -> None:
     tools = FakeResearchTools()
@@ -249,6 +254,19 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
         ("macro", 1),
         ("macro", 2),
     }
+
+
+@pytest.mark.asyncio
+async def test_portfolio_model_failure_is_not_silently_hidden() -> None:
+    agent = ThesisGuardAgent(
+        context_provider=FakeContextProvider(),
+        research_tools=FakeResearchTools(),
+        model=FailingPortfolioModel(),
+        config=WorkflowConfig(max_research_rounds=1, min_grounded_evidence=1),
+    )
+
+    with pytest.raises(RuntimeError, match="portfolio model failure"):
+        await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
 
 @pytest.mark.asyncio
