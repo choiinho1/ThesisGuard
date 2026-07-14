@@ -153,21 +153,32 @@ export function Dashboard() {
     try {
       const holding = await addPortfolioHolding(portfolioId, input, mode);
       const created = { ...holding, thesis: null };
-      if (mode === "live") {
-        const refreshed = await getPortfolioDashboard(portfolioId, mode);
-        const refreshedHolding = refreshed.holdings.find((item) => item.id === holding.id)
-          ?? created;
-        setDashboard(refreshed);
-        setSelected(refreshedHolding);
-        setAnalysis(null);
-        return;
-      }
+
+      // The create request has already succeeded, so reflect it immediately.
+      // A live dashboard refresh enriches weights and aggregate data, but must
+      // not make a successful addition look like a failure if that refresh is
+      // temporarily unavailable.
       setDashboard((current) => current ? {
         ...current,
-        holdings: [created, ...current.holdings],
+        holdings: [created, ...current.holdings.filter((item) => item.id !== created.id)],
       } : current);
       setSelected(created);
       setAnalysis(null);
+
+      if (mode === "live") {
+        void getPortfolioDashboard(portfolioId, mode)
+          .then((refreshed) => {
+            const refreshedHolding = refreshed.holdings.find((item) => item.id === holding.id)
+              ?? created;
+            setDashboard(refreshed);
+            setSelected((current) => current?.id === holding.id ? refreshedHolding : current);
+          })
+          .catch(() => {
+            // Keep the successfully created holding visible. A later dashboard
+            // load will reconcile aggregate data.
+          });
+        return;
+      }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "종목을 추가하지 못했습니다.";
       setError(message);
