@@ -21,6 +21,7 @@ from agents.state import AnalysisState
 
 async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependencies]) -> dict:
     unique_documents: dict[str, SourceDocument] = {}
+    historical_document_ids = set(state.get("evidence_history_document_ids", []))
     if state.get("selected_documents") is not None:
         for document in state["selected_documents"]:
             unique_documents.setdefault(document.document_id, document)
@@ -31,12 +32,29 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
                 unique_documents.setdefault(document.document_id, document)
 
     async def classify(document: SourceDocument) -> EvidenceItem:
+        if document.document_id in historical_document_ids:
+            return EvidenceItem(
+                document_id=document.document_id,
+                source_type=document.source_type,
+                source_url=document.source_url,
+                vector_doc_id=document.vector_doc_id,
+                content_snippet=(
+                    "과거 분석에서 이미 반영된 동일 문서이므로 "
+                    "이번 판단에서 중복 제외했습니다."
+                ),
+                classification=EvidenceClassification.NEUTRAL,
+                impact=EvidenceImpact.LOW,
+                reason="동일 document_id의 과거 근거가 이미 현재 신뢰도에 반영되어 있습니다.",
+                related_assumptions=[],
+                published_at=document.published_at,
+            )
         try:
             assessment = await call_model(
                 runtime.context,
                 runtime.context.model.classify_evidence,
                 state["thesis_snapshot"],
                 document,
+                state.get("evidence_history_summary", ""),
             )
         except Exception as exc:
             assessment = EvidenceAssessment(

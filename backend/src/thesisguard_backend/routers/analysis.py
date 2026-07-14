@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from thesisguard_backend import models as orm
 from thesisguard_backend.alert_engine import handle_alert_decision
 from thesisguard_backend.deps import Agent, CurrentUser, DbSession, get_owned_portfolio
+from thesisguard_backend.evidence_history import refresh_evidence_history_file
 from thesisguard_backend.observability import observe_llm_operation
 from thesisguard_backend.portfolio_analysis import (
     load_portfolio_thesis_holding_ids,
@@ -166,6 +167,7 @@ async def analyze_holding(
     await db.refresh(thesis)
     await db.refresh(thesis_version)
     await db.refresh(analysis_result)
+    await refresh_evidence_history_file(db, holding=holding, thesis=thesis)
 
     alert = await handle_alert_decision(
         db,

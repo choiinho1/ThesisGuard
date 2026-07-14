@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from pathlib import Path
 
 import httpx
 from agents.graph import ThesisGuardAgent
@@ -32,6 +33,7 @@ from sqlalchemy.orm import selectinload
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.config import get_settings
+from thesisguard_backend.evidence_history import refresh_evidence_history_file
 from thesisguard_backend.mcp_tools import macro, market, news, sec
 
 _MAX_FETCHED_DOCUMENT_CHARS = 120_000
@@ -75,8 +77,14 @@ def _structured_thesis_from_orm(thesis: orm.Thesis) -> StructuredThesis:
 class BackendContextProvider:
     """Implements ``agents.contracts.ContextProvider``."""
 
-    def __init__(self, session_factory: async_sessionmaker) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker,
+        *,
+        history_dir: Path | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._history_dir = history_dir
 
     async def load_analysis_context(self, portfolio_id: str, holding_id: str) -> AnalysisContext:
         async with self._session_factory() as session:
@@ -91,6 +99,12 @@ class BackendContextProvider:
                 raise ValueError(f"Holding {holding_id} has no registered thesis yet")
 
             portfolio_theses = await self._load_portfolio_theses(session, portfolio_id)
+            history = await refresh_evidence_history_file(
+                session,
+                holding=holding,
+                thesis=holding.thesis,
+                history_dir=self._history_dir,
+            )
 
             return AnalysisContext(
                 portfolio_id=portfolio_id,
@@ -98,6 +112,8 @@ class BackendContextProvider:
                 ticker=holding.ticker,
                 thesis=_structured_thesis_from_orm(holding.thesis),
                 portfolio_theses=portfolio_theses,
+                evidence_history_summary=history.summary,
+                evidence_history_document_ids=history.document_ids,
             )
 
     async def load_portfolio_theses(self, portfolio_id: str) -> list[PortfolioThesis]:
