@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -75,7 +75,7 @@ def document(document_id: str, source_type: EvidenceSourceType, content: str) ->
         source_url=f"https://example.com/{document_id}",
         title=document_id,
         content=content,
-        published_at=datetime(2026, 7, 12, tzinfo=UTC),
+        published_at=datetime.now(UTC) - timedelta(days=2),
     )
 
 
@@ -103,14 +103,14 @@ class FakeResearchTools:
                 document(
                     "uncertain-news",
                     EvidenceSourceType.NEWS,
-                    "The outlook remains unclear.",
+                    "NVDA AI infrastructure outlook remains unclear.",
                 )
             ]
         return [
             document(
                 "contradict-news",
                 EvidenceSourceType.NEWS,
-                "Major customers reduced CAPEX.",
+                "NVDA major customers reduced CAPEX.",
             )
         ]
 
@@ -124,6 +124,7 @@ class FakeResearchTools:
 class FakeAnalysisModel:
     def __init__(self) -> None:
         self.judge_calls = 0
+        self.classify_calls = 0
 
     async def structure_thesis(self, raw_input: str) -> StructuredThesis:
         return thesis().model_copy(update={"raw_input": raw_input})
@@ -131,6 +132,7 @@ class FakeAnalysisModel:
     async def classify_evidence(
         self, existing_thesis: StructuredThesis, source: SourceDocument
     ) -> EvidenceAssessment:
+        self.classify_calls += 1
         if source.document_id.startswith("support"):
             classification = EvidenceClassification.SUPPORT
             impact = EvidenceImpact.MEDIUM
@@ -143,9 +145,11 @@ class FakeAnalysisModel:
         return EvidenceAssessment(
             classification=classification,
             impact=impact,
+            relevance_score=0.9,
             reason=f"{source.document_id} 분류",
             related_assumptions=[existing_thesis.key_assumptions[0]],
-            content_snippet=source.content,
+            source_excerpt=source.content,
+            content_snippet=f"{source.document_id} 관련 근거 요약입니다.",
         )
 
     async def build_bull_report(
@@ -236,6 +240,7 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
     assert result.alert_decision.delivery == "IMMEDIATE"
     assert result.concentration.has_concentration_risk is True
     assert model.judge_calls == 1
+    assert model.classify_calls == 3
     assert set(tools.calls) == {
         ("filings", 1),
         ("filings", 2),

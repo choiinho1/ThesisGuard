@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.deps import CurrentUser, DbSession, get_owned_portfolio
+from thesisguard_backend.portfolio_weights import refresh_current_weights
 from thesisguard_backend.schemas import (
     AlertResponse,
     AnalysisResultResponse,
@@ -29,9 +30,7 @@ OwnedPortfolio = Annotated[orm.Portfolio, Depends(get_owned_portfolio)]
 
 @router.get("", response_model=list[PortfolioResponse])
 async def list_portfolios(db: DbSession, current_user: CurrentUser) -> list[orm.Portfolio]:
-    result = await db.scalars(
-        select(orm.Portfolio).where(orm.Portfolio.user_id == current_user.id)
-    )
+    result = await db.scalars(select(orm.Portfolio).where(orm.Portfolio.user_id == current_user.id))
     return list(result)
 
 
@@ -72,9 +71,7 @@ async def delete_portfolio(portfolio: OwnedPortfolio, db: DbSession) -> None:
 async def get_dashboard(
     portfolio_id: uuid.UUID, portfolio: OwnedPortfolio, db: DbSession
 ) -> PortfolioDashboardResponse:
-    """Mirrors frontend/types/schema.ts's PortfolioDashboard exactly: the
-    frontend computes allocation/return figures client-side from holdings,
-    so this endpoint returns raw rows rather than server-computed aggregates."""
+    """Return the dashboard with current market-value portfolio weights."""
 
     holdings = list(
         await db.scalars(
@@ -84,6 +81,13 @@ async def get_dashboard(
             .order_by(orm.Holding.created_at)
         )
     )
+    weights_changed = await refresh_current_weights(
+        holdings,
+        cash_ratio=portfolio.cash_ratio,
+    )
+    if weights_changed:
+        await db.commit()
+
     holding_responses = []
     for holding in holdings:
         dashboard_holding = DashboardHoldingResponse.model_validate(holding)

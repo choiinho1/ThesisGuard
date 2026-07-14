@@ -235,7 +235,7 @@ def run_analysis_workflow(portfolio_id: str, holding_id: str) -> ThesisAnalysisR
 | quantity | NUMERIC(18,4) | 보유 수량 |
 | avg_buy_price | NUMERIC(18,4) | 평균 매수가 |
 | target_weight | NUMERIC(5,2) | 목표 비중 % |
-| current_weight | NUMERIC(5,2) | 현재 비중 % (분석 시 갱신) |
+| current_weight | NUMERIC(5,2) | 현재 비중 % (대시보드 조회 시 최신 종가로 갱신) |
 | created_at / updated_at | TIMESTAMPTZ | - |
 
 ### `transactions` — 리밸런싱·매매 히스토리

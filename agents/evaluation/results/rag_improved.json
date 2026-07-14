@@ -1,0 +1,156 @@
+{
+  "summary": {
+    "cases": 9,
+    "context_precision": 1.0,
+    "context_recall": 1.0,
+    "mean_reciprocal_rank": 1.0,
+    "ndcg": 1.0,
+    "hit_rate": 1.0,
+    "mean_latency_ms": 363.8
+  },
+  "cases": [
+    {
+      "case_id": "hood-competition-and-growth",
+      "retrieved_document_ids": [
+        "hood-earnings",
+        "hood-meta-competitor"
+      ],
+      "reference_document_ids": [
+        "hood-earnings",
+        "hood-meta-competitor"
+      ],
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "reciprocal_rank": 1.0,
+      "ndcg": 1.0,
+      "latency_ms": 724.27
+    },
+    {
+      "case_id": "nvda-capex-and-asic-risk",
+      "retrieved_document_ids": [
+        "nvda-asic-news",
+        "nvda-capex-filing"
+      ],
+      "reference_document_ids": [
+        "nvda-capex-filing",
+        "nvda-asic-news"
+      ],
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "reciprocal_rank": 1.0,
+      "ndcg": 1.0,
+      "latency_ms": 275.05
+    },
+    {
+      "case_id": "tsla-margin-and-regulation",
+      "retrieved_document_ids": [
+        "tsla-margin",
+        "tsla-permit"
+      ],
+      "reference_document_ids": [
+        "tsla-margin",
+        "tsla-permit"
+      ],
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "reciprocal_rank": 1.0,
+      "ndcg": 1.0,
+      "latency_ms": 324.89
+    },
+    {
+      "case_id": "lly-demand-supply-and-competition",
+      "retrieved_document_ids": [
+        "lly-capacity",
+        "lly-rival-trial"
+      ],
+      "reference_document_ids": [
+        "lly-capacity",
+        "lly-rival-trial"
+      ],
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "reciprocal_rank": 1.0,
+      "ndcg": 1.0,
+      "latency_ms": 300.73
+    },
+    {
+      "case_id": "aapl-korean-cross-language",
+      "retrieved_document_ids": [
+        "aapl-services",
+        "aapl-china-share"
+      ],
+      "reference_document_ids": [
+        "aapl-services",
+        "aapl-china-share"
+      ],
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "reciprocal_rank": 1.0,
+      "ndcg": 1.0,
+      "latency_ms": 277.31
+    },
+    {
+      "case_id": "jpm-margin-and-credit-cycle",
+      "retrieved_document_ids": [
+        "jpm-credit",
+        "jpm-fed-rate"
+      ],
+      "reference_document_ids": [
+        "jpm-credit",
+        "jpm-fed-rate"
+      ],
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "reciprocal_rank": 1.0,
+      "ndcg": 1.0,
+      "latency_ms": 359.09
+    },
+    {
+      "case_id": "amzn-title-and-hard-negatives",
+      "retrieved_document_ids": [
+        "amzn-ai-capex",
+        "amzn-aws-margin"
+      ],
+      "reference_document_ids": [
+        "amzn-aws-margin",
+        "amzn-ai-capex"
+      ],
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "reciprocal_rank": 1.0,
+      "ndcg": 1.0,
+      "latency_ms": 327.45
+    },
+    {
+      "case_id": "coin-query-coverage-noise",
+      "retrieved_document_ids": [
+        "coin-subscription",
+        "coin-regulation"
+      ],
+      "reference_document_ids": [
+        "coin-subscription",
+        "coin-regulation"
+      ],
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "reciprocal_rank": 1.0,
+      "ndcg": 1.0,
+      "latency_ms": 316.81
+    },
+    {
+      "case_id": "nflx-abstain-from-noise",
+      "retrieved_document_ids": [
+        "nflx-ad-metrics"
+      ],
+      "reference_document_ids": [
+        "nflx-ad-metrics"
+      ],
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "reciprocal_rank": 1.0,
+      "ndcg": 1.0,
+      "latency_ms": 368.6
+    }
+  ],
+  "embedding_model": "solar-embedding-1-large"
+}

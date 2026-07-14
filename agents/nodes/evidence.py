@@ -6,6 +6,7 @@ import asyncio
 
 from langgraph.runtime import Runtime
 
+from agents.evidence_policy import meaningful_directional_evidence
 from agents.models import (
     EvidenceAssessment,
     EvidenceClassification,
@@ -14,16 +15,20 @@ from agents.models import (
     SourceDocument,
 )
 from agents.runtime import AgentDependencies, call_model
-from agents.sanitization import safe_source_snippet, sanitize_source_text
+from agents.sanitization import normalize_korean_summary, safe_source_snippet
 from agents.state import AnalysisState
 
 
 async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependencies]) -> dict:
     unique_documents: dict[str, SourceDocument] = {}
-    research_data = state["research_data"]
-    for key in ("filings", "news", "macro"):
-        for document in research_data[key]:
+    if state.get("selected_documents") is not None:
+        for document in state["selected_documents"]:
             unique_documents.setdefault(document.document_id, document)
+    else:
+        research_data = state["research_data"]
+        for key in ("filings", "news", "macro"):
+            for document in research_data[key]:
+                unique_documents.setdefault(document.document_id, document)
 
     async def classify(document: SourceDocument) -> EvidenceItem:
         try:
@@ -37,18 +42,39 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
             assessment = EvidenceAssessment(
                 classification=EvidenceClassification.UNCERTAIN,
                 impact=EvidenceImpact.LOW,
+                relevance_score=0,
                 reason=f"분류 모델 오류({type(exc).__name__})로 불확실 처리했습니다.",
                 related_assumptions=state["thesis_snapshot"].key_assumptions,
-                content_snippet=safe_source_snippet(
+                source_excerpt=safe_source_snippet(
                     document.content, document.title, max_length=500
                 ),
+                content_snippet="분류 모델 오류로 근거 요약을 생성하지 못했습니다.",
             )
-        cleaned_snippet = sanitize_source_text(assessment.content_snippet, max_length=2000)
-        if not cleaned_snippet:
-            cleaned_snippet = safe_source_snippet(
-                document.content, document.title, max_length=500
+        allowed_assumptions = set(state["thesis_snapshot"].key_assumptions)
+        related_assumptions = [
+            assumption
+            for assumption in assessment.related_assumptions
+            if assumption in allowed_assumptions
+        ]
+        assessment = assessment.model_copy(update={"related_assumptions": related_assumptions})
+        directional = assessment.classification in {
+            EvidenceClassification.SUPPORT,
+            EvidenceClassification.CONTRADICT,
+        }
+        if directional and assessment.relevance_score < runtime.context.config.min_relevance_score:
+            assessment = assessment.model_copy(
+                update={
+                    "classification": EvidenceClassification.NEUTRAL,
+                    "impact": EvidenceImpact.LOW,
+                    "reason": (
+                        f"투자 논리 관련도 {assessment.relevance_score:.2f}로 "
+                        "판정 기준에 미달했습니다."
+                    ),
+                }
             )
-        assessment = assessment.model_copy(update={"content_snippet": cleaned_snippet})
+        assessment = assessment.model_copy(
+            update={"content_snippet": normalize_korean_summary(assessment.content_snippet)}
+        )
         directional = assessment.classification in {
             EvidenceClassification.SUPPORT,
             EvidenceClassification.CONTRADICT,
@@ -74,19 +100,21 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
             published_at=document.published_at,
         )
 
-    evidence = await asyncio.gather(*(classify(doc) for doc in unique_documents.values()))
-    grounded = [
-        item
-        for item in evidence
-        if item.classification
-        in {EvidenceClassification.SUPPORT, EvidenceClassification.CONTRADICT}
+    cached = {item.document_id: item for item in state.get("evidence_list", [])}
+    new_documents = [
+        document for document in unique_documents.values() if document.document_id not in cached
     ]
+    new_evidence = await asyncio.gather(*(classify(doc) for doc in new_documents))
+    cached.update({item.document_id: item for item in new_evidence})
+    evidence = [cached[document_id] for document_id in unique_documents]
+    grounded = meaningful_directional_evidence(evidence)
+    grounded_ids = {item.document_id for item in grounded}
     needs_more = len(grounded) < runtime.context.config.min_grounded_evidence
     focus_points = list(
         dict.fromkeys(
             assumption
             for item in evidence
-            if item.classification == EvidenceClassification.UNCERTAIN
+            if item.document_id not in grounded_ids
             for assumption in item.related_assumptions
         )
     )

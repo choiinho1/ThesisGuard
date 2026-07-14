@@ -71,10 +71,10 @@ class User(Base):
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
-    portfolios: Mapped[list["Portfolio"]] = relationship(
+    portfolios: Mapped[list[Portfolio]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    alerts: Mapped[list["Alert"]] = relationship(
+    alerts: Mapped[list[Alert]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -94,10 +94,10 @@ class Portfolio(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
     user: Mapped[User] = relationship(back_populates="portfolios")
-    holdings: Mapped[list["Holding"]] = relationship(
+    holdings: Mapped[list[Holding]] = relationship(
         back_populates="portfolio", cascade="all, delete-orphan"
     )
-    transactions: Mapped[list["Transaction"]] = relationship(
+    transactions: Mapped[list[Transaction]] = relationship(
         back_populates="portfolio", cascade="all, delete-orphan"
     )
 
@@ -122,7 +122,7 @@ class Holding(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
     portfolio: Mapped[Portfolio] = relationship(back_populates="holdings")
-    thesis: Mapped["Thesis"] = relationship(
+    thesis: Mapped[Thesis] = relationship(
         back_populates="holding", uselist=False, cascade="all, delete-orphan"
     )
 
@@ -167,10 +167,10 @@ class Thesis(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
     holding: Mapped[Holding] = relationship(back_populates="thesis")
-    versions: Mapped[list["ThesisVersion"]] = relationship(
+    versions: Mapped[list[ThesisVersion]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan", order_by="ThesisVersion.version_no"
     )
-    evidence: Mapped[list["Evidence"]] = relationship(
+    evidence: Mapped[list[Evidence]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan"
     )
 

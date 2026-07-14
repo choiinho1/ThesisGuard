@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from langgraph.runtime import Runtime
 
+from agents.evidence_policy import meaningful_directional_evidence
 from agents.models import (
     DebateReport,
-    EvidenceClassification,
     JudgeDecision,
     ThesisStatus,
 )
@@ -19,12 +19,13 @@ def debate_start(_: AnalysisState) -> dict:
 
 
 async def bull_agent(state: AnalysisState, runtime: Runtime[AgentDependencies]) -> dict:
+    evidence = meaningful_directional_evidence(state["evidence_list"])
     try:
         report = await call_model(
             runtime.context,
             runtime.context.model.build_bull_report,
             state["thesis_snapshot"],
-            state["evidence_list"],
+            evidence,
         )
     except Exception:
         report = DebateReport(summary="Bull Agent 응답 실패로 지지 판단을 보류했습니다.")
@@ -36,12 +37,13 @@ async def bull_agent(state: AnalysisState, runtime: Runtime[AgentDependencies]) 
 
 
 async def bear_agent(state: AnalysisState, runtime: Runtime[AgentDependencies]) -> dict:
+    evidence = meaningful_directional_evidence(state["evidence_list"])
     try:
         report = await call_model(
             runtime.context,
             runtime.context.model.build_bear_report,
             state["thesis_snapshot"],
-            state["evidence_list"],
+            evidence,
         )
     except Exception:
         report = DebateReport(summary="Bear Agent 응답 실패로 반박 판단을 보류했습니다.")
@@ -53,12 +55,7 @@ async def bear_agent(state: AnalysisState, runtime: Runtime[AgentDependencies]) 
 
 
 async def judge_agent(state: AnalysisState, runtime: Runtime[AgentDependencies]) -> dict:
-    directional = [
-        item
-        for item in state["evidence_list"]
-        if item.classification
-        in {EvidenceClassification.SUPPORT, EvidenceClassification.CONTRADICT}
-    ]
+    directional = meaningful_directional_evidence(state["evidence_list"])
     thesis = state["thesis_snapshot"]
     if not directional:
         decision = JudgeDecision(
@@ -74,7 +71,7 @@ async def judge_agent(state: AnalysisState, runtime: Runtime[AgentDependencies])
                 runtime.context,
                 runtime.context.model.judge,
                 thesis,
-                state["evidence_list"],
+                directional,
                 state["bull_report_data"],
                 state["bear_report_data"],
             )

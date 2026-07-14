@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from agents.models import AlertDecision
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.models import AlertDecision
 from thesisguard_backend import models as orm
 from thesisguard_backend.email_client import send_email
 

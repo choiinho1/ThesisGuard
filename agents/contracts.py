@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol
 
 from agents.models import (
@@ -35,6 +36,24 @@ class ResearchTools(Protocol):
     async def get_news(self, request: ResearchRequest) -> list[SourceDocument]: ...
 
     async def get_macro(self, request: ResearchRequest) -> list[SourceDocument]: ...
+
+
+class EmbeddingModel(Protocol):
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]: ...
+
+    async def aembed_query(self, text: str) -> list[float]: ...
+
+
+class DocumentRetriever(Protocol):
+    async def select_documents(
+        self,
+        *,
+        ticker: str,
+        thesis: StructuredThesis,
+        focus_points: Sequence[str],
+        documents: Sequence[SourceDocument],
+        source_limits: dict[str, int],
+    ) -> list[SourceDocument]: ...
 
 
 class AnalysisModel(Protocol):

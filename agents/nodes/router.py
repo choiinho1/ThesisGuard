@@ -19,6 +19,7 @@ async def request_router(state: AnalysisState, runtime: Runtime[AgentDependencie
         "ticker": context.ticker,
         "thesis_snapshot": context.thesis,
         "portfolio_theses": context.portfolio_theses,
+        "focus_points": context.thesis.key_assumptions,
     }
 
 
