@@ -10,7 +10,7 @@ export function AddHoldingForm({
   onSubmit,
 }: {
   existingTickers: string[];
-  onSubmit: (input: CreateHoldingInput, rawInput: string) => Promise<void>;
+  onSubmit: (input: CreateHoldingInput) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [ticker, setTicker] = useState("");
@@ -18,24 +18,20 @@ export function AddHoldingForm({
   const [quantity, setQuantity] = useState("");
   const [avgBuyPrice, setAvgBuyPrice] = useState("");
   const [targetWeight, setTargetWeight] = useState("");
-  const [rawInput, setRawInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const normalizedTicker = ticker.trim().toUpperCase();
-  const thesisLength = rawInput.trim().length;
-  const thesisTooShort = thesisLength > 0 && thesisLength < 10;
   const isDuplicateTicker = existingTickers.some(
     (item) => item.trim().toUpperCase() === normalizedTicker,
   );
   const duplicateError = isDuplicateTicker
-    ? `${normalizedTicker}는 이미 이 포트폴리오에 등록되어 있습니다.`
+    ? `${normalizedTicker}은(는) 이미 포트폴리오에 등록되어 있습니다.`
     : null;
   const canSubmit = normalizedTicker.length > 0
     && !isDuplicateTicker
     && Number(targetWeight) >= 0
-    && Number(targetWeight) <= 100
-    && !thesisTooShort;
+    && Number(targetWeight) <= 100;
 
   const reset = () => {
     setTicker("");
@@ -43,7 +39,6 @@ export function AddHoldingForm({
     setQuantity("");
     setAvgBuyPrice("");
     setTargetWeight("");
-    setRawInput("");
     setFormError(null);
   };
 
@@ -53,7 +48,7 @@ export function AddHoldingForm({
         <span className="add-icon">+</span>
         <span>
           <strong>새 종목 추가</strong>
-          <small>티커만 입력해도 바로 시작할 수 있어요</small>
+          <small>종목을 먼저 추가한 뒤 투자 논리를 등록할 수 있습니다</small>
         </span>
         <span className="trigger-shortcut">TICKER →</span>
       </button>
@@ -66,7 +61,7 @@ export function AddHoldingForm({
         <div>
           <span className="section-index">NEW</span>
           <h2>포트폴리오에 종목 추가</h2>
-          <p>티커를 먼저 입력하고, 알고 있는 정보만 채우면 됩니다.</p>
+          <p>종목 정보를 먼저 등록하세요. 투자 논리는 종목 추가 후 별도로 입력합니다.</p>
         </div>
         <button className="close-button" onClick={() => setOpen(false)} type="button" aria-label="종목 추가 닫기">×</button>
       </div>
@@ -99,29 +94,12 @@ export function AddHoldingForm({
         <Field label="목표 비중 (%)" max="100" min="0" placeholder="10" step="0.1" type="number" value={targetWeight} onChange={setTargetWeight} />
       </div>
 
-      <label className="thesis-input-label" htmlFor="quick-thesis">
-        <span>왜 이 종목을 보유하나요?</span>
-        <small>선택 · 지금 적으면 Thesis까지 한 번에 등록됩니다.</small>
-      </label>
-      <textarea
-        id="quick-thesis"
-        onChange={(event) => setRawInput(event.target.value)}
-        placeholder="예: 서비스 매출 성장과 생태계 충성도를 바탕으로 장기 이익이 증가할 것이다."
-        value={rawInput}
-      />
-      <p className={`input-guidance ${thesisTooShort ? "is-error" : ""}`}>
-        {thesisTooShort
-          ? `투자 논리를 등록하려면 ${10 - thesisLength}자를 더 입력하세요.`
-          : thesisLength >= 10
-            ? `투자 논리 ${thesisLength}자 · 종목과 함께 등록됩니다.`
-            : "비워두면 종목만 등록되며, 나중에 해당 종목에서 입력할 수 있습니다."}
-      </p>
       {(duplicateError || formError) && (
         <div className="inline-error">{duplicateError || formError}</div>
       )}
 
       <div className="add-form-actions">
-        <p>{normalizedTicker ? `${normalizedTicker}를 포트폴리오에 추가합니다.` : "티커를 입력해주세요."}</p>
+        <p>{normalizedTicker ? `${normalizedTicker}을(를) 포트폴리오에 추가합니다.` : "티커를 입력해 주세요."}</p>
         <div>
           <button className="secondary-button" onClick={() => { reset(); setOpen(false); }} type="button">취소</button>
           <button
@@ -137,7 +115,7 @@ export function AddHoldingForm({
                   quantity: Number(quantity) || 0,
                   avg_buy_price: Number(avgBuyPrice) || 0,
                   target_weight: Number(targetWeight) || 0,
-                }, rawInput.trim());
+                });
                 reset();
                 setOpen(false);
               } catch (caught) {
@@ -148,7 +126,7 @@ export function AddHoldingForm({
             }}
             type="button"
           >
-            {submitting ? "추가하는 중…" : rawInput.trim() ? "종목 + Thesis 추가" : "종목 추가"}
+            {submitting ? "추가하는 중…" : "종목 추가"}
           </button>
         </div>
       </div>

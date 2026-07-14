@@ -72,6 +72,23 @@ export interface CreateHoldingInput {
   target_weight: number;
 }
 
+export interface UpdateHoldingPositionInput {
+  quantity: number;
+  current_weight: number;
+  target_weight: number;
+}
+
+export interface MarketSnapshot {
+  ticker: string;
+  current_price: number | null;
+  change_pct_30d: number | null;
+  as_of: string | null;
+  day_open: number | null;
+  day_high: number | null;
+  day_low: number | null;
+  volume: number | null;
+}
+
 export interface Thesis {
   id: string;
   holding_id: string;
@@ -103,6 +120,7 @@ export interface ThesisVersion {
 export interface Evidence {
   id: string;
   thesis_id: string;
+  document_id: string;
   source_type: EvidenceSourceType;
   source_url: string | null;
   vector_doc_id: string | null;
@@ -161,4 +179,19 @@ export interface HoldingAnalysisResponse {
   evidence: Evidence[];
   analysis_result: AnalysisResult;
   alert: Alert | null;
+}
+
+export interface HistoryEntry {
+  version: ThesisVersion;
+  analysis_result: AnalysisResult | null;
+  evidence: Evidence[];
+  alert: Alert | null;
+}
+
+export interface HoldingHistoryResponse {
+  holding_id: string;
+  ticker: string;
+  thesis: Thesis;
+  entries: HistoryEntry[];
+  total_count: number;
 }

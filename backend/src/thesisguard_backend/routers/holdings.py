@@ -10,11 +10,13 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from thesisguard_backend import models as orm
+from thesisguard_backend.agent_adapters import get_market_snapshot
 from thesisguard_backend.deps import CurrentUser, DbSession, get_owned_portfolio
 from thesisguard_backend.schemas import (
     HoldingCreateRequest,
     HoldingResponse,
     HoldingUpdateRequest,
+    MarketSnapshotResponse,
     RebalanceRequest,
     TransactionResponse,
 )
@@ -85,6 +87,25 @@ async def update_holding(
     await db.commit()
     await db.refresh(holding)
     return holding
+
+
+@router.get(
+    "/api/holdings/{holding_id}/market-snapshot",
+    response_model=MarketSnapshotResponse,
+)
+async def get_holding_market_snapshot(holding: OwnedHolding) -> MarketSnapshotResponse:
+    snapshot = await get_market_snapshot(holding.ticker)
+    latest = snapshot.latest
+    return MarketSnapshotResponse(
+        ticker=holding.ticker,
+        current_price=latest.close if latest else None,
+        change_pct_30d=snapshot.change_pct_30d,
+        as_of=latest.date.isoformat() if latest else None,
+        day_open=latest.open if latest else None,
+        day_high=latest.high if latest else None,
+        day_low=latest.low if latest else None,
+        volume=latest.volume if latest else None,
+    )
 
 
 @router.delete("/api/holdings/{holding_id}", status_code=status.HTTP_204_NO_CONTENT)
