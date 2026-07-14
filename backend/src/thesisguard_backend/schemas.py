@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, time
 from re import fullmatch
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agents.models import (
     AlertSeverity,
@@ -299,6 +300,15 @@ class AnalysisScheduleRequest(BaseModel):
     enabled: bool = True
     daily_time: time
     timezone: str = "Asia/Seoul"
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            raise ValueError("올바른 IANA 타임존이 아닙니다.") from None
+        return value
 
 
 class AnalysisScheduleResponse(ORMModel):

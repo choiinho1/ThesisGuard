@@ -21,7 +21,17 @@ from agents.models import (
     EvidenceSourceType,
     ThesisStatus,
 )
-from sqlalchemy import JSON, Float, ForeignKey, SmallInteger, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -147,8 +157,15 @@ class AnalysisSchedule(Base):
     daily_time: Mapped[time] = mapped_column(nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Seoul", nullable=False)
     recipient_email: Mapped[str] = mapped_column(String(255), nullable=False)
-    last_run_at: Mapped[datetime | None]
-    next_run_at: Mapped[datetime] = mapped_column(nullable=False, index=True)
+    # DateTime(timezone=True) explicit on every timestamp below: the Mapped[datetime]
+    # default without it infers a naive column, but scheduler.py compares/subtracts
+    # these against tz-aware datetime.now(UTC) — asyncpg rejects that mismatch at
+    # insert/query time (StringData... no, DataError: "can't subtract offset-naive
+    # and offset-aware datetimes"). Caught via real end-to-end testing.
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_run_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
@@ -171,11 +188,13 @@ class ScheduledAnalysisRun(Base):
     holding_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("holdings.id", ondelete="CASCADE"), nullable=False
     )
-    scheduled_for: Mapped[datetime] = mapped_column(nullable=False)
-    started_at: Mapped[datetime | None]
-    completed_at: Mapped[datetime | None]
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[ScheduledRunStatus] = mapped_column(
-        SAEnum(ScheduledRunStatus, name="scheduled_run_status"), nullable=False
+        SAEnum(ScheduledRunStatus, name="scheduled_run_status"),
+        default=ScheduledRunStatus.PENDING,
+        nullable=False,
     )
     thesis_version_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("thesis_versions.id", ondelete="SET NULL")
@@ -268,7 +287,9 @@ class Evidence(Base):
     thesis_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("theses.id", ondelete="CASCADE"), nullable=False
     )
-    document_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Text, not String(255): Google News RSS article URLs (used as document_id
+    # for NEWS evidence) routinely exceed 255 chars.
+    document_id: Mapped[str] = mapped_column(Text, nullable=False)
     source_type: Mapped[EvidenceSourceType] = mapped_column(
         SAEnum(EvidenceSourceType, name="evidence_source_type"), nullable=False
     )
@@ -283,7 +304,9 @@ class Evidence(Base):
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     related_assumptions: Mapped[list[str]] = mapped_column(_json_type(), default=list)
-    published_at: Mapped[datetime | None]
+    # DateTime(timezone=True): agent-supplied values (SEC filing/news pubDate)
+    # are tz-aware; the naive-inferred default made asyncpg reject inserts.
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 
     thesis: Mapped[Thesis] = relationship(back_populates="evidence")
@@ -332,7 +355,7 @@ class Alert(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     is_sent: Mapped[bool] = mapped_column(default=False, nullable=False)
-    sent_at: Mapped[datetime | None]
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 
     user: Mapped[User] = relationship(back_populates="alerts")
