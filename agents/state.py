@@ -42,6 +42,8 @@ class AnalysisState(TypedDict, total=False):
     holding_id: str
     ticker: str
     thesis_snapshot: StructuredThesis
+    evidence_history_summary: str
+    evidence_history_document_ids: list[str]
     research_data: Annotated[ResearchData, merge_research_data]
     selected_documents: list[SourceDocument]
     evidence_list: list[EvidenceItem]

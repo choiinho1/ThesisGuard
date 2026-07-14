@@ -60,15 +60,24 @@ class AnalysisModel(Protocol):
     async def structure_thesis(self, raw_input: str) -> StructuredThesis: ...
 
     async def classify_evidence(
-        self, thesis: StructuredThesis, document: SourceDocument
+        self,
+        thesis: StructuredThesis,
+        document: SourceDocument,
+        evidence_history_summary: str = "",
     ) -> EvidenceAssessment: ...
 
     async def build_bull_report(
-        self, thesis: StructuredThesis, evidence: list[EvidenceItem]
+        self,
+        thesis: StructuredThesis,
+        evidence: list[EvidenceItem],
+        evidence_history_summary: str = "",
     ) -> DebateReport: ...
 
     async def build_bear_report(
-        self, thesis: StructuredThesis, evidence: list[EvidenceItem]
+        self,
+        thesis: StructuredThesis,
+        evidence: list[EvidenceItem],
+        evidence_history_summary: str = "",
     ) -> DebateReport: ...
 
     async def judge(
@@ -77,6 +86,7 @@ class AnalysisModel(Protocol):
         evidence: list[EvidenceItem],
         bull_report: DebateReport,
         bear_report: DebateReport,
+        evidence_history_summary: str = "",
     ) -> JudgeDecision: ...
 
     async def analyze_portfolio(

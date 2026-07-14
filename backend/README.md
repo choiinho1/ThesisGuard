@@ -80,6 +80,15 @@ copy .env.example .env
 `GOOGLE_CLIENT_ID`가 비어 있으면 프론트에서 "Google Client ID를 설정하면 Google 가입을 사용할 수
 있습니다"라는 fallback 버튼이 뜨는 게 정상 동작이다(오류 아님) — 위 단계를 거치면 사라진다.
 
+### 근거 히스토리 파일
+
+서버 시작 시와 종목 분석 완료 후 DB의 과거 근거·판단을 종목별 Markdown으로 갱신한다.
+기본 위치는 `backend/data/evidence_history/{holding_id}.md`이며 소스 관리에는 포함하지 않는다.
+분석 Agent는 이 파일 내용을 종목의 스토리를 이해하는 비점수 문맥으로 전달받는다. 과거 근거는
+현재 신뢰도·상태에 이미 반영된 기준점이므로 다시 점수화하지 않으며, 동일 `document_id`는 현재
+분석에서 중복 제외한다. 저장 위치와 보관할 고유 근거 수는 `EVIDENCE_HISTORY_DIR`,
+`EVIDENCE_HISTORY_MAX_ITEMS`로 조정할 수 있다.
+
 ## DB 준비 & 마이그레이션
 
 PostgreSQL이 필요하다(로컬 설치 또는 Docker). `evidence`/`analysis_results`와 라이브 Hybrid RAG는
