@@ -45,6 +45,30 @@ export function ThesisDetail({
     return () => window.clearTimeout(timer);
   }, [holding.id]);
 
+  useEffect(() => {
+    if (!analysis) return;
+    const automaticallySaved = analysis.evidence.filter(
+      (evidence) => evidence.impact === "HIGH" || evidence.impact === "MEDIUM",
+    );
+    if (automaticallySaved.length === 0) return;
+
+    const timer = window.setTimeout(() => {
+      setSavedEvidence((current) => {
+        const currentIds = new Set(current.map((evidence) => evidence.id));
+        const next = [
+          ...automaticallySaved.filter((evidence) => !currentIds.has(evidence.id)),
+          ...current,
+        ];
+        window.localStorage.setItem(
+          `thesisguard_saved_evidence_${holding.id}`,
+          JSON.stringify(next),
+        );
+        return next;
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [analysis, holding.id]);
+
   const toggleSavedEvidence = (evidence: Evidence) => {
     setSavedEvidence((current) => {
       const exists = current.some((item) => item.id === evidence.id);
@@ -179,7 +203,12 @@ export function ThesisDetail({
               <span className="evidence-count">{visibleEvidence.length}</span>
             </summary>
             <div className="evidence-list scrollable-list" role="region" aria-label="분석 근거 목록" tabIndex={0}>
-              {visibleEvidence.map((evidence) => (
+              {visibleEvidence.map((evidence) => {
+                const isAutomaticallySaved = evidence.impact === "HIGH"
+                  || evidence.impact === "MEDIUM";
+                const isSaved = isAutomaticallySaved
+                  || savedEvidence.some((item) => item.id === evidence.id);
+                return (
                 <article className="evidence-link evidence-link--static" key={evidence.id}>
                   <div className="evidence-meta">
                     <span>{evidence.classification} · {evidence.impact}</span>
@@ -204,19 +233,25 @@ export function ThesisDetail({
                       </a>
                     )}
                     <button
-                      className={savedEvidence.some((item) => item.id === evidence.id)
+                      className={isAutomaticallySaved
+                        ? "evidence-save-button is-saved is-automatic"
+                        : isSaved
                         ? "evidence-save-button is-saved"
                         : "evidence-save-button"}
+                      disabled={isAutomaticallySaved}
                       onClick={() => toggleSavedEvidence(evidence)}
                       type="button"
                     >
-                      {savedEvidence.some((item) => item.id === evidence.id)
+                      {isAutomaticallySaved
+                        ? "자동 저장됨"
+                        : isSaved
                         ? "저장됨"
                         : "주요 근거로 저장"}
                     </button>
                   </div>
                 </article>
-              ))}
+                );
+              })}
               {visibleEvidence.length === 0 && <p className="empty-copy">표시할 주요 근거가 없습니다.</p>}
             </div>
           </details>

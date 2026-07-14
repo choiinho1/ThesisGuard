@@ -12,6 +12,7 @@ interface SavedEvidenceEntry {
 }
 
 interface ConfidenceEntry {
+  holdingId: string;
   ticker: string;
   version: ThesisVersion;
 }
@@ -20,6 +21,15 @@ export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHo
   const [entries, setEntries] = useState<SavedEvidenceEntry[]>([]);
   const [confidenceEntries, setConfidenceEntries] = useState<ConfidenceEntry[]>([]);
   const [loadingConfidence, setLoadingConfidence] = useState(true);
+  const [selectedHoldingId, setSelectedHoldingId] = useState(() => holdings[0]?.id ?? "");
+  const activeHoldingId = holdings.some((holding) => holding.id === selectedHoldingId)
+    ? selectedHoldingId
+    : holdings[0]?.id ?? "";
+  const activeHolding = holdings.find((holding) => holding.id === activeHoldingId) ?? null;
+  const visibleEntries = entries.filter((entry) => entry.holdingId === activeHoldingId);
+  const visibleConfidenceEntries = confidenceEntries.filter(
+    (entry) => entry.holdingId === activeHoldingId,
+  );
 
   useEffect(() => {
     const restored = holdings.flatMap((holding) => {
@@ -47,7 +57,7 @@ export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHo
       const versions = await getThesisHistory(holding.thesis!.id, mode);
       return versions
         .filter((version) => version.confidence_score !== version.snapshot.confidence_score)
-        .map((version) => ({ ticker: holding.ticker, version }));
+        .map((version) => ({ holdingId: holding.id, ticker: holding.ticker, version }));
     })).then((groups) => {
       if (!cancelled) {
         setConfidenceEntries(groups.flat().sort((left, right) =>
@@ -71,8 +81,35 @@ export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHo
     setEntries(nextEntries);
   };
 
+  const removeAllVisibleEntries = () => {
+    if (!activeHolding || visibleEntries.length === 0) return;
+    if (!window.confirm(`${activeHolding.ticker}의 저장 근거를 모두 삭제할까요?`)) return;
+    window.localStorage.removeItem(`thesisguard_saved_evidence_${activeHolding.id}`);
+    setEntries((current) => current.filter((entry) => entry.holdingId !== activeHolding.id));
+  };
+
   return (
     <div className="history-sections">
+    <section className="history-holding-filter" aria-label="History 종목 선택">
+      <div>
+        <span className="kicker">SELECT HOLDING</span>
+        <strong>{activeHolding ? `${activeHolding.ticker} History` : "종목을 선택하세요"}</strong>
+      </div>
+      <div className="history-holding-tabs">
+        {holdings.map((holding) => (
+          <button
+            aria-pressed={holding.id === activeHoldingId}
+            className={holding.id === activeHoldingId ? "is-active" : ""}
+            key={holding.id}
+            onClick={() => setSelectedHoldingId(holding.id)}
+            type="button"
+          >
+            {holding.ticker}
+          </button>
+        ))}
+      </div>
+    </section>
+
     <section className="panel evidence-history-panel">
       <div className="evidence-history-heading">
         <div>
@@ -81,15 +118,15 @@ export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHo
           <h2>Confidence 변경 이력</h2>
           <p>분석으로 점수가 변경된 시점의 판단과 근거를 기록합니다.</p>
         </div>
-        <span className="history-count">{confidenceEntries.length} CHANGES</span>
+        <span className="history-count">{visibleConfidenceEntries.length} CHANGES</span>
       </div>
       {loadingConfidence ? (
         <div className="history-empty"><strong>변경 이력을 불러오는 중…</strong></div>
-      ) : confidenceEntries.length === 0 ? (
-        <div className="history-empty"><strong>아직 confidence 변경 이력이 없습니다.</strong><p>종목을 재분석하면 결과가 여기에 저장됩니다.</p></div>
+      ) : visibleConfidenceEntries.length === 0 ? (
+        <div className="history-empty"><strong>{activeHolding?.ticker ?? "선택 종목"}의 confidence 변경 이력이 없습니다.</strong><p>종목을 재분석하면 결과가 여기에 저장됩니다.</p></div>
       ) : (
         <div className="confidence-history-list scrollable-list" role="region" aria-label="Confidence 변경 이력 목록" tabIndex={0}>
-          {confidenceEntries.map(({ ticker, version }) => (
+          {visibleConfidenceEntries.map(({ ticker, version }) => (
             <article key={version.id}>
               <div className="history-meta">
                 <span className="history-ticker">{ticker}</span>
@@ -116,17 +153,20 @@ export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHo
           <h2>주요 근거 History</h2>
           <p>분석 과정에서 직접 저장한 근거만 시간순으로 모았습니다.</p>
         </div>
-        <span className="history-count">{entries.length} SAVED</span>
+        <div className="history-heading-actions">
+          <span className="history-count">{visibleEntries.length} SAVED</span>
+          <button disabled={visibleEntries.length === 0} onClick={removeAllVisibleEntries} type="button">전체 삭제</button>
+        </div>
       </div>
 
-      {entries.length === 0 ? (
+      {visibleEntries.length === 0 ? (
         <div className="history-empty">
-          <strong>아직 저장한 근거가 없습니다.</strong>
+          <strong>{activeHolding?.ticker ?? "선택 종목"}에 저장한 근거가 없습니다.</strong>
           <p>Main의 분석 결과에서 `주요 근거로 저장`을 선택해 보세요.</p>
         </div>
       ) : (
         <div className="evidence-history-list scrollable-list" role="region" aria-label="저장 근거 이력 목록" tabIndex={0}>
-          {entries.map((entry) => (
+          {visibleEntries.map((entry) => (
             <article key={`${entry.holdingId}-${entry.evidence.id}`}>
               <div className="history-meta">
                 <span className="history-ticker">{entry.ticker}</span>
