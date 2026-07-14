@@ -5,10 +5,13 @@ import type {
   DashboardHolding,
   Evidence,
   HoldingAnalysisResponse,
+  HoldingHistoryResponse,
+  MarketSnapshot,
   Portfolio,
   PortfolioDashboard,
   Thesis,
   ThesisVersion,
+  UpdateHoldingPositionInput,
 } from "@/types/schema";
 
 const now = "2026-07-13T02:00:00Z";
@@ -189,6 +192,54 @@ export function removeMockHolding(holdingId: string): void {
   };
 }
 
+export function updateMockHoldingWeight(
+  holdingId: string,
+  currentWeight: number,
+): DashboardHolding {
+  const holding = dashboardState.holdings.find((item) => item.id === holdingId);
+  if (!holding) throw new Error("수정할 보유 종목을 찾을 수 없습니다.");
+  const updated = {
+    ...holding,
+    current_weight: currentWeight,
+    updated_at: new Date().toISOString(),
+  };
+  dashboardState = {
+    ...dashboardState,
+    holdings: dashboardState.holdings.map((item) => item.id === holdingId ? updated : item),
+  };
+  return structuredClone(updated);
+}
+
+export function updateMockHoldingPosition(
+  holdingId: string,
+  input: UpdateHoldingPositionInput,
+): DashboardHolding {
+  const holding = dashboardState.holdings.find((item) => item.id === holdingId);
+  if (!holding) throw new Error("수정할 보유 종목을 찾을 수 없습니다.");
+  const updated = { ...holding, ...input, updated_at: new Date().toISOString() };
+  dashboardState = {
+    ...dashboardState,
+    holdings: dashboardState.holdings.map((item) => item.id === holdingId ? updated : item),
+  };
+  return structuredClone(updated);
+}
+
+const mockPrices: Record<string, number> = { NVDA: 171.32, AVGO: 291.48, TSM: 246.15 };
+
+export function getMockMarketSnapshot(ticker: string): MarketSnapshot {
+  const currentPrice = mockPrices[ticker] ?? 100;
+  return {
+    ticker,
+    current_price: currentPrice,
+    change_pct_30d: ticker === "AVGO" ? -2.4 : 6.8,
+    as_of: new Date().toISOString().slice(0, 10),
+    day_open: currentPrice * 0.99,
+    day_high: currentPrice * 1.018,
+    day_low: currentPrice * 0.982,
+    volume: 42_810_000,
+  };
+}
+
 export function createMockThesis(holdingId: string, rawInput: string): Thesis {
   const holding = dashboardState.holdings.find((item) => item.id === holdingId);
   if (!holding) throw new Error("보유 종목을 찾을 수 없습니다.");
@@ -264,6 +315,7 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
     {
       id: crypto.randomUUID(),
       thesis_id: updatedThesis.id,
+      document_id: "earnings-mock-001",
       source_type: "EARNINGS",
       source_url: "https://example.com/earnings",
       vector_doc_id: "earnings-mock-001",
@@ -289,18 +341,43 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
     raw_result: { observation_points: version.observation_points },
     created_at: updatedThesis.updated_at,
   };
+  const alert: Alert = {
+    id: crypto.randomUUID(),
+    user_id: userId,
+    portfolio_id: dashboardState.portfolio.id,
+    thesis_id: updatedThesis.id,
+    severity: "MAJOR",
+    title: `[MAJOR] ${holding.ticker} 투자 논리 변동 감지`,
+    message: `${version.change_reason} 등록된 이메일로 변경 요약과 근거 링크를 발송했습니다.`,
+    is_sent: true,
+    sent_at: updatedThesis.updated_at,
+    created_at: updatedThesis.updated_at,
+  };
 
   dashboardState = {
     ...dashboardState,
     holdings: dashboardState.holdings.map((item) =>
       item.id === holdingId ? { ...item, thesis: updatedThesis, latest_change: version } : item,
     ),
+    recent_alerts: [alert, ...dashboardState.recent_alerts],
   };
   return structuredClone({
     thesis: updatedThesis,
     version,
     evidence,
     analysis_result: analysisResult,
-    alert: null,
+    alert,
   });
+}
+
+export function getMockHoldingHistory(holdingId: string): HoldingHistoryResponse {
+  const holding = dashboardState.holdings.find((item) => item.id === holdingId);
+  if (!holding?.thesis) throw new Error("투자 논리가 등록된 종목만 History를 조회할 수 있습니다.");
+  return {
+    holding_id: holding.id,
+    ticker: holding.ticker,
+    thesis: structuredClone(holding.thesis),
+    entries: [],
+    total_count: 0,
+  };
 }

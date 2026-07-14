@@ -6,6 +6,7 @@ import { AllocationPanel } from "@/components/AllocationPanel";
 import { HoldingGrid } from "@/components/HoldingGrid";
 import { InsightPanel } from "@/components/InsightPanel";
 import { PortfolioHeader } from "@/components/PortfolioHeader";
+import { SavedEvidenceHistory } from "@/components/SavedEvidenceHistory";
 import { ThesisDetail } from "@/components/ThesisDetail";
 import {
   analyzeHolding,
@@ -13,27 +14,36 @@ import {
   createHoldingThesis,
   deletePortfolioHolding,
   getPortfolioDashboard,
+  getHoldingMarketSnapshot,
   listPortfolios,
   setApiMode,
+  updateHoldingPosition,
   updateHoldingThesis,
 } from "@/lib/apiClient";
+import { getMockDashboard } from "@/lib/mockData";
 import type {
   ApiMode,
   CreateHoldingInput,
   DashboardHolding,
   HoldingAnalysisResponse,
   PortfolioDashboard,
+  UpdateHoldingPositionInput,
 } from "@/types/schema";
 
 export function Dashboard() {
+  const initialMockDashboard = getMockDashboard();
   const [mode, setMode] = useState<ApiMode>("mock");
-  const [dashboard, setDashboard] = useState<PortfolioDashboard | null>(null);
-  const [selected, setSelected] = useState<DashboardHolding | null>(null);
+  const [dashboard, setDashboard] = useState<PortfolioDashboard | null>(initialMockDashboard);
+  const [selected, setSelected] = useState<DashboardHolding | null>(
+    initialMockDashboard.holdings[0] ?? null,
+  );
   const [analysis, setAnalysis] = useState<HoldingAnalysisResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<"main" | "history">("main");
   const selectedIdRef = useRef<string | null>(null);
+  const skippedInitialMockLoadRef = useRef(false);
 
   useEffect(() => {
     selectedIdRef.current = selected?.id ?? null;
@@ -61,8 +71,11 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (mode === "mock" && !skippedInitialMockLoadRef.current) {
+      skippedInitialMockLoadRef.current = true;
+      return;
+    }
     // API 모드가 외부 데이터 소스를 결정하므로 모드 변경 때 화면 상태를 다시 동기화한다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadDashboard(mode);
   }, [loadDashboard, mode]);
 
@@ -91,6 +104,9 @@ export function Dashboard() {
         holdings: current.holdings.map((item) => item.id === holdingId
           ? { ...item, thesis: result.thesis, latest_change: result.version }
           : item),
+        recent_alerts: result.alert
+          ? [result.alert, ...current.recent_alerts.filter((item) => item.id !== result.alert?.id)]
+          : current.recent_alerts,
       } : current);
       if (selectedIdRef.current === holdingId) setAnalysis(result);
     } catch (caught) {
@@ -116,16 +132,13 @@ export function Dashboard() {
     }
   };
 
-  const addHolding = async (input: CreateHoldingInput, rawInput: string) => {
+  const addHolding = async (input: CreateHoldingInput) => {
     const portfolioId = dashboard?.portfolio.id;
     if (!portfolioId) return;
     setError(null);
     try {
       const holding = await addPortfolioHolding(portfolioId, input, mode);
-      const thesis = rawInput.length >= 10
-        ? await createHoldingThesis(holding.id, rawInput, mode)
-        : null;
-      const created = { ...holding, thesis };
+      const created = { ...holding, thesis: null };
       if (mode === "live") {
         const refreshed = await getPortfolioDashboard(portfolioId, mode);
         const refreshedHolding = refreshed.holdings.find((item) => item.id === holding.id)
@@ -210,6 +223,41 @@ export function Dashboard() {
     }
   };
 
+  const updatePosition = async (
+    holding: DashboardHolding,
+    input: UpdateHoldingPositionInput,
+  ) => {
+    setError(null);
+    try {
+      const updated = await updateHoldingPosition(holding.id, input, mode);
+      setDashboard((current) => current ? {
+        ...current,
+        holdings: current.holdings.map((item) => item.id === holding.id
+          ? {
+              ...item,
+              quantity: updated.quantity,
+              current_weight: updated.current_weight,
+              target_weight: updated.target_weight,
+              updated_at: updated.updated_at,
+            }
+          : item),
+      } : current);
+      setSelected((current) => current?.id === holding.id
+        ? {
+            ...current,
+            quantity: updated.quantity,
+            current_weight: updated.current_weight,
+            target_weight: updated.target_weight,
+            updated_at: updated.updated_at,
+          }
+        : current);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "수량과 비중을 수정하지 못했습니다.";
+      setError(message);
+      throw new Error(message);
+    }
+  };
+
   if (loading && !dashboard) return <main className="loading-screen">ThesisGuard 데이터를 불러오는 중…</main>;
   if (!dashboard) return <main className="loading-screen error-screen">{error ?? "대시보드를 표시할 수 없습니다."}</main>;
 
@@ -224,11 +272,30 @@ export function Dashboard() {
       <div className="dashboard-grid">
         <div className="main-column">
           <AllocationPanel holdings={dashboard.holdings} portfolio={dashboard.portfolio} />
-          <HoldingGrid holdings={dashboard.holdings} onDelete={deleteHolding} onSelect={(holding) => { setSelected(holding); setAnalysis(null); }} selectedId={selected?.id ?? null} />
+          <HoldingGrid holdings={dashboard.holdings} onDelete={deleteHolding} onLoadMarketSnapshot={(holding) => getHoldingMarketSnapshot(holding.id, holding.ticker, mode)} onSelect={(holding) => { setSelected(holding); setAnalysis(null); }} onUpdatePosition={updatePosition} selectedId={selected?.id ?? null} />
         </div>
         <InsightPanel alerts={dashboard.recent_alerts} concentration={dashboard.concentration} />
       </div>
-      {selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} analysisEstimateSeconds={mode === "mock" ? 2 : 60} holding={selected} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
+      <nav className="workspace-tabs" aria-label="Thesis workspace">
+        <button
+          aria-current={activeSection === "main" ? "page" : undefined}
+          className={activeSection === "main" ? "is-active" : ""}
+          onClick={() => setActiveSection("main")}
+          type="button"
+        >
+          Main
+        </button>
+        <button
+          aria-current={activeSection === "history" ? "page" : undefined}
+          className={activeSection === "history" ? "is-active" : ""}
+          onClick={() => setActiveSection("history")}
+          type="button"
+        >
+          History
+        </button>
+      </nav>
+      {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} analysisEstimateSeconds={mode === "mock" ? 2 : 60} holding={selected} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
+      {activeSection === "history" && <SavedEvidenceHistory holdings={dashboard.holdings} />}
       <footer>
         <span>THESISGUARD</span>
         <span>Evidence-led. Explainable. No investment advice.</span>

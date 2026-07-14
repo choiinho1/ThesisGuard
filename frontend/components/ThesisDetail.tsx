@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
-import type { DashboardHolding, HoldingAnalysisResponse } from "@/types/schema";
+import type { DashboardHolding, Evidence, HoldingAnalysisResponse } from "@/types/schema";
 
 interface ThesisDetailProps {
   holding: DashboardHolding;
@@ -28,11 +28,38 @@ export function ThesisDetail({
   const [editing, setEditing] = useState(false);
   const [editInput, setEditInput] = useState(holding.thesis?.raw_input ?? "");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [savedEvidence, setSavedEvidence] = useState<Evidence[]>([]);
   const thesis = analysis?.thesis ?? holding.thesis;
   const thesisLength = rawInput.trim().length;
   const visibleEvidence = analysis?.evidence.filter(
     (evidence) => evidence.classification !== "NEUTRAL" || evidence.impact !== "LOW",
   ) ?? [];
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(`thesisguard_saved_evidence_${holding.id}`);
+    let restored: Evidence[] = [];
+    try {
+      restored = stored ? JSON.parse(stored) as Evidence[] : [];
+    } catch {
+      restored = [];
+    }
+    const timer = window.setTimeout(() => setSavedEvidence(restored), 0);
+    return () => window.clearTimeout(timer);
+  }, [holding.id]);
+
+  const toggleSavedEvidence = (evidence: Evidence) => {
+    setSavedEvidence((current) => {
+      const exists = current.some((item) => item.id === evidence.id);
+      const next = exists
+        ? current.filter((item) => item.id !== evidence.id)
+        : [evidence, ...current];
+      window.localStorage.setItem(
+        `thesisguard_saved_evidence_${holding.id}`,
+        JSON.stringify(next),
+      );
+      return next;
+    });
+  };
 
   if (!thesis) {
     return (
@@ -167,16 +194,29 @@ export function ThesisDetail({
                     )}
                   </div>
                   <p>{evidence.content_snippet}</p>
-                  {evidence.source_url && (
-                    <a
-                      className="evidence-source-link"
-                      href={evidence.source_url}
-                      rel="noreferrer"
-                      target="_blank"
+                  <div className="evidence-actions">
+                    {evidence.source_url && (
+                      <a
+                        className="evidence-source-link"
+                        href={evidence.source_url}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        원문 보기 ↗
+                      </a>
+                    )}
+                    <button
+                      className={savedEvidence.some((item) => item.id === evidence.id)
+                        ? "evidence-save-button is-saved"
+                        : "evidence-save-button"}
+                      onClick={() => toggleSavedEvidence(evidence)}
+                      type="button"
                     >
-                      원문 보기 ↗
-                    </a>
-                  )}
+                      {savedEvidence.some((item) => item.id === evidence.id)
+                        ? "저장됨"
+                        : "주요 근거로 저장"}
+                    </button>
+                  </div>
                 </article>
               ))}
               {visibleEvidence.length === 0 && <p className="empty-copy">표시할 주요 근거가 없습니다.</p>}

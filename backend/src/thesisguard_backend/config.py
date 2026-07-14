@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     smtp_from_email: str = "alerts@thesisguard.local"
     smtp_use_tls: bool = True
     email_dry_run: bool = True
+    scheduler_enabled: bool = True
+    scheduler_poll_seconds: int = 60
 
 
 @lru_cache

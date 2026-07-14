@@ -5,16 +5,28 @@ Run locally with: ``uvicorn thesisguard_backend.main:app --reload``
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from agents.graph import configure_agent
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from thesisguard_backend.agent_adapters import build_default_agent
+from thesisguard_backend.config import get_settings
 from thesisguard_backend.db import initialize_local_database, session_factory
 from thesisguard_backend.observability import langfuse_status, shutdown_langfuse
-from thesisguard_backend.routers import alerts, analysis, auth, holdings, portfolios, theses
+from thesisguard_backend.routers import (
+    alerts,
+    analysis,
+    analysis_schedules,
+    auth,
+    holdings,
+    market,
+    portfolios,
+    theses,
+)
+from thesisguard_backend.scheduler import scheduler_loop
 
 
 @asynccontextmanager
@@ -29,9 +41,16 @@ async def lifespan(app: FastAPI):
     agent = build_default_agent(session_factory)
     configure_agent(agent)
     app.state.agent = agent
+    scheduler_task = None
+    if get_settings().scheduler_enabled:
+        scheduler_task = asyncio.create_task(scheduler_loop())
     try:
         yield
     finally:
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await scheduler_task
         shutdown_langfuse()
 
 
@@ -54,6 +73,8 @@ app.include_router(holdings.router)
 app.include_router(theses.router)
 app.include_router(analysis.router)
 app.include_router(alerts.router)
+app.include_router(analysis_schedules.router)
+app.include_router(market.router)
 
 
 @app.get("/health", tags=["health"])

@@ -9,8 +9,9 @@ feature/fe-schema-alignment) — keep the two in sync when either changes.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time
 from re import fullmatch
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agents.models import (
     AlertSeverity,
@@ -122,6 +123,28 @@ class HoldingResponse(ORMModel):
     updated_at: datetime
 
 
+class MarketSnapshotResponse(BaseModel):
+    ticker: str
+    current_price: float | None
+    change_pct_30d: float | None
+    as_of: str | None
+    day_open: float | None
+    day_high: float | None
+    day_low: float | None
+    volume: int | None
+
+
+# -------------------------------------------------------- Market Quote ----
+class MarketQuoteResponse(BaseModel):
+    ticker: str
+    as_of: date
+    price: float
+    day_high: float
+    day_low: float
+    volume: int
+    change_pct_30d: float | None
+
+
 # ------------------------------------------------------- Rebalancing ----
 class RebalanceHoldingInput(BaseModel):
     holding_id: uuid.UUID
@@ -201,6 +224,7 @@ class EvidenceResponse(ORMModel):
     reason: str
     related_assumptions: list[str]
     published_at: datetime | None
+    created_at: datetime
 
 
 # ------------------------------------------------- Analysis / Concentration
@@ -281,3 +305,46 @@ class HoldingAnalysisResponse(BaseModel):
     evidence: list[EvidenceResponse]
     analysis_result: AnalysisResultResponse
     alert: AlertResponse | None
+
+
+class AnalysisScheduleRequest(BaseModel):
+    enabled: bool = True
+    daily_time: time
+    timezone: str = "Asia/Seoul"
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            raise ValueError("올바른 IANA 타임존이 아닙니다.") from None
+        return value
+
+
+class AnalysisScheduleResponse(ORMModel):
+    id: uuid.UUID
+    holding_id: uuid.UUID
+    ticker: str
+    enabled: bool
+    daily_time: time
+    timezone: str
+    recipient_email: EmailStr
+    last_run_at: datetime | None
+    last_run_status: str | None
+    next_run_at: datetime
+
+
+class ScheduledAnalysisRunResponse(ORMModel):
+    id: uuid.UUID
+    schedule_id: uuid.UUID
+    holding_id: uuid.UUID
+    scheduled_for: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    status: str
+    thesis_version_id: uuid.UUID | None
+    alert_id: uuid.UUID | None
+    email_sent: bool
+    retry_count: int
+    error_message: str | None
