@@ -115,10 +115,30 @@ curl -X POST localhost:8000/api/holdings/$HID/thesis -H "Authorization: Bearer $
 # 분석 실행 (C 워크플로 호출 — OPENAI_API_KEY 필요)
 curl -X POST localhost:8000/api/holdings/$HID/analyze -H "Authorization: Bearer $TOKEN"
 
+# 저장된 마지막 분석 결과 다시 조회 (새로고침/화면 전환 후에도 evidence·judge·changes 복원)
+curl localhost:8000/api/holdings/$HID/analysis -H "Authorization: Bearer $TOKEN"
+
 # 자연어 질의 (evidence는 최신 50건을 그대로 넘김 — 아래 "알려진 한계" 참고)
 curl -X POST localhost:8000/api/portfolios/$PID/query -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" -d '{"question":"내 포트폴리오에서 가장 위험한 종목은?"}'
 ```
+
+## 분석 결과 재조회 (`GET /api/holdings/{id}/analysis`)
+
+`POST /analyze`의 응답(`HoldingAnalysisResponse`: thesis/version/evidence/analysis_result/alert)은 그
+호출 한 번의 응답으로만 프론트에 전달됐다 — 프론트가 그 결과를 로컬 state로만 들고 있어서 화면을
+벗어났다 돌아오면 사라지고 다시 분석해야 하는 문제가 있었다. 이 GET 엔드포인트가 DB에 저장된 마지막
+분석 결과를 동일한 모양으로 다시 돌려준다.
+
+- **`Evidence.thesis_version_id`**: evidence는 분석할 때마다 계속 쌓이기만 하므로(과거 회차 evidence가
+  안 지워짐), 이 컬럼 없이는 "최신 분석의 근거만" 골라낼 방법이 없었다. `/analyze`가 `ThesisVersion`을
+  만들 때 그 버전의 evidence에 `thesis_version_id`를 같이 채운다.
+- **주의**: `thesis_version.id`의 `default=uuid.uuid4`는 **flush 시점에만** 채워진다. `db.add(thesis_version)`
+  직후 곧바로 `.id`를 읽으면 `None`이라 evidence의 `thesis_version_id`가 전부 NULL로 저장되는 버그가
+  실제로 있었다 — `db.add()` 다음에 반드시 `await db.flush()`를 먼저 하고 `.id`를 읽을 것
+  (`tests/test_analysis.py`가 이 회귀를 커버한다).
+- 기존 evidence 행(이 컬럼이 생기기 전 데이터)은 `thesis_version_id`가 NULL로 남아있고 어느 분석
+  회차 것인지 복원할 수 없다 — 새로 분석해야 다음부터 정상적으로 연결된다.
 
 ## agents/ 쪽 계약이 바뀌면 항상 확인할 것
 
