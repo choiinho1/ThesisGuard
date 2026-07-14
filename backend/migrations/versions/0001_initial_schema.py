@@ -18,6 +18,10 @@ down_revision: str | None = None
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 
+# create_type=False on every enum: upgrade()/downgrade() create and drop these
+# types explicitly (see the loops below), so op.create_table() must not also
+# try to auto-create them on first use — that double-create is what raises
+# asyncpg.DuplicateObjectError on a fresh database.
 thesis_status = postgresql.ENUM(
     "STRONGLY_STRENGTHENED",
     "STRENGTHENED",
@@ -26,21 +30,31 @@ thesis_status = postgresql.ENUM(
     "STRONGLY_WEAKENED",
     "BROKEN",
     name="thesis_status",
+    create_type=False,
 )
-alert_severity = postgresql.ENUM("CRITICAL", "MAJOR", "MINOR", "NONE", name="alert_severity")
-alert_delivery = postgresql.ENUM("IMMEDIATE", "WEEKLY", "NONE", name="alert_delivery")
+alert_severity = postgresql.ENUM(
+    "CRITICAL", "MAJOR", "MINOR", "NONE", name="alert_severity", create_type=False
+)
+alert_delivery = postgresql.ENUM(
+    "IMMEDIATE", "WEEKLY", "NONE", name="alert_delivery", create_type=False
+)
 evidence_classification = postgresql.ENUM(
-    "SUPPORT", "CONTRADICT", "NEUTRAL", "UNCERTAIN", name="evidence_classification"
+    "SUPPORT", "CONTRADICT", "NEUTRAL", "UNCERTAIN",
+    name="evidence_classification", create_type=False,
 )
-evidence_impact = postgresql.ENUM("HIGH", "MEDIUM", "LOW", name="evidence_impact")
+evidence_impact = postgresql.ENUM(
+    "HIGH", "MEDIUM", "LOW", name="evidence_impact", create_type=False
+)
 evidence_source_type = postgresql.ENUM(
-    "SEC_FILING", "IR", "EARNINGS", "NEWS", "MACRO", name="evidence_source_type"
+    "SEC_FILING", "IR", "EARNINGS", "NEWS", "MACRO",
+    name="evidence_source_type", create_type=False,
 )
 transaction_type = postgresql.ENUM(
-    "BUY", "SELL", "REBALANCE", "CASH_ADJUST", name="transaction_type"
+    "BUY", "SELL", "REBALANCE", "CASH_ADJUST", name="transaction_type", create_type=False
 )
 analysis_type = postgresql.ENUM(
-    "BULL_BEAR_JUDGE", "THESIS_CONCENTRATION", "COMMON_RISK", name="analysis_type"
+    "BULL_BEAR_JUDGE", "THESIS_CONCENTRATION", "COMMON_RISK",
+    name="analysis_type", create_type=False,
 )
 
 
