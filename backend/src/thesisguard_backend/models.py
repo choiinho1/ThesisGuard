@@ -256,6 +256,12 @@ class AnalysisResult(Base):
         ForeignKey("portfolios.id", ondelete="CASCADE")
     )
     thesis_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"))
+    # Only set for BULL_BEAR_JUDGE rows (one per holding per analysis run);
+    # THESIS_CONCENTRATION/COMMON_RISK rows are portfolio-wide and have no
+    # single thesis version to attach to, so they stay NULL here too.
+    thesis_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), index=True
+    )
     analysis_type: Mapped[AnalysisType] = mapped_column(
         SAEnum(AnalysisType, name="analysis_type"), nullable=False
     )

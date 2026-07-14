@@ -134,6 +134,7 @@ async def analyze_holding(
 
     analysis_result = orm.AnalysisResult(
         thesis_id=thesis.id,
+        thesis_version_id=thesis_version.id,
         analysis_type=orm.AnalysisType.BULL_BEAR_JUDGE,
         bull_summary=result.bull_summary,
         bear_summary=result.bear_summary,
