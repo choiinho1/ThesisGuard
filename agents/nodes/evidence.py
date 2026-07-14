@@ -14,6 +14,7 @@ from agents.models import (
     SourceDocument,
 )
 from agents.runtime import AgentDependencies, call_model
+from agents.sanitization import safe_source_snippet, sanitize_source_text
 from agents.state import AnalysisState
 
 
@@ -38,8 +39,16 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
                 impact=EvidenceImpact.LOW,
                 reason=f"분류 모델 오류({type(exc).__name__})로 불확실 처리했습니다.",
                 related_assumptions=state["thesis_snapshot"].key_assumptions,
-                content_snippet=document.content[:500],
+                content_snippet=safe_source_snippet(
+                    document.content, document.title, max_length=500
+                ),
             )
+        cleaned_snippet = sanitize_source_text(assessment.content_snippet, max_length=2000)
+        if not cleaned_snippet:
+            cleaned_snippet = safe_source_snippet(
+                document.content, document.title, max_length=500
+            )
+        assessment = assessment.model_copy(update={"content_snippet": cleaned_snippet})
         directional = assessment.classification in {
             EvidenceClassification.SUPPORT,
             EvidenceClassification.CONTRADICT,

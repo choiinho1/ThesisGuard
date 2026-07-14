@@ -23,6 +23,7 @@ from agents.models import (
     StructuredThesis,
     ThesisStatus,
 )
+from agents.sanitization import safe_source_snippet, sanitize_source_text
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
@@ -97,16 +98,19 @@ content:
 </source_document>
 """.strip(),
         )
-        if result.content_snippet not in document.content:
+        cleaned_snippet = sanitize_source_text(result.content_snippet, max_length=2000)
+        if result.content_snippet not in document.content or not cleaned_snippet:
             return result.model_copy(
                 update={
                     "classification": EvidenceClassification.UNCERTAIN,
                     "impact": EvidenceImpact.LOW,
                     "reason": "원문에서 인용문을 검증할 수 없어 불확실 처리했습니다.",
-                    "content_snippet": document.content[:500],
+                    "content_snippet": safe_source_snippet(
+                        document.content, document.title, max_length=500
+                    ),
                 }
             )
-        return result
+        return result.model_copy(update={"content_snippet": cleaned_snippet})
 
     async def build_bull_report(
         self, thesis: StructuredThesis, evidence: list[EvidenceItem]
