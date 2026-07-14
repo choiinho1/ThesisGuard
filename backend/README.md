@@ -167,3 +167,36 @@ PYTHONPATH="..;src" ../.venv/Scripts/python.exe scripts/check_fe_schema_compat.p
 
 `frontend/types/schema.ts`가 바뀌면 `check_fe_schema_compat.py`의 `FRONTEND_INTERFACES` 딕셔너리를 그
 타입 정의에 맞춰 고치고 다시 실행해서 확인한다.
+
+## Langfuse LLM 디버깅
+
+Langfuse에서 프로젝트를 만든 뒤 프로젝트 키를 `backend/.env`에 넣는다. Secret Key는 채팅에
+붙여 넣거나 Git에 커밋하지 않는다.
+
+```dotenv
+LANGFUSE_ENABLED=true
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+LANGFUSE_TRACING_ENVIRONMENT=development
+LANGFUSE_SAMPLE_RATE=1.0
+```
+
+셀프 호스팅한 Langfuse를 사용한다면 `LANGFUSE_BASE_URL`만 해당 인스턴스 주소로 바꾼다.
+`backend` 디렉터리에서 연결 상태를 확인할 수 있다.
+
+```powershell
+..\.venv\Scripts\python.exe scripts\check_langfuse.py
+```
+
+백엔드는 다음 LLM 진입점을 추적한다.
+
+- `thesisguard.structure-thesis`: 자연어 투자 논리 구조화
+- `thesisguard.analyze-holding`: 리서치, 근거 분류, Bull/Bear/Judge를 포함한 전체 LangGraph
+  노드 트리와 모델 프롬프트/응답, 토큰, 지연시간, 오류
+- `thesisguard.portfolio-query`: 포트폴리오 질의와 근거 프롬프트
+
+이메일 대신 내부 사용자 UUID를 `user_id`로 사용하고, 포트폴리오 단위로 Langfuse 세션을
+묶는다. 모델 프롬프트에는 사용자가 작성한 투자 논리와 수집된 근거가 포함되므로 적절한 데이터
+보존 정책을 사용해야 한다. 트래픽이 많아지면 `LANGFUSE_SAMPLE_RATE`를 `1.0`보다 낮춘다.
+`GET /health`에는 키 대신 `enabled`, `disabled`, `missing_credentials` 상태만 표시된다.

@@ -13,13 +13,6 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Uuid
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Float, ForeignKey, SmallInteger, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
-
 from agents.models import (
     AlertSeverity,
     AnalysisType,
@@ -28,6 +21,12 @@ from agents.models import (
     EvidenceSourceType,
     ThesisStatus,
 )
+from sqlalchemy import JSON, Float, ForeignKey, SmallInteger, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
+
 from thesisguard_backend.db import Base
 
 
@@ -72,15 +71,21 @@ class User(Base):
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
-    portfolios: Mapped[list["Portfolio"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    alerts: Mapped[list["Alert"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    portfolios: Mapped[list["Portfolio"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    alerts: Mapped[list["Alert"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Portfolio(Base):
     __tablename__ = "portfolios"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     investment_purpose: Mapped[str | None] = mapped_column(Text)
     investment_horizon: Mapped[str | None] = mapped_column(String(60))
@@ -89,15 +94,24 @@ class Portfolio(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
     user: Mapped[User] = relationship(back_populates="portfolios")
-    holdings: Mapped[list["Holding"]] = relationship(back_populates="portfolio", cascade="all, delete-orphan")
-    transactions: Mapped[list["Transaction"]] = relationship(back_populates="portfolio", cascade="all, delete-orphan")
+    holdings: Mapped[list["Holding"]] = relationship(
+        back_populates="portfolio", cascade="all, delete-orphan"
+    )
+    transactions: Mapped[list["Transaction"]] = relationship(
+        back_populates="portfolio", cascade="all, delete-orphan"
+    )
 
 
 class Holding(Base):
     __tablename__ = "holdings"
+    __table_args__ = (
+        UniqueConstraint("portfolio_id", "ticker", name="uq_holdings_portfolio_ticker"),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    portfolio_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False)
+    portfolio_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False
+    )
     ticker: Mapped[str] = mapped_column(String(10), nullable=False)
     company_name: Mapped[str | None] = mapped_column(String(120))
     quantity: Mapped[float] = mapped_column(Float, default=0)
@@ -108,15 +122,21 @@ class Holding(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
     portfolio: Mapped[Portfolio] = relationship(back_populates="holdings")
-    thesis: Mapped["Thesis"] = relationship(back_populates="holding", uselist=False, cascade="all, delete-orphan")
+    thesis: Mapped["Thesis"] = relationship(
+        back_populates="holding", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class Transaction(Base):
     __tablename__ = "transactions"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    portfolio_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False)
-    type: Mapped[TransactionType] = mapped_column(SAEnum(TransactionType, name="transaction_type"), nullable=False)
+    portfolio_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False
+    )
+    type: Mapped[TransactionType] = mapped_column(
+        SAEnum(TransactionType, name="transaction_type"), nullable=False
+    )
     before_snapshot: Mapped[dict] = mapped_column(_json_type(), default=dict)
     after_snapshot: Mapped[dict] = mapped_column(_json_type(), default=dict)
     note: Mapped[str | None] = mapped_column(Text)
@@ -130,7 +150,9 @@ class Thesis(Base):
     __table_args__ = (UniqueConstraint("holding_id", name="uq_theses_holding_id"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    holding_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("holdings.id", ondelete="CASCADE"), nullable=False)
+    holding_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("holdings.id", ondelete="CASCADE"), nullable=False
+    )
     raw_input: Mapped[str] = mapped_column(Text, nullable=False)
     main_thesis: Mapped[str] = mapped_column(Text, nullable=False)
     key_assumptions: Mapped[list[str]] = mapped_column(_json_type(), default=list)
@@ -148,18 +170,26 @@ class Thesis(Base):
     versions: Mapped[list["ThesisVersion"]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan", order_by="ThesisVersion.version_no"
     )
-    evidence: Mapped[list["Evidence"]] = relationship(back_populates="thesis", cascade="all, delete-orphan")
+    evidence: Mapped[list["Evidence"]] = relationship(
+        back_populates="thesis", cascade="all, delete-orphan"
+    )
 
 
 class ThesisVersion(Base):
     __tablename__ = "thesis_versions"
-    __table_args__ = (UniqueConstraint("thesis_id", "version_no", name="uq_thesis_versions_thesis_version"),)
+    __table_args__ = (
+        UniqueConstraint("thesis_id", "version_no", name="uq_thesis_versions_thesis_version"),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    thesis_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), nullable=False)
+    thesis_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("theses.id", ondelete="CASCADE"), nullable=False
+    )
     version_no: Mapped[int] = mapped_column(nullable=False)
     confidence_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    status: Mapped[ThesisStatus] = mapped_column(SAEnum(ThesisStatus, name="thesis_status"), nullable=False)
+    status: Mapped[ThesisStatus] = mapped_column(
+        SAEnum(ThesisStatus, name="thesis_status"), nullable=False
+    )
     change_reason: Mapped[str] = mapped_column(Text, nullable=False)
     conflicting_assumptions: Mapped[list[str]] = mapped_column(_json_type(), default=list)
     observation_points: Mapped[list[str]] = mapped_column(_json_type(), default=list)
@@ -173,7 +203,9 @@ class Evidence(Base):
     __tablename__ = "evidence"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    thesis_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), nullable=False)
+    thesis_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("theses.id", ondelete="CASCADE"), nullable=False
+    )
     document_id: Mapped[str] = mapped_column(String(255), nullable=False)
     source_type: Mapped[EvidenceSourceType] = mapped_column(
         SAEnum(EvidenceSourceType, name="evidence_source_type"), nullable=False
@@ -199,9 +231,13 @@ class AnalysisResult(Base):
     __tablename__ = "analysis_results"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    portfolio_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"))
+    portfolio_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("portfolios.id", ondelete="CASCADE")
+    )
     thesis_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"))
-    analysis_type: Mapped[AnalysisType] = mapped_column(SAEnum(AnalysisType, name="analysis_type"), nullable=False)
+    analysis_type: Mapped[AnalysisType] = mapped_column(
+        SAEnum(AnalysisType, name="analysis_type"), nullable=False
+    )
     bull_summary: Mapped[str | None] = mapped_column(Text)
     bear_summary: Mapped[str | None] = mapped_column(Text)
     judge_summary: Mapped[str | None] = mapped_column(Text)
@@ -216,11 +252,21 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    portfolio_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False)
-    thesis_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("theses.id", ondelete="SET NULL"))
-    severity: Mapped[AlertSeverity] = mapped_column(SAEnum(AlertSeverity, name="alert_severity"), nullable=False)
-    delivery: Mapped[AlertDelivery] = mapped_column(SAEnum(AlertDelivery, name="alert_delivery"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    portfolio_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False
+    )
+    thesis_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("theses.id", ondelete="SET NULL")
+    )
+    severity: Mapped[AlertSeverity] = mapped_column(
+        SAEnum(AlertSeverity, name="alert_severity"), nullable=False
+    )
+    delivery: Mapped[AlertDelivery] = mapped_column(
+        SAEnum(AlertDelivery, name="alert_delivery"), nullable=False
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     is_sent: Mapped[bool] = mapped_column(default=False, nullable=False)

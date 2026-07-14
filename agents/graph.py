@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Coroutine
 from typing import Any, Literal, TypeVar
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from agents.contracts import AnalysisModel, ContextProvider, ResearchTools
@@ -29,6 +30,7 @@ from agents.nodes.macro_agent import macro_agent
 from agents.nodes.news_agent import news_agent
 from agents.nodes.portfolio import portfolio_agent
 from agents.nodes.router import prepare_research, request_router
+from agents.runnable_context import use_model_runnable_config
 from agents.runtime import AgentDependencies, WorkflowConfig, call_model
 from agents.state import AnalysisState, empty_research_data
 
@@ -101,8 +103,16 @@ class ThesisGuardAgent:
         self.graph = build_analysis_graph(self.config)
 
     async def arun_analysis_workflow(
-        self, portfolio_id: str, holding_id: str
+        self,
+        portfolio_id: str,
+        holding_id: str,
+        *,
+        runnable_config: RunnableConfig | None = None,
     ) -> ThesisAnalysisResult:
+        graph_config: RunnableConfig = {
+            **(runnable_config or {}),
+            "recursion_limit": 30,
+        }
         final_state = await self.graph.ainvoke(
             {
                 "portfolio_id": portfolio_id,
@@ -113,45 +123,76 @@ class ThesisGuardAgent:
                 "source_errors": [],
             },
             context=self.dependencies,
-            config={"recursion_limit": 30},
+            config=graph_config,
         )
         return final_state["result"]
 
-    def run_analysis_workflow(self, portfolio_id: str, holding_id: str) -> ThesisAnalysisResult:
-        return _run_sync(self.arun_analysis_workflow(portfolio_id, holding_id))
-
-    async def astructure_thesis(self, raw_input: str) -> StructuredThesis:
-        return await call_model(
-            self.dependencies, self.dependencies.model.structure_thesis, raw_input
+    def run_analysis_workflow(
+        self,
+        portfolio_id: str,
+        holding_id: str,
+        *,
+        runnable_config: RunnableConfig | None = None,
+    ) -> ThesisAnalysisResult:
+        return _run_sync(
+            self.arun_analysis_workflow(portfolio_id, holding_id, runnable_config=runnable_config)
         )
 
-    def structure_thesis(self, raw_input: str) -> StructuredThesis:
-        return _run_sync(self.astructure_thesis(raw_input))
+    async def astructure_thesis(
+        self,
+        raw_input: str,
+        *,
+        runnable_config: RunnableConfig | None = None,
+    ) -> StructuredThesis:
+        with use_model_runnable_config(runnable_config):
+            return await call_model(
+                self.dependencies, self.dependencies.model.structure_thesis, raw_input
+            )
+
+    def structure_thesis(
+        self,
+        raw_input: str,
+        *,
+        runnable_config: RunnableConfig | None = None,
+    ) -> StructuredThesis:
+        return _run_sync(self.astructure_thesis(raw_input, runnable_config=runnable_config))
 
     async def aanswer_portfolio_query(
         self,
         portfolio_id: str,
         question: str,
         evidence: list[EvidenceItem] | None = None,
+        *,
+        runnable_config: RunnableConfig | None = None,
     ) -> PortfolioQueryAnswer:
         portfolio_theses = await self.dependencies.context_provider.load_portfolio_theses(
             portfolio_id
         )
-        return await call_model(
-            self.dependencies,
-            self.dependencies.model.answer_portfolio_query,
-            question,
-            portfolio_theses,
-            evidence or [],
-        )
+        with use_model_runnable_config(runnable_config):
+            return await call_model(
+                self.dependencies,
+                self.dependencies.model.answer_portfolio_query,
+                question,
+                portfolio_theses,
+                evidence or [],
+            )
 
     def answer_portfolio_query(
         self,
         portfolio_id: str,
         question: str,
         evidence: list[EvidenceItem] | None = None,
+        *,
+        runnable_config: RunnableConfig | None = None,
     ) -> PortfolioQueryAnswer:
-        return _run_sync(self.aanswer_portfolio_query(portfolio_id, question, evidence))
+        return _run_sync(
+            self.aanswer_portfolio_query(
+                portfolio_id,
+                question,
+                evidence,
+                runnable_config=runnable_config,
+            )
+        )
 
 
 def _run_sync(coroutine: Coroutine[Any, Any, ResultT]) -> ResultT:
@@ -177,11 +218,23 @@ def _agent() -> ThesisGuardAgent:
     return _default_agent
 
 
-def run_analysis_workflow(portfolio_id: str, holding_id: str) -> ThesisAnalysisResult:
+def run_analysis_workflow(
+    portfolio_id: str,
+    holding_id: str,
+    *,
+    runnable_config: RunnableConfig | None = None,
+) -> ThesisAnalysisResult:
     """Team-guide contract imported directly by Backend(B)."""
 
-    return _agent().run_analysis_workflow(portfolio_id, holding_id)
+    return _agent().run_analysis_workflow(portfolio_id, holding_id, runnable_config=runnable_config)
 
 
-async def arun_analysis_workflow(portfolio_id: str, holding_id: str) -> ThesisAnalysisResult:
-    return await _agent().arun_analysis_workflow(portfolio_id, holding_id)
+async def arun_analysis_workflow(
+    portfolio_id: str,
+    holding_id: str,
+    *,
+    runnable_config: RunnableConfig | None = None,
+) -> ThesisAnalysisResult:
+    return await _agent().arun_analysis_workflow(
+        portfolio_id, holding_id, runnable_config=runnable_config
+    )

@@ -26,6 +26,16 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     google_api_key: str | None = None
 
+    # Optional LLM observability. No data leaves the app unless explicitly
+    # enabled and both project keys are configured.
+    langfuse_enabled: bool = False
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+    langfuse_tracing_environment: str = "development"
+    langfuse_sample_rate: float = 1.0
+    langfuse_debug: bool = False
+
     sec_user_agent: str = "ThesisGuard PBL Team <you@example.com>"
     fred_base_url: str = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 

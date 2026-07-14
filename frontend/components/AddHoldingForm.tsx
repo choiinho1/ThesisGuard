@@ -6,8 +6,10 @@ import type { CreateHoldingInput } from "@/types/schema";
 const examples = ["AAPL", "MSFT", "AMZN", "GOOGL"];
 
 export function AddHoldingForm({
+  existingTickers,
   onSubmit,
 }: {
+  existingTickers: string[];
   onSubmit: (input: CreateHoldingInput, rawInput: string) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -23,7 +25,14 @@ export function AddHoldingForm({
   const normalizedTicker = ticker.trim().toUpperCase();
   const thesisLength = rawInput.trim().length;
   const thesisTooShort = thesisLength > 0 && thesisLength < 10;
+  const isDuplicateTicker = existingTickers.some(
+    (item) => item.trim().toUpperCase() === normalizedTicker,
+  );
+  const duplicateError = isDuplicateTicker
+    ? `${normalizedTicker}는 이미 이 포트폴리오에 등록되어 있습니다.`
+    : null;
   const canSubmit = normalizedTicker.length > 0
+    && !isDuplicateTicker
     && Number(targetWeight) >= 0
     && Number(targetWeight) <= 100
     && !thesisTooShort;
@@ -107,7 +116,9 @@ export function AddHoldingForm({
             ? `투자 논리 ${thesisLength}자 · 종목과 함께 등록됩니다.`
             : "비워두면 종목만 등록되며, 나중에 해당 종목에서 입력할 수 있습니다."}
       </p>
-      {formError && <div className="inline-error">{formError}</div>}
+      {(duplicateError || formError) && (
+        <div className="inline-error">{duplicateError || formError}</div>
+      )}
 
       <div className="add-form-actions">
         <p>{normalizedTicker ? `${normalizedTicker}를 포트폴리오에 추가합니다.` : "티커를 입력해주세요."}</p>
