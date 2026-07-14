@@ -140,6 +140,7 @@ class ThesisCreateRequest(BaseModel):
 
 
 class ThesisUpdateRequest(BaseModel):
+    raw_input: str | None = Field(default=None, min_length=10)
     main_thesis: str | None = Field(default=None, min_length=5)
     key_assumptions: list[str] | None = None
     positive_signals: list[str] | None = None

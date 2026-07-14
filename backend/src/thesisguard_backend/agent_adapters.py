@@ -26,6 +26,7 @@ from agents.models import (
     SourceDocument,
     StructuredThesis,
 )
+from agents.sanitization import sanitize_source_text
 from thesisguard_backend import models as orm
 from thesisguard_backend.config import get_settings
 from thesisguard_backend.mcp_tools import macro, market, news, sec
@@ -130,8 +131,8 @@ class BackendResearchTools:
                 document_id=item.url,
                 source_type=EvidenceSourceType.NEWS,
                 source_url=item.url,
-                title=item.title,
-                content=item.summary or item.title,
+                title=sanitize_source_text(item.title),
+                content=sanitize_source_text(item.summary or item.title),
                 published_at=item.published_at,
                 metadata={"source": item.source},
             )

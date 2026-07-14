@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AddHoldingForm } from "@/components/AddHoldingForm";
 import { AllocationPanel } from "@/components/AllocationPanel";
 import { HoldingGrid } from "@/components/HoldingGrid";
@@ -11,9 +11,11 @@ import {
   analyzeHolding,
   addPortfolioHolding,
   createHoldingThesis,
+  deletePortfolioHolding,
   getPortfolioDashboard,
   listPortfolios,
   setApiMode,
+  updateHoldingThesis,
 } from "@/lib/apiClient";
 import type {
   ApiMode,
@@ -31,6 +33,11 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    selectedIdRef.current = selected?.id ?? null;
+  }, [selected]);
 
   const loadDashboard = useCallback(async (nextMode: ApiMode) => {
     await Promise.resolve();
@@ -71,18 +78,21 @@ export function Dashboard() {
 
   const runAnalysis = async () => {
     if (!selected) return;
+    const holdingId = selected.id;
     setAnalyzing(true);
     setError(null);
     try {
-      const result = await analyzeHolding(selected.id, mode);
-      setAnalysis(result);
-      setSelected((current) => current ? { ...current, thesis: result.thesis, latest_change: result.version } : current);
+      const result = await analyzeHolding(holdingId, mode);
+      setSelected((current) => current?.id === holdingId
+        ? { ...current, thesis: result.thesis, latest_change: result.version }
+        : current);
       setDashboard((current) => current ? {
         ...current,
-        holdings: current.holdings.map((item) => item.id === selected.id
+        holdings: current.holdings.map((item) => item.id === holdingId
           ? { ...item, thesis: result.thesis, latest_change: result.version }
           : item),
       } : current);
+      if (selectedIdRef.current === holdingId) setAnalysis(result);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "분석을 실행하지 못했습니다.");
     } finally {
@@ -92,13 +102,14 @@ export function Dashboard() {
 
   const registerThesis = async (rawInput: string) => {
     if (!selected) return;
+    const holdingId = selected.id;
     setError(null);
     try {
-      const thesis = await createHoldingThesis(selected.id, rawInput, mode);
-      setSelected((current) => current ? { ...current, thesis } : current);
+      const thesis = await createHoldingThesis(holdingId, rawInput, mode);
+      setSelected((current) => current?.id === holdingId ? { ...current, thesis } : current);
       setDashboard((current) => current ? {
         ...current,
-        holdings: current.holdings.map((item) => item.id === selected.id ? { ...item, thesis } : item),
+        holdings: current.holdings.map((item) => item.id === holdingId ? { ...item, thesis } : item),
       } : current);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Thesis를 등록하지 못했습니다.");
@@ -128,6 +139,61 @@ export function Dashboard() {
     }
   };
 
+  const updateThesisAndAnalyze = async (rawInput: string) => {
+    if (!selected?.thesis) return;
+    const holdingId = selected.id;
+    const thesisId = selected.thesis.id;
+    setAnalyzing(true);
+    setError(null);
+    try {
+      const updatedThesis = await updateHoldingThesis(thesisId, rawInput, mode);
+      setSelected((current) => current?.id === holdingId
+        ? { ...current, thesis: updatedThesis }
+        : current);
+      setDashboard((current) => current ? {
+        ...current,
+        holdings: current.holdings.map((item) => item.id === holdingId
+          ? { ...item, thesis: updatedThesis }
+          : item),
+      } : current);
+
+      const result = await analyzeHolding(holdingId, mode);
+      if (selectedIdRef.current === holdingId) setAnalysis(result);
+      setSelected((current) => current?.id === holdingId
+        ? { ...current, thesis: result.thesis, latest_change: result.version }
+        : current);
+      setDashboard((current) => current ? {
+        ...current,
+        holdings: current.holdings.map((item) => item.id === holdingId
+          ? { ...item, thesis: result.thesis, latest_change: result.version }
+          : item),
+      } : current);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "투자 논리를 수정하지 못했습니다.";
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const deleteHolding = async (holding: DashboardHolding) => {
+    setError(null);
+    try {
+      await deletePortfolioHolding(holding.id, mode);
+      const remaining = dashboard?.holdings.filter((item) => item.id !== holding.id) ?? [];
+      setDashboard((current) => current ? { ...current, holdings: remaining } : current);
+      setSelected((selectedHolding) => selectedHolding?.id === holding.id
+        ? remaining[0] ?? null
+        : selectedHolding);
+      setAnalysis(null);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "보유 종목을 삭제하지 못했습니다.";
+      setError(message);
+      throw new Error(message);
+    }
+  };
+
   if (loading && !dashboard) return <main className="loading-screen">ThesisGuard 데이터를 불러오는 중…</main>;
   if (!dashboard) return <main className="loading-screen error-screen">{error ?? "대시보드를 표시할 수 없습니다."}</main>;
 
@@ -139,11 +205,11 @@ export function Dashboard() {
       <div className="dashboard-grid">
         <div className="main-column">
           <AllocationPanel holdings={dashboard.holdings} portfolio={dashboard.portfolio} />
-          <HoldingGrid holdings={dashboard.holdings} onSelect={(holding) => { setSelected(holding); setAnalysis(null); }} selectedId={selected?.id ?? null} />
+          <HoldingGrid holdings={dashboard.holdings} onDelete={deleteHolding} onSelect={(holding) => { setSelected(holding); setAnalysis(null); }} selectedId={selected?.id ?? null} />
         </div>
         <InsightPanel alerts={dashboard.recent_alerts} concentration={dashboard.concentration} />
       </div>
-      {selected && <ThesisDetail analysis={analysis} analyzing={analyzing} holding={selected} onAnalyze={runAnalysis} onRegister={registerThesis} />}
+      {selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} analysisEstimateSeconds={mode === "mock" ? 2 : 60} holding={selected} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
       <footer>
         <span>THESISGUARD</span>
         <span>Evidence-led. Explainable. No investment advice.</span>

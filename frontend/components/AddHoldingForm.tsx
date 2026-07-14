@@ -21,7 +21,12 @@ export function AddHoldingForm({
   const [formError, setFormError] = useState<string | null>(null);
 
   const normalizedTicker = ticker.trim().toUpperCase();
-  const canSubmit = normalizedTicker.length > 0 && Number(targetWeight) >= 0 && Number(targetWeight) <= 100;
+  const thesisLength = rawInput.trim().length;
+  const thesisTooShort = thesisLength > 0 && thesisLength < 10;
+  const canSubmit = normalizedTicker.length > 0
+    && Number(targetWeight) >= 0
+    && Number(targetWeight) <= 100
+    && !thesisTooShort;
 
   const reset = () => {
     setTicker("");
@@ -95,6 +100,13 @@ export function AddHoldingForm({
         placeholder="예: 서비스 매출 성장과 생태계 충성도를 바탕으로 장기 이익이 증가할 것이다."
         value={rawInput}
       />
+      <p className={`input-guidance ${thesisTooShort ? "is-error" : ""}`}>
+        {thesisTooShort
+          ? `투자 논리를 등록하려면 ${10 - thesisLength}자를 더 입력하세요.`
+          : thesisLength >= 10
+            ? `투자 논리 ${thesisLength}자 · 종목과 함께 등록됩니다.`
+            : "비워두면 종목만 등록되며, 나중에 해당 종목에서 입력할 수 있습니다."}
+      </p>
       {formError && <div className="inline-error">{formError}</div>}
 
       <div className="add-form-actions">

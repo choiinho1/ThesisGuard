@@ -1,4 +1,4 @@
-import { addMockHolding, createMockThesis, getMockDashboard, mockPortfolios, runMockAnalysis } from "@/lib/mockData";
+import { addMockHolding, createMockThesis, getMockDashboard, mockPortfolios, removeMockHolding, runMockAnalysis, updateMockThesis } from "@/lib/mockData";
 import type {
   ApiMode,
   CreateHoldingInput,
@@ -38,6 +38,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         : null;
     throw new Error(message || `API 요청 실패 (${response.status})`);
   }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -75,7 +76,7 @@ export async function analyzeHolding(
   mode = getApiMode(),
 ): Promise<HoldingAnalysisResponse> {
   if (mode === "mock") {
-    await delay(500);
+    await delay(2200);
     return runMockAnalysis(holdingId);
   }
   return request<HoldingAnalysisResponse>(`/api/holdings/${holdingId}/analyze`, {
@@ -113,6 +114,33 @@ export async function addPortfolioHolding(
     body: JSON.stringify(normalized),
   });
   return { ...holding, thesis: null, latest_change: null };
+}
+
+export async function updateHoldingThesis(
+  thesisId: string,
+  rawInput: string,
+  mode = getApiMode(),
+): Promise<Thesis> {
+  if (mode === "mock") {
+    await delay(350);
+    return updateMockThesis(thesisId, rawInput);
+  }
+  return request<Thesis>(`/api/theses/${thesisId}`, {
+    method: "PUT",
+    body: JSON.stringify({ raw_input: rawInput }),
+  });
+}
+
+export async function deletePortfolioHolding(
+  holdingId: string,
+  mode = getApiMode(),
+): Promise<void> {
+  if (mode === "mock") {
+    await delay(180);
+    removeMockHolding(holdingId);
+    return;
+  }
+  await request<void>(`/api/holdings/${holdingId}`, { method: "DELETE" });
 }
 
 export { API_BASE_URL };

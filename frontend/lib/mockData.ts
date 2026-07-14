@@ -171,6 +171,24 @@ export function addMockHolding(portfolioId: string, input: CreateHoldingInput): 
   return structuredClone(holding);
 }
 
+export function removeMockHolding(holdingId: string): void {
+  const holding = dashboardState.holdings.find((item) => item.id === holdingId);
+  if (!holding) throw new Error("삭제할 보유 종목을 찾을 수 없습니다.");
+
+  dashboardState = {
+    ...dashboardState,
+    holdings: dashboardState.holdings.filter((item) => item.id !== holdingId),
+    concentration: dashboardState.concentration
+      ? {
+          ...dashboardState.concentration,
+          affected_holdings: dashboardState.concentration.affected_holdings?.filter(
+            (ticker) => ticker !== holding.ticker,
+          ) ?? [],
+        }
+      : null,
+  };
+}
+
 export function createMockThesis(holdingId: string, rawInput: string): Thesis {
   const holding = dashboardState.holdings.find((item) => item.id === holdingId);
   if (!holding) throw new Error("보유 종목을 찾을 수 없습니다.");
@@ -193,6 +211,28 @@ export function createMockThesis(holdingId: string, rawInput: string): Thesis {
     ...dashboardState,
     holdings: dashboardState.holdings.map((item) =>
       item.id === holdingId ? { ...item, thesis } : item,
+    ),
+  };
+  return structuredClone(thesis);
+}
+
+export function updateMockThesis(thesisId: string, rawInput: string): Thesis {
+  const holding = dashboardState.holdings.find((item) => item.thesis?.id === thesisId);
+  if (!holding?.thesis) throw new Error("수정할 투자 논리를 찾을 수 없습니다.");
+  const thesis: Thesis = {
+    ...holding.thesis,
+    raw_input: rawInput,
+    main_thesis: rawInput,
+    key_assumptions: ["수정된 투자 논리의 핵심 전제가 유지된다"],
+    positive_signals: ["핵심 전제를 뒷받침하는 신규 근거"],
+    negative_signals: ["핵심 전제를 약화하는 반대 근거"],
+    key_risks: ["수정된 핵심 전제가 성립하지 않을 가능성"],
+    updated_at: new Date().toISOString(),
+  };
+  dashboardState = {
+    ...dashboardState,
+    holdings: dashboardState.holdings.map((item) =>
+      item.id === holding.id ? { ...item, thesis } : item,
     ),
   };
   return structuredClone(thesis);

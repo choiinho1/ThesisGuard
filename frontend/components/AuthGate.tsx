@@ -103,9 +103,10 @@ function GoogleSignInButton({ disabled, onCredential, onUnavailable }: GoogleSig
 
 interface AuthScreenProps {
   onAuthenticated: (user: AuthUser) => void;
+  onDemo: () => void;
 }
 
-function AuthScreen({ onAuthenticated }: AuthScreenProps) {
+function AuthScreen({ onAuthenticated, onDemo }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -220,6 +221,9 @@ function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               <span>{submitting ? "확인하는 중..." : mode === "login" ? "로그인" : "계정 만들기"}</span>
               <span aria-hidden="true">→</span>
             </button>
+            <button className="demo-button" disabled={submitting} onClick={onDemo} type="button">
+              가입 없이 데모 화면 보기
+            </button>
           </form>
         </div>
         <p className="auth-disclaimer">JWT 기반 보안 연결 · 투자 자문이 아닌 의사결정 지원 서비스입니다.</p>
@@ -234,6 +238,17 @@ export function AuthGate() {
 
   useEffect(() => {
     const restoreSession = async () => {
+      if (new URLSearchParams(window.location.search).get("demo") === "1") {
+        setUser({
+          id: "demo-user",
+          email: "demo@thesisguard.local",
+          name: "Demo",
+          created_at: new Date(0).toISOString(),
+        });
+        setChecking(false);
+        return;
+      }
+
       if (!hasAccessToken()) {
         setChecking(false);
         return;
@@ -252,7 +267,19 @@ export function AuthGate() {
   }, []);
 
   if (checking) return <main className="loading-screen">보안 세션을 확인하는 중...</main>;
-  if (!user) return <AuthScreen onAuthenticated={setUser} />;
+  if (!user) {
+    return (
+      <AuthScreen
+        onAuthenticated={setUser}
+        onDemo={() => setUser({
+          id: "demo-user",
+          email: "demo@thesisguard.local",
+          name: "Demo",
+          created_at: new Date(0).toISOString(),
+        })}
+      />
+    );
+  }
 
   return (
     <>

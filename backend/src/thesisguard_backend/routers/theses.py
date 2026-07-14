@@ -67,8 +67,20 @@ async def get_thesis(thesis: OwnedThesis) -> orm.Thesis:
 
 
 @router.put("/api/theses/{thesis_id}", response_model=ThesisResponse)
-async def update_thesis(payload: ThesisUpdateRequest, thesis: OwnedThesis, db: DbSession) -> orm.Thesis:
-    for field, value in payload.model_dump(exclude_unset=True).items():
+async def update_thesis(
+    payload: ThesisUpdateRequest, thesis: OwnedThesis, db: DbSession, agent: Agent
+) -> orm.Thesis:
+    values = payload.model_dump(exclude_unset=True)
+    raw_input = values.pop("raw_input", None)
+    if raw_input is not None:
+        structured = await agent.astructure_thesis(raw_input)
+        thesis.raw_input = structured.raw_input
+        thesis.main_thesis = structured.main_thesis
+        thesis.key_assumptions = structured.key_assumptions
+        thesis.positive_signals = structured.positive_signals
+        thesis.negative_signals = structured.negative_signals
+        thesis.key_risks = structured.key_risks
+    for field, value in values.items():
         setattr(thesis, field, value)
     await db.commit()
     await db.refresh(thesis)

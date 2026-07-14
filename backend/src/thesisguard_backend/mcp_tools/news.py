@@ -14,6 +14,8 @@ from xml.etree import ElementTree
 
 import httpx
 
+from agents.sanitization import sanitize_source_text
+
 _RSS_URL = "https://news.google.com/rss/search"
 
 
@@ -37,11 +39,11 @@ async def get_news(query: str, limit: int = 5) -> list[NewsItem]:
 
         items: list[NewsItem] = []
         for item in root.findall("./channel/item")[:limit]:
-            title = (item.findtext("title") or "").strip()
+            title = sanitize_source_text(item.findtext("title") or "")
             link = (item.findtext("link") or "").strip()
             pub_date = item.findtext("pubDate")
-            source = item.findtext("source") or "Google News"
-            description = (item.findtext("description") or "").strip()
+            source = sanitize_source_text(item.findtext("source") or "") or "Google News"
+            description = sanitize_source_text(item.findtext("description") or "")
             published_at = None
             if pub_date:
                 try:
