@@ -15,18 +15,66 @@ import uuid
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from agents.models import AlertDecision, EvidenceItem
 from sqlalchemy import select
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.config import get_settings
 from thesisguard_backend.db import session_factory
-from thesisguard_backend.routers.analysis import analyze_holding
+from thesisguard_backend.routers.analysis import run_analysis_and_save
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 2
 RETRY_DELAYS_MINUTES = (5, 15)
 STALE_THRESHOLD = timedelta(hours=12)
+
+# Scheduled runs alert on confidence-score movement alone (not C's LLM
+# judgment, which is what manual /analyze still uses) — simple, predictable,
+# and matches what users actually asked to be watched for.
+MIN_CONFIDENCE_DELTA_FOR_ALERT = 5
+
+
+def score_delta_alert_decision(
+    previous_confidence: int,
+    new_confidence: int,
+    ticker: str,
+    change_reason: str,
+    evidence: list[EvidenceItem],
+) -> AlertDecision:
+    delta = new_confidence - previous_confidence
+    if abs(delta) < MIN_CONFIDENCE_DELTA_FOR_ALERT:
+        return AlertDecision(
+            severity="NONE",
+            should_send=False,
+            delivery="NONE",
+            reason=(
+                f"'{ticker}' 신뢰도 변동폭이 {abs(delta)}점으로 임계값"
+                f"({MIN_CONFIDENCE_DELTA_FOR_ALERT}점) 미만입니다."
+            ),
+        )
+    direction = "상승" if delta > 0 else "하락"
+    lines = [
+        f"'{ticker}' 신뢰도가 {previous_confidence}점에서 {new_confidence}점으로 "
+        f"{direction}했습니다.",
+        "",
+        "변화 근거:",
+        change_reason,
+    ]
+    sourced_evidence = [item for item in evidence if item.source_url]
+    if sourced_evidence:
+        lines += ["", "주요 근거:"]
+        # item.reason, not content_snippet: reason is C's own natural-language
+        # explanation of why this evidence matters, not the raw filing/article
+        # text (which reads like unformatted legal boilerplate in an email).
+        lines += [f"- {item.reason} ({item.source_url})" for item in sourced_evidence[:5]]
+    lines += ["", "※ 본 메일은 정보 제공 목적이며 투자 권유가 아닙니다."]
+    return AlertDecision(
+        severity="MAJOR",
+        should_send=True,
+        delivery="IMMEDIATE",
+        reason="\n".join(lines),
+    )
 
 
 def compute_next_run_at(daily_time: time, timezone: str, *, after: datetime) -> datetime:
@@ -112,7 +160,13 @@ async def _execute_schedule(schedule_id: uuid.UUID) -> None:
         async with session_factory() as db:
             holding = await db.get(orm.Holding, holding_id)
             user = await db.get(orm.User, user_id)
-            result = await analyze_holding(holding, db, user)
+            result = await run_analysis_and_save(
+                holding,
+                db,
+                user,
+                alert_decision_factory=score_delta_alert_decision,
+                is_scheduled=True,
+            )
     except Exception as exc:  # noqa: BLE001 — must persist the failure, not crash the loop
         await _record_failure(
             schedule_id=schedule_id,
