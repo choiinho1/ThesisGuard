@@ -122,7 +122,7 @@ export function HoldingGrid({
           <span className="panel-meta">{holdings.length} HOLDINGS</span>
         </div>
       </div>
-      <div className="holding-table">
+      <div className="holding-table scrollable-list" role="region" aria-label="보유 종목 목록" tabIndex={0}>
         {sortedHoldings.map((holding) => (
           <div className="holding-item" key={holding.id}>
             <button

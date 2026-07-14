@@ -136,6 +136,8 @@ const alerts: Alert[] = [
   },
 ];
 
+const mockThesisVersions: Record<string, ThesisVersion[]> = {};
+
 let dashboardState: PortfolioDashboard = {
   portfolio: mockPortfolios[0],
   holdings,
@@ -308,9 +310,13 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
     change_reason: "핵심 고객사의 신규 수주 공시로 수요 전제가 재확인되었습니다.",
     conflicting_assumptions: [],
     observation_points: ["다음 분기 가이던스 반영 여부"],
-    snapshot: updatedThesis,
+    snapshot: holding.thesis,
     created_at: updatedThesis.updated_at,
   };
+  mockThesisVersions[updatedThesis.id] = [
+    version,
+    ...(mockThesisVersions[updatedThesis.id] ?? []),
+  ];
   const evidence: Evidence[] = [
     {
       id: crypto.randomUUID(),
@@ -368,6 +374,17 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
     analysis_result: analysisResult,
     alert,
   });
+}
+
+export function removeMockAlert(alertId: string) {
+  dashboardState = {
+    ...dashboardState,
+    recent_alerts: dashboardState.recent_alerts.filter((alert) => alert.id !== alertId),
+  };
+}
+
+export function getMockThesisHistory(thesisId: string): ThesisVersion[] {
+  return structuredClone(mockThesisVersions[thesisId] ?? []);
 }
 
 export function getMockHoldingHistory(holdingId: string): HoldingHistoryResponse {

@@ -35,6 +35,15 @@ async def mark_alert_read(alert_id: uuid.UUID, db: DbSession, current_user: Curr
     return alert
 
 
+@router.delete("/alerts/{alert_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_alert(alert_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> None:
+    alert = await db.get(orm.Alert, alert_id)
+    if alert is None or alert.user_id != current_user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "알림을 찾을 수 없습니다.")
+    await db.delete(alert)
+    await db.commit()
+
+
 @router.get("/users/me/alert-settings", response_model=AlertSettingsResponse)
 async def get_alert_settings(db: DbSession, current_user: CurrentUser) -> orm.AlertSettings:
     settings = await db.get(orm.AlertSettings, current_user.id)

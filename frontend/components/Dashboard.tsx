@@ -13,6 +13,7 @@ import {
   addPortfolioHolding,
   createHoldingThesis,
   deletePortfolioHolding,
+  deleteAlert,
   getPortfolioDashboard,
   getHoldingMarketSnapshot,
   listPortfolios,
@@ -207,6 +208,19 @@ export function Dashboard() {
     }
   };
 
+  const removeAlert = async (alert: import("@/types/schema").Alert) => {
+    setError(null);
+    try {
+      await deleteAlert(alert.id, mode);
+      setDashboard((current) => current ? {
+        ...current,
+        recent_alerts: current.recent_alerts.filter((item) => item.id !== alert.id),
+      } : current);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "알림을 삭제하지 못했습니다.");
+    }
+  };
+
   const updatePosition = async (
     holding: DashboardHolding,
     input: UpdateHoldingPositionInput,
@@ -258,7 +272,7 @@ export function Dashboard() {
           <AllocationPanel holdings={dashboard.holdings} portfolio={dashboard.portfolio} />
           <HoldingGrid holdings={dashboard.holdings} onDelete={deleteHolding} onLoadMarketSnapshot={(holding) => getHoldingMarketSnapshot(holding.id, holding.ticker, mode)} onSelect={(holding) => { setSelected(holding); setAnalysis(null); }} onUpdatePosition={updatePosition} selectedId={selected?.id ?? null} />
         </div>
-        <InsightPanel alerts={dashboard.recent_alerts} concentration={dashboard.concentration} />
+        <InsightPanel alerts={dashboard.recent_alerts} concentration={dashboard.concentration} onDeleteAlert={removeAlert} />
       </div>
       <nav className="workspace-tabs" aria-label="Thesis workspace">
         <button
@@ -278,8 +292,8 @@ export function Dashboard() {
           History
         </button>
       </nav>
-      {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} analysisEstimateSeconds={mode === "mock" ? 2 : 60} holding={selected} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
-      {activeSection === "history" && <SavedEvidenceHistory holdings={dashboard.holdings} />}
+      {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} holding={selected} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
+      {activeSection === "history" && <SavedEvidenceHistory holdings={dashboard.holdings} mode={mode} />}
       <footer>
         <span>THESISGUARD</span>
         <span>Evidence-led. Explainable. No investment advice.</span>

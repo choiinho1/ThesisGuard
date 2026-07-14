@@ -3,9 +3,11 @@ import type { Alert, AnalysisResult } from "@/types/schema";
 export function InsightPanel({
   concentration,
   alerts,
+  onDeleteAlert,
 }: {
   concentration: AnalysisResult | null;
   alerts: Alert[];
+  onDeleteAlert: (alert: Alert) => Promise<void>;
 }) {
   return (
     <aside className="insight-column">
@@ -31,9 +33,10 @@ export function InsightPanel({
         {alerts.length === 0 ? (
           <p className="empty-copy">새 알림이 없습니다.</p>
         ) : (
-          alerts.map((alert) => (
+          <div className="alert-list" role="region" aria-label="최근 알림 목록" tabIndex={0}>
+          {alerts.map((alert) => (
             <article className="alert-item" key={alert.id}>
-              <div><span className={`severity severity--${alert.severity.toLowerCase()}`}>{alert.severity}</span><time>{new Date(alert.created_at).toLocaleDateString("ko-KR")}</time></div>
+              <div className="alert-item-heading"><span className={`severity severity--${alert.severity.toLowerCase()}`}>{alert.severity}</span><time>{new Date(alert.created_at).toLocaleDateString("ko-KR")}</time><button className="alert-delete" onClick={() => void onDeleteAlert(alert)} type="button" aria-label={`${alert.title} 삭제`}>삭제</button></div>
               <h3>{alert.title}</h3>
               <p>{alert.message}</p>
               {alert.is_sent && (
@@ -42,7 +45,8 @@ export function InsightPanel({
                 </p>
               )}
             </article>
-          ))
+          ))}
+          </div>
         )}
       </section>
     </aside>

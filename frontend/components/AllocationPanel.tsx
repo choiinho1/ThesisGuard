@@ -33,7 +33,7 @@ export function AllocationPanel({
           <div key={row.id} style={{ width: `${row.value}%`, background: row.color }} />
         ))}
       </div>
-      <div className="allocation-list">
+      <div className="allocation-list scrollable-list" role="region" aria-label="종목별 비중 목록" tabIndex={0}>
         {rows.map((row) => (
           <div className="allocation-row" key={row.id}>
             <span className="dot" style={{ background: row.color }} />

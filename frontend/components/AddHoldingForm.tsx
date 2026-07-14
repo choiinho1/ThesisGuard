@@ -17,7 +17,7 @@ export function AddHoldingForm({
   const [companyName, setCompanyName] = useState("");
   const [quantity, setQuantity] = useState("");
   const [avgBuyPrice, setAvgBuyPrice] = useState("");
-  const [targetWeight, setTargetWeight] = useState("");
+  const [targetWeight, setTargetWeight] = useState("0");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -30,16 +30,42 @@ export function AddHoldingForm({
     : null;
   const canSubmit = normalizedTicker.length > 0
     && !isDuplicateTicker
-    && Number(targetWeight) >= 0
-    && Number(targetWeight) <= 100;
+    && Number.isFinite(Number(quantity || 0))
+    && Number(quantity || 0) >= 0
+    && Number.isFinite(Number(avgBuyPrice || 0))
+    && Number(avgBuyPrice || 0) >= 0
+    && Number.isFinite(Number(targetWeight || 0))
+    && Number(targetWeight || 0) >= 0
+    && Number(targetWeight || 0) <= 100;
 
   const reset = () => {
     setTicker("");
     setCompanyName("");
     setQuantity("");
     setAvgBuyPrice("");
-    setTargetWeight("");
+    setTargetWeight("0");
     setFormError(null);
+  };
+
+  const submitHolding = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await onSubmit({
+        ticker: normalizedTicker,
+        company_name: companyName.trim() || normalizedTicker,
+        quantity: Number(quantity) || 0,
+        avg_buy_price: Number(avgBuyPrice) || 0,
+        target_weight: Number(targetWeight) || 0,
+      });
+      reset();
+      setOpen(false);
+    } catch (caught) {
+      setFormError(caught instanceof Error ? caught.message : "종목을 추가하지 못했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!open) {
@@ -56,7 +82,7 @@ export function AddHoldingForm({
   }
 
   return (
-    <section className="panel add-holding-panel">
+    <form className="panel add-holding-panel" onSubmit={(event) => { event.preventDefault(); void submitHolding(); }}>
       <div className="add-form-heading">
         <div>
           <span className="section-index">NEW</span>
@@ -105,32 +131,13 @@ export function AddHoldingForm({
           <button
             className="primary-button"
             disabled={!canSubmit || submitting}
-            onClick={async () => {
-              setSubmitting(true);
-              setFormError(null);
-              try {
-                await onSubmit({
-                  ticker: normalizedTicker,
-                  company_name: companyName.trim() || normalizedTicker,
-                  quantity: Number(quantity) || 0,
-                  avg_buy_price: Number(avgBuyPrice) || 0,
-                  target_weight: Number(targetWeight) || 0,
-                });
-                reset();
-                setOpen(false);
-              } catch (caught) {
-                setFormError(caught instanceof Error ? caught.message : "종목을 추가하지 못했습니다.");
-              } finally {
-                setSubmitting(false);
-              }
-            }}
-            type="button"
+            type="submit"
           >
             {submitting ? "추가하는 중…" : "종목 추가"}
           </button>
         </div>
       </div>
-    </section>
+    </form>
   );
 }
 

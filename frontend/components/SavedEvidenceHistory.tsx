@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DashboardHolding, Evidence } from "@/types/schema";
+import { getThesisHistory } from "@/lib/apiClient";
+import { StatusBadge } from "@/components/StatusBadge";
+import type { ApiMode, DashboardHolding, Evidence, ThesisVersion } from "@/types/schema";
 
 interface SavedEvidenceEntry {
   evidence: Evidence;
@@ -9,8 +11,15 @@ interface SavedEvidenceEntry {
   ticker: string;
 }
 
-export function SavedEvidenceHistory({ holdings }: { holdings: DashboardHolding[] }) {
+interface ConfidenceEntry {
+  ticker: string;
+  version: ThesisVersion;
+}
+
+export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHolding[]; mode: ApiMode }) {
   const [entries, setEntries] = useState<SavedEvidenceEntry[]>([]);
+  const [confidenceEntries, setConfidenceEntries] = useState<ConfidenceEntry[]>([]);
+  const [loadingConfidence, setLoadingConfidence] = useState(true);
 
   useEffect(() => {
     const restored = holdings.flatMap((holding) => {
@@ -32,6 +41,26 @@ export function SavedEvidenceHistory({ holdings }: { holdings: DashboardHolding[
     return () => window.clearTimeout(timer);
   }, [holdings]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all(holdings.filter((holding) => holding.thesis).map(async (holding) => {
+      const versions = await getThesisHistory(holding.thesis!.id, mode);
+      return versions
+        .filter((version) => version.confidence_score !== version.snapshot.confidence_score)
+        .map((version) => ({ ticker: holding.ticker, version }));
+    })).then((groups) => {
+      if (!cancelled) {
+        setConfidenceEntries(groups.flat().sort((left, right) =>
+          new Date(right.version.created_at).getTime() - new Date(left.version.created_at).getTime()));
+      }
+    }).catch(() => {
+      if (!cancelled) setConfidenceEntries([]);
+    }).finally(() => {
+      if (!cancelled) setLoadingConfidence(false);
+    });
+    return () => { cancelled = true; };
+  }, [holdings, mode]);
+
   const removeEntry = (entry: SavedEvidenceEntry) => {
     const key = `thesisguard_saved_evidence_${entry.holdingId}`;
     const nextEntries = entries.filter((item) => item.evidence.id !== entry.evidence.id);
@@ -43,6 +72,42 @@ export function SavedEvidenceHistory({ holdings }: { holdings: DashboardHolding[
   };
 
   return (
+    <div className="history-sections">
+    <section className="panel evidence-history-panel">
+      <div className="evidence-history-heading">
+        <div>
+          <span className="section-index">05</span>
+          <p className="kicker">CONFIDENCE HISTORY</p>
+          <h2>Confidence 변경 이력</h2>
+          <p>분석으로 점수가 변경된 시점의 판단과 근거를 기록합니다.</p>
+        </div>
+        <span className="history-count">{confidenceEntries.length} CHANGES</span>
+      </div>
+      {loadingConfidence ? (
+        <div className="history-empty"><strong>변경 이력을 불러오는 중…</strong></div>
+      ) : confidenceEntries.length === 0 ? (
+        <div className="history-empty"><strong>아직 confidence 변경 이력이 없습니다.</strong><p>종목을 재분석하면 결과가 여기에 저장됩니다.</p></div>
+      ) : (
+        <div className="confidence-history-list scrollable-list" role="region" aria-label="Confidence 변경 이력 목록" tabIndex={0}>
+          {confidenceEntries.map(({ ticker, version }) => (
+            <article key={version.id}>
+              <div className="history-meta">
+                <span className="history-ticker">{ticker}</span>
+                <StatusBadge status={version.status} />
+                <time>{new Date(version.created_at).toLocaleString("ko-KR")}</time>
+              </div>
+              <div className="confidence-change">
+                <span>{version.snapshot.confidence_score}</span><b>→</b><strong>{version.confidence_score}</strong>
+                <small>{version.confidence_score - version.snapshot.confidence_score >= 0 ? "+" : ""}{version.confidence_score - version.snapshot.confidence_score}점</small>
+              </div>
+              <p><strong>판단 근거</strong>{version.change_reason}</p>
+              {version.conflicting_assumptions.length > 0 && <p><strong>충돌 전제</strong>{version.conflicting_assumptions.join(" · ")}</p>}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+
     <section className="panel evidence-history-panel">
       <div className="evidence-history-heading">
         <div>
@@ -60,7 +125,7 @@ export function SavedEvidenceHistory({ holdings }: { holdings: DashboardHolding[
           <p>Main의 분석 결과에서 `주요 근거로 저장`을 선택해 보세요.</p>
         </div>
       ) : (
-        <div className="evidence-history-list">
+        <div className="evidence-history-list scrollable-list" role="region" aria-label="저장 근거 이력 목록" tabIndex={0}>
           {entries.map((entry) => (
             <article key={`${entry.holdingId}-${entry.evidence.id}`}>
               <div className="history-meta">
@@ -80,5 +145,6 @@ export function SavedEvidenceHistory({ holdings }: { holdings: DashboardHolding[
         </div>
       )}
     </section>
+    </div>
   );
 }
