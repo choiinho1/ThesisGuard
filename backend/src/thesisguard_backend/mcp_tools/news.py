@@ -10,11 +10,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from html import unescape
 from xml.etree import ElementTree
 
 import httpx
+from bs4 import BeautifulSoup
 
 _RSS_URL = "https://news.google.com/rss/search"
+
+
+def _clean_description(raw: str) -> str:
+    """Google News RSS <description> is an HTML snippet (<a>, &nbsp;, ...);
+    strip the markup, decode entities, and collapse whitespace so it reads as
+    plain text wherever it ends up (evidence content, analysis prompts)."""
+
+    text = BeautifulSoup(raw, "html.parser").get_text(separator=" ")
+    return " ".join(unescape(text).split())
 
 
 @dataclass(slots=True)
@@ -41,7 +52,7 @@ async def get_news(query: str, limit: int = 5) -> list[NewsItem]:
             link = (item.findtext("link") or "").strip()
             pub_date = item.findtext("pubDate")
             source = item.findtext("source") or "Google News"
-            description = (item.findtext("description") or "").strip()
+            description = _clean_description(item.findtext("description") or "")
             published_at = None
             if pub_date:
                 try:
