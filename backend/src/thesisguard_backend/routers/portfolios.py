@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.deps import CurrentUser, DbSession, get_owned_portfolio
+from thesisguard_backend.portfolio_analysis import matches_portfolio_snapshot
 from thesisguard_backend.portfolio_weights import refresh_current_weights
 from thesisguard_backend.schemas import (
     AlertResponse,
@@ -97,16 +98,31 @@ async def get_dashboard(
             )
         holding_responses.append(dashboard_holding)
 
-    concentration = await db.scalar(
-        select(orm.AnalysisResult)
-        .where(
-            orm.AnalysisResult.portfolio_id == portfolio_id,
-            orm.AnalysisResult.analysis_type == orm.AnalysisType.THESIS_CONCENTRATION,
+    current_thesis_holding_ids = {
+        str(holding.id) for holding in holdings if holding.thesis is not None
+    }
+    concentration_candidates = list(
+        await db.scalars(
+            select(orm.AnalysisResult)
+            .where(
+                orm.AnalysisResult.portfolio_id == portfolio_id,
+                orm.AnalysisResult.analysis_type == orm.AnalysisType.THESIS_CONCENTRATION,
+            )
+            .order_by(
+                orm.AnalysisResult.created_at.desc(),
+                orm.AnalysisResult.concentration_score.desc(),
+            )
         )
-        .order_by(orm.AnalysisResult.created_at.desc())
-        .limit(1)
     )
-    common_risks = list(
+    concentration = next(
+        (
+            row
+            for row in concentration_candidates
+            if matches_portfolio_snapshot(row, current_thesis_holding_ids)
+        ),
+        None,
+    )
+    common_risk_candidates = list(
         await db.scalars(
             select(orm.AnalysisResult)
             .where(
@@ -114,9 +130,13 @@ async def get_dashboard(
                 orm.AnalysisResult.analysis_type == orm.AnalysisType.COMMON_RISK,
             )
             .order_by(orm.AnalysisResult.created_at.desc())
-            .limit(10)
         )
     )
+    common_risks = [
+        row
+        for row in common_risk_candidates
+        if matches_portfolio_snapshot(row, current_thesis_holding_ids)
+    ][:10]
     recent_alerts = list(
         await db.scalars(
             select(orm.Alert)
@@ -126,12 +146,24 @@ async def get_dashboard(
         )
     )
 
+    concentration_response = None
+    if concentration is not None:
+        weight_by_holding_id = {str(holding.id): holding.current_weight for holding in holdings}
+        current_score = min(
+            100,
+            sum(
+                weight_by_holding_id.get(holding_id, 0)
+                for holding_id in concentration.affected_holdings
+            ),
+        )
+        concentration_response = AnalysisResultResponse.model_validate(concentration).model_copy(
+            update={"concentration_score": round(current_score, 2)}
+        )
+
     return PortfolioDashboardResponse(
         portfolio=PortfolioResponse.model_validate(portfolio),
         holdings=holding_responses,
-        concentration=(
-            AnalysisResultResponse.model_validate(concentration) if concentration else None
-        ),
+        concentration=concentration_response,
         common_risks=[AnalysisResultResponse.model_validate(row) for row in common_risks],
         recent_alerts=[AlertResponse.model_validate(row) for row in recent_alerts],
     )

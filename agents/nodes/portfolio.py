@@ -2,7 +2,7 @@
 
 from langgraph.runtime import Runtime
 
-from agents.models import PortfolioAnalysis, PortfolioThesis
+from agents.models import PortfolioThesis
 from agents.runtime import AgentDependencies, call_model
 from agents.state import AnalysisState
 
@@ -30,10 +30,5 @@ async def portfolio_agent(state: AnalysisState, runtime: Runtime[AgentDependenci
                 thesis=updated_thesis,
             )
         )
-    try:
-        analysis = await call_model(
-            runtime.context, runtime.context.model.analyze_portfolio, portfolio
-        )
-    except Exception:
-        analysis = PortfolioAnalysis(summary="집중도 분석 모델 응답을 확인할 수 없습니다.")
+    analysis = await call_model(runtime.context, runtime.context.model.analyze_portfolio, portfolio)
     return {"portfolio_analysis": analysis}
