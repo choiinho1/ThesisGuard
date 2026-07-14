@@ -232,7 +232,7 @@ function AuthScreen({ onAuthenticated, onDemo }: AuthScreenProps) {
   );
 }
 
-export function AuthGate() {
+function AuthenticatedGate() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checking, setChecking] = useState(true);
 
@@ -290,4 +290,10 @@ export function AuthGate() {
       <Dashboard />
     </>
   );
+}
+
+export function AuthGate() {
+  const demoBypassEnabled = process.env.NEXT_PUBLIC_DEMO_BYPASS_AUTH === "true"
+    || process.env.NEXT_PUBLIC_API_MODE !== "live";
+  return demoBypassEnabled ? <Dashboard /> : <AuthenticatedGate />;
 }

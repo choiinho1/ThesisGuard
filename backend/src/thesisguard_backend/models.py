@@ -9,9 +9,9 @@ backend-only concerns and are defined locally.
 
 from __future__ import annotations
 
-import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, time
+from enum import StrEnum
 
 from agents.models import (
     AlertSeverity,
@@ -30,17 +30,25 @@ from sqlalchemy.sql import func
 from thesisguard_backend.db import Base
 
 
-class TransactionType(str, enum.Enum):
+class TransactionType(StrEnum):
     BUY = "BUY"
     SELL = "SELL"
     REBALANCE = "REBALANCE"
     CASH_ADJUST = "CASH_ADJUST"
 
 
-class AlertDelivery(str, enum.Enum):
+class AlertDelivery(StrEnum):
     IMMEDIATE = "IMMEDIATE"
     WEEKLY = "WEEKLY"
     NONE = "NONE"
+
+
+class ScheduledRunStatus(StrEnum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
 
 
 def _uuid_pk() -> Mapped[uuid.UUID]:
@@ -71,12 +79,10 @@ class User(Base):
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
-    portfolios: Mapped[list["Portfolio"]] = relationship(
+    portfolios: Mapped[list[Portfolio]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    alerts: Mapped[list["Alert"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
+    alerts: Mapped[list[Alert]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Portfolio(Base):
@@ -94,10 +100,10 @@ class Portfolio(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
     user: Mapped[User] = relationship(back_populates="portfolios")
-    holdings: Mapped[list["Holding"]] = relationship(
+    holdings: Mapped[list[Holding]] = relationship(
         back_populates="portfolio", cascade="all, delete-orphan"
     )
-    transactions: Mapped[list["Transaction"]] = relationship(
+    transactions: Mapped[list[Transaction]] = relationship(
         back_populates="portfolio", cascade="all, delete-orphan"
     )
 
@@ -122,9 +128,65 @@ class Holding(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
     portfolio: Mapped[Portfolio] = relationship(back_populates="holdings")
-    thesis: Mapped["Thesis"] = relationship(
+    thesis: Mapped[Thesis] = relationship(
         back_populates="holding", uselist=False, cascade="all, delete-orphan"
     )
+    analysis_schedule: Mapped[AnalysisSchedule] = relationship(
+        back_populates="holding", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class AnalysisSchedule(Base):
+    __tablename__ = "analysis_schedules"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    holding_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("holdings.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
+    daily_time: Mapped[time] = mapped_column(nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Seoul", nullable=False)
+    recipient_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    last_run_at: Mapped[datetime | None]
+    next_run_at: Mapped[datetime] = mapped_column(nullable=False, index=True)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+    holding: Mapped[Holding] = relationship(back_populates="analysis_schedule")
+    runs: Mapped[list[ScheduledAnalysisRun]] = relationship(
+        back_populates="schedule", cascade="all, delete-orphan"
+    )
+
+
+class ScheduledAnalysisRun(Base):
+    __tablename__ = "scheduled_analysis_runs"
+    __table_args__ = (
+        UniqueConstraint("schedule_id", "scheduled_for", name="uq_scheduled_run_slot"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    schedule_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("analysis_schedules.id", ondelete="CASCADE"), nullable=False
+    )
+    holding_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("holdings.id", ondelete="CASCADE"), nullable=False
+    )
+    scheduled_for: Mapped[datetime] = mapped_column(nullable=False)
+    started_at: Mapped[datetime | None]
+    completed_at: Mapped[datetime | None]
+    status: Mapped[ScheduledRunStatus] = mapped_column(
+        SAEnum(ScheduledRunStatus, name="scheduled_run_status"), nullable=False
+    )
+    thesis_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="SET NULL")
+    )
+    alert_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("alerts.id", ondelete="SET NULL"))
+    email_sent: Mapped[bool] = mapped_column(default=False, nullable=False)
+    retry_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+    schedule: Mapped[AnalysisSchedule] = relationship(back_populates="runs")
 
 
 class Transaction(Base):
@@ -167,10 +229,10 @@ class Thesis(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
     holding: Mapped[Holding] = relationship(back_populates="thesis")
-    versions: Mapped[list["ThesisVersion"]] = relationship(
+    versions: Mapped[list[ThesisVersion]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan", order_by="ThesisVersion.version_no"
     )
-    evidence: Mapped[list["Evidence"]] = relationship(
+    evidence: Mapped[list[Evidence]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan"
     )
 

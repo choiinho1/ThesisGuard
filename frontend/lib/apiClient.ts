@@ -1,12 +1,15 @@
-import { addMockHolding, createMockThesis, getMockDashboard, mockPortfolios, removeMockHolding, runMockAnalysis, updateMockThesis } from "@/lib/mockData";
+import { addMockHolding, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, mockPortfolios, removeMockHolding, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
 import type {
   ApiMode,
   CreateHoldingInput,
   DashboardHolding,
   HoldingAnalysisResponse,
+  HoldingHistoryResponse,
+  MarketSnapshot,
   Portfolio,
   PortfolioDashboard,
   Thesis,
+  UpdateHoldingPositionInput,
 } from "@/types/schema";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -141,6 +144,66 @@ export async function deletePortfolioHolding(
     return;
   }
   await request<void>(`/api/holdings/${holdingId}`, { method: "DELETE" });
+}
+
+export async function updateHoldingCurrentWeight(
+  holdingId: string,
+  currentWeight: number,
+  mode = getApiMode(),
+): Promise<DashboardHolding> {
+  if (mode === "mock") {
+    await delay(180);
+    return updateMockHoldingWeight(holdingId, currentWeight);
+  }
+  const holding = await request<DashboardHolding>(`/api/holdings/${holdingId}`, {
+    method: "PUT",
+    body: JSON.stringify({ current_weight: currentWeight }),
+  });
+  return { ...holding, thesis: null, latest_change: null };
+}
+
+export async function updateHoldingPosition(
+  holdingId: string,
+  input: UpdateHoldingPositionInput,
+  mode = getApiMode(),
+): Promise<DashboardHolding> {
+  if (mode === "mock") {
+    await delay(180);
+    return updateMockHoldingPosition(holdingId, input);
+  }
+  const holding = await request<DashboardHolding>(`/api/holdings/${holdingId}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+  return { ...holding, thesis: null, latest_change: null };
+}
+
+export async function getHoldingMarketSnapshot(
+  holdingId: string,
+  ticker: string,
+  mode = getApiMode(),
+): Promise<MarketSnapshot> {
+  if (mode === "mock") {
+    await delay(140);
+    return getMockMarketSnapshot(ticker);
+  }
+  return request<MarketSnapshot>(`/api/holdings/${holdingId}/market-snapshot`);
+}
+
+export async function getHoldingHistory(
+  holdingId: string,
+  options: { limit?: number; offset?: number } = {},
+  mode = getApiMode(),
+): Promise<HoldingHistoryResponse> {
+  const limit = options.limit ?? 30;
+  const offset = options.offset ?? 0;
+  if (mode === "mock") {
+    await delay(160);
+    return getMockHoldingHistory(holdingId);
+  }
+  return request<HoldingHistoryResponse>(
+    `/api/holdings/${holdingId}/history?limit=${limit}&offset=${offset}`,
+  );
 }
 
 export { API_BASE_URL };

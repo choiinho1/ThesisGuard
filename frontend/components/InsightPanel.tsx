@@ -36,6 +36,11 @@ export function InsightPanel({
               <div><span className={`severity severity--${alert.severity.toLowerCase()}`}>{alert.severity}</span><time>{new Date(alert.created_at).toLocaleDateString("ko-KR")}</time></div>
               <h3>{alert.title}</h3>
               <p>{alert.message}</p>
+              {alert.is_sent && (
+                <p className="email-delivery-status">
+                  Gmail 발송 완료 · {alert.sent_at ? new Date(alert.sent_at).toLocaleString("ko-KR") : "방금"}
+                </p>
+              )}
             </article>
           ))
         )}
