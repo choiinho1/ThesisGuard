@@ -28,14 +28,13 @@ LLM 기반 개인 투자 포트폴리오 및 투자 논리 모니터링 시스�
   실행 검증됨(둘 다 real SEC/News/FRED API 호출 포함, DB/LLM만 fake). 실제 Postgres·실제 LLM(OpenAI 키)
   까지 붙여서 돌린 적은 아직 없음. 설치·실행·한계는 `backend/README.md` 참고.
 - **`frontend/`** — A 작업 중, `feature/fe-schema-alignment` 브랜치 기준(Next.js/TypeScript, mock/live 토글
-  가능한 대시보드). **로그인 화면이 아직 없어서 `live` 모드는 전부 401이 난다** — `backend/README.md`의
-  "알려진 한계" 참고.
+  가능한 대시보드). 로그인 화면(`AuthGate.tsx`/`authClient.ts`) 구현 완료로 `live` 모드 인증 정상 동작.
 
 ## 알려진 한계 / 미해결 항목
 
 `backend/README.md`의 "알려진 한계 / TODO" 절 참고 — 주간 알림 스케줄러 없음, Vector Store 미연결,
-프론트 로그인 화면 없음(→ live 모드 401), `backend/app/`·`backend/mcp_tools/`(빈 `.gitkeep`)와
-`backend/src/thesisguard_backend/`(실제 코드) 레이아웃 중복 등.
+`backend/app/`·`backend/mcp_tools/`(빈 `.gitkeep`)와 `backend/src/thesisguard_backend/`(실제 코드) 레이아웃
+중복 등.
 
 ## 코딩 컨벤션
 

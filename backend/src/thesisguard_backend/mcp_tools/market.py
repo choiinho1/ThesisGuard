@@ -35,7 +35,7 @@ class MarketData:
     change_pct_30d: float | None
 
 
-async def _fetch_chart(ticker: str, range_: str, interval: str) -> list[PricePoint]:
+async def _fetch_chart_result(ticker: str, range_: str, interval: str) -> dict | None:
     try:
         async with httpx.AsyncClient(timeout=10, follow_redirects=True, headers=_HEADERS) as client:
             response = await client.get(
@@ -44,46 +44,93 @@ async def _fetch_chart(ticker: str, range_: str, interval: str) -> list[PricePoi
             )
             response.raise_for_status()
             payload = response.json()
+        return payload["chart"]["result"][0]
+    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
+        return None
 
-        result = payload["chart"]["result"][0]
+
+def _parse_points(result: dict) -> list[PricePoint]:
+    try:
         timestamps = result["timestamp"]
         quote = result["indicators"]["quote"][0]
-        points: list[PricePoint] = []
-        for i, ts in enumerate(timestamps):
-            close = quote["close"][i]
-            if close is None:
-                continue
-            points.append(
-                PricePoint(
-                    date=datetime.fromtimestamp(ts).date(),
-                    open=quote["open"][i],
-                    high=quote["high"][i],
-                    low=quote["low"][i],
-                    close=close,
-                    volume=quote["volume"][i] or 0,
-                )
-            )
-        return points
-    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
+    except (KeyError, IndexError, TypeError):
         return []
+
+    points: list[PricePoint] = []
+    for i, ts in enumerate(timestamps):
+        close = quote["close"][i]
+        if close is None:
+            continue
+        points.append(
+            PricePoint(
+                date=datetime.fromtimestamp(ts).date(),
+                open=quote["open"][i],
+                high=quote["high"][i],
+                low=quote["low"][i],
+                close=close,
+                volume=quote["volume"][i] or 0,
+            )
+        )
+    return points
+
+
+def _live_point(result: dict) -> PricePoint | None:
+    """The last entry in `quote` is a daily bar that only firms up at session
+    close, so during market hours it can still show yesterday's data. `meta`
+    carries the live/delayed regularMarket* fields instead — this builds a
+    PricePoint from those so callers can prefer same-day data when it's newer
+    than the last completed daily bar.
+    """
+    meta = result.get("meta") or {}
+    try:
+        return PricePoint(
+            # `chartPreviousClose` isn't a reliable fallback here: it's the
+            # close right before the *requested range's* first bar (e.g. ~1
+            # year old for range=1y), not yesterday's close.
+            date=datetime.fromtimestamp(meta["regularMarketTime"]).date(),
+            open=meta.get("regularMarketOpen", meta["regularMarketPrice"]),
+            high=meta["regularMarketDayHigh"],
+            low=meta["regularMarketDayLow"],
+            close=meta["regularMarketPrice"],
+            volume=meta["regularMarketVolume"],
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _latest_point(result: dict, points: list[PricePoint]) -> PricePoint | None:
+    live = _live_point(result)
+    if live is not None and (not points or live.date >= points[-1].date):
+        return live
+    return points[-1] if points else None
 
 
 async def get_price(ticker: str) -> PricePoint | None:
-    points = await _fetch_chart(ticker, range_="5d", interval="1d")
-    return points[-1] if points else None
+    result = await _fetch_chart_result(ticker, range_="5d", interval="1d")
+    if result is None:
+        return None
+    return _latest_point(result, _parse_points(result))
 
 
 async def get_price_history(ticker: str, days: int = 90) -> list[PricePoint]:
     # Yahoo's `range` must cover at least `days` calendar days; pad and let the
     # caller trim. 1y is the smallest bucket comfortably covering 90 trading days.
     range_ = "1y" if days > 30 else "3mo"
-    points = await _fetch_chart(ticker, range_=range_, interval="1d")
-    return points[-days:]
+    result = await _fetch_chart_result(ticker, range_=range_, interval="1d")
+    if result is None:
+        return []
+    return _parse_points(result)[-days:]
 
 
 async def get_market_data(ticker: str) -> MarketData:
-    history = await get_price_history(ticker, days=31)
-    latest = history[-1] if history else None
+    result = await _fetch_chart_result(ticker, range_="1y", interval="1d")
+    if result is None:
+        return MarketData(ticker=ticker.upper(), latest=None, change_pct_30d=None)
+
+    points = _parse_points(result)
+    history = points[-31:]
+    latest = _latest_point(result, points)
+
     change_pct_30d = None
     if latest and len(history) >= 2:
         baseline = history[0]
