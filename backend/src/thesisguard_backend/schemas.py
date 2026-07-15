@@ -9,7 +9,7 @@ feature/fe-schema-alignment) — keep the two in sync when either changes.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, time
+from datetime import datetime, time
 from re import fullmatch
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -134,17 +134,6 @@ class MarketSnapshotResponse(BaseModel):
     volume: int | None
 
 
-# -------------------------------------------------------- Market Quote ----
-class MarketQuoteResponse(BaseModel):
-    ticker: str
-    as_of: date
-    price: float
-    day_high: float
-    day_low: float
-    volume: int
-    change_pct_30d: float | None
-
-
 # ------------------------------------------------------- Rebalancing ----
 class RebalanceHoldingInput(BaseModel):
     holding_id: uuid.UUID
@@ -224,7 +213,13 @@ class EvidenceResponse(ORMModel):
     reason: str
     related_assumptions: list[str]
     published_at: datetime | None
+    saved_to_history: bool
     created_at: datetime
+
+
+class EvidenceHistoryEntryResponse(EvidenceResponse):
+    holding_id: uuid.UUID
+    ticker: str
 
 
 # ------------------------------------------------- Analysis / Concentration

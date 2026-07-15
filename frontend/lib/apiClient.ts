@@ -1,4 +1,4 @@
-import { addMockHolding, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, mockPortfolios, removeMockHolding, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
+import { addMockHolding, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, mockPortfolios, removeMockAlert, removeMockHolding, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
 import type {
   ApiMode,
   CreateHoldingInput,
@@ -144,6 +144,18 @@ export async function deletePortfolioHolding(
     return;
   }
   await request<void>(`/api/holdings/${holdingId}`, { method: "DELETE" });
+}
+
+export async function deleteAlert(
+  alertId: string,
+  mode = getApiMode(),
+): Promise<void> {
+  if (mode === "mock") {
+    await delay(180);
+    removeMockAlert(alertId);
+    return;
+  }
+  await request<void>(`/api/alerts/${alertId}`, { method: "DELETE" });
 }
 
 export async function updateHoldingCurrentWeight(

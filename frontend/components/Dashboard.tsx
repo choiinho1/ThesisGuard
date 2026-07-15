@@ -12,6 +12,7 @@ import {
   analyzeHolding,
   addPortfolioHolding,
   createHoldingThesis,
+  deleteAlert,
   deletePortfolioHolding,
   getPortfolioDashboard,
   getHoldingMarketSnapshot,
@@ -99,14 +100,14 @@ export function Dashboard() {
       setSelected((current) => current?.id === holdingId
         ? { ...current, thesis: result.thesis, latest_change: result.version }
         : current);
+      // 수동 재분석 결과는 사용자가 직접 실행하고 바로 확인한 것이므로
+      // Alert UI(recent_alerts)에는 추가하지 않는다 — 자동(스케줄) 재분석
+      // 알림만 그 목록에 노출된다.
       setDashboard((current) => current ? {
         ...current,
         holdings: current.holdings.map((item) => item.id === holdingId
           ? { ...item, thesis: result.thesis, latest_change: result.version }
           : item),
-        recent_alerts: result.alert
-          ? [result.alert, ...current.recent_alerts.filter((item) => item.id !== result.alert?.id)]
-          : current.recent_alerts,
       } : current);
       if (selectedIdRef.current === holdingId) setAnalysis(result);
     } catch (caught) {
@@ -207,6 +208,20 @@ export function Dashboard() {
     }
   };
 
+  const deleteAlertItem = async (alertId: string) => {
+    setError(null);
+    try {
+      await deleteAlert(alertId, mode);
+      setDashboard((current) => current
+        ? { ...current, recent_alerts: current.recent_alerts.filter((item) => item.id !== alertId) }
+        : current);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "알림을 삭제하지 못했습니다.";
+      setError(message);
+      throw new Error(message);
+    }
+  };
+
   const updatePosition = async (
     holding: DashboardHolding,
     input: UpdateHoldingPositionInput,
@@ -258,7 +273,7 @@ export function Dashboard() {
           <AllocationPanel holdings={dashboard.holdings} portfolio={dashboard.portfolio} />
           <HoldingGrid holdings={dashboard.holdings} onDelete={deleteHolding} onLoadMarketSnapshot={(holding) => getHoldingMarketSnapshot(holding.id, holding.ticker, mode)} onSelect={(holding) => { setSelected(holding); setAnalysis(null); }} onUpdatePosition={updatePosition} selectedId={selected?.id ?? null} />
         </div>
-        <InsightPanel alerts={dashboard.recent_alerts} concentration={dashboard.concentration} />
+        <InsightPanel alerts={dashboard.recent_alerts} concentration={dashboard.concentration} onDeleteAlert={deleteAlertItem} />
       </div>
       <nav className="workspace-tabs" aria-label="Thesis workspace">
         <button

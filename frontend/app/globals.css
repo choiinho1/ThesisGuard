@@ -201,11 +201,14 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 .ticker-chips span { background: rgba(91, 230, 176, .09); border: 1px solid rgba(91, 230, 176, .2); border-radius: 6px; color: var(--mint); font-size: 11px; font-weight: 800; padding: 5px 8px; }
 .alert-count { align-items: center; background: var(--red); border-radius: 50%; color: #1b0806; display: flex; font-size: 10px; font-weight: 900; height: 22px; justify-content: center; width: 22px; }
 .alert-item { border-top: 1px solid var(--line); padding-top: 16px; }
-.alert-item > div { align-items: center; display: flex; justify-content: space-between; }
-.alert-item time { color: var(--muted); font-size: 10px; }
+.alert-item > div { align-items: center; display: flex; gap: 8px; }
+.alert-item time { color: var(--muted); font-size: 10px; margin-right: auto; }
 .alert-item h3 { font-size: 15px; margin: 12px 0 7px; }
 .alert-item p, .empty-copy { color: var(--muted); font-size: 12px; line-height: 1.6; margin-bottom: 0; }
 .alert-item .email-delivery-status { color: var(--mint); font-size: 10px; font-weight: 800; margin-top: 8px; }
+.alert-delete-button { background: transparent; border: 1px solid transparent; border-radius: 7px; color: #71837d; cursor: pointer; font-size: 10px; padding: 5px 7px; }
+.alert-delete-button:hover { background: rgba(255, 127, 115, .08); border-color: rgba(255, 127, 115, .25); color: var(--red); }
+.alert-delete-button:disabled { cursor: wait; opacity: .5; }
 .severity { color: var(--amber); font-size: 10px; font-weight: 900; }
 .severity--critical, .severity--major { color: var(--red); }
 

@@ -23,6 +23,7 @@ async def handle_alert_decision(
     thesis: orm.Thesis,
     ticker: str,
     decision: AlertDecision,
+    is_scheduled: bool = False,
 ) -> orm.Alert | None:
     if decision.severity == "NONE" or not decision.should_send:
         return None
@@ -36,6 +37,7 @@ async def handle_alert_decision(
         title=f"[{decision.severity}] {ticker} 투자 논리 변화",
         message=decision.reason,
         is_sent=False,
+        is_scheduled=is_scheduled,
     )
     db.add(alert)
     await db.flush()

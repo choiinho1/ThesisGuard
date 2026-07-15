@@ -1,12 +1,29 @@
+"use client";
+
+import { useState } from "react";
 import type { Alert, AnalysisResult } from "@/types/schema";
 
 export function InsightPanel({
   concentration,
   alerts,
+  onDeleteAlert,
 }: {
   concentration: AnalysisResult | null;
   alerts: Alert[];
+  onDeleteAlert: (alertId: string) => Promise<void>;
 }) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const requestDelete = async (alert: Alert) => {
+    if (!window.confirm("이 알림을 삭제할까요?")) return;
+    setDeletingId(alert.id);
+    try {
+      await onDeleteAlert(alert.id);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <aside className="insight-column">
       <section className="panel concentration-card">
@@ -33,7 +50,20 @@ export function InsightPanel({
         ) : (
           alerts.map((alert) => (
             <article className="alert-item" key={alert.id}>
-              <div><span className={`severity severity--${alert.severity.toLowerCase()}`}>{alert.severity}</span><time>{new Date(alert.created_at).toLocaleDateString("ko-KR")}</time></div>
+              <div>
+                <span className={`severity severity--${alert.severity.toLowerCase()}`}>{alert.severity}</span>
+                <time>{new Date(alert.created_at).toLocaleDateString("ko-KR")}</time>
+                <button
+                  aria-label="알림 삭제"
+                  className="alert-delete-button"
+                  disabled={deletingId === alert.id}
+                  onClick={() => requestDelete(alert)}
+                  title="알림 삭제"
+                  type="button"
+                >
+                  {deletingId === alert.id ? "…" : "삭제"}
+                </button>
+              </div>
               <h3>{alert.title}</h3>
               <p>{alert.message}</p>
               {alert.is_sent && (

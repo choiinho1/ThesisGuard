@@ -113,10 +113,12 @@ async def get_dashboard(
             .limit(10)
         )
     )
+    # 자동(스케줄) 재분석 알림만 대시보드에 노출한다 — 수동 재분석 결과는 사용자가
+    # 이미 직접 확인했으므로 알림함에 중복으로 띄우지 않는다.
     recent_alerts = list(
         await db.scalars(
             select(orm.Alert)
-            .where(orm.Alert.portfolio_id == portfolio_id)
+            .where(orm.Alert.portfolio_id == portfolio_id, orm.Alert.is_scheduled.is_(True))
             .order_by(orm.Alert.created_at.desc())
             .limit(10)
         )
