@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from agents.models import AlertDecision, EvidenceClassification, EvidenceItem
+from agents.models import AlertDecision, EvidenceClassification, EvidenceImpact, EvidenceItem
 from sqlalchemy import select
 
 from thesisguard_backend import models as orm
@@ -61,16 +61,29 @@ def score_delta_alert_decision(
         "변화 근거:",
         change_reason,
     ]
-    # Only SUPPORT/CONTRADICT evidence — those are the directional items that
-    # actually explain a score move. This also drops UNCERTAIN items, which is
-    # what C falls back to when its Gemini classification call fails (e.g. a
-    # 429 quota error), so a degraded run never emails raw error-fallback text.
+    # Prefer SUPPORT/CONTRADICT evidence — those are the directional items that
+    # actually explain a score move. Deterministic scoring can move confidence
+    # ≥5 points from assumption/template recalculation alone, with every piece
+    # of evidence classified NEUTRAL (nothing directly supports or contradicts
+    # the thesis); in that case fall back to the highest-impact evidence so the
+    # email isn't left with only the score line and no "주요 근거" at all. Either
+    # way UNCERTAIN is excluded — that's what C falls back to when its
+    # classification call fails (e.g. a 429 quota error), so a degraded run
+    # never emails raw error-fallback text.
     directional_evidence = [
         item
         for item in evidence
         if item.source_url
         and item.classification in (EvidenceClassification.SUPPORT, EvidenceClassification.CONTRADICT)
     ]
+    if not directional_evidence:
+        directional_evidence = [
+            item
+            for item in evidence
+            if item.source_url
+            and item.classification != EvidenceClassification.UNCERTAIN
+            and item.impact in (EvidenceImpact.HIGH, EvidenceImpact.MEDIUM)
+        ]
     if directional_evidence:
         lines += ["", "주요 근거:"]
         # item.reason, not content_snippet: reason is C's own natural-language
