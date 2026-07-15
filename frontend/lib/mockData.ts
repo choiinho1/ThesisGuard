@@ -49,13 +49,17 @@ function mockScoreBreakdown(
   healthScore: number,
 ): NonNullable<Thesis["score_breakdown"]> {
   const rootState = (healthScore - 50) / 50;
+  const rootVerdict = rootState > 0 ? "SUPPORTED" : rootState < 0 ? "REFUTED" : "INSUFFICIENT";
   return {
     scoring_method: "EVIDENCE_NODE_MATRIX_V2",
     logic_graph_version: graph.graph_version,
     previous_score: healthScore,
     health_score: healthScore,
     score_delta: 0,
+    root_support_strength: Math.max(0, rootState),
+    root_contradict_strength: Math.max(0, -rootState),
     root_state: rootState,
+    root_verdict: rootVerdict,
     coverage_percent: 0,
     invalidation_policy_version: "2.0.0",
     is_broken: false,
@@ -66,7 +70,10 @@ function mockScoreBreakdown(
       label: node.label,
       kind: node.kind,
       operator: node.operator,
+      support_strength: node.node_id === graph.root_id ? Math.max(0, rootState) : 0,
+      contradict_strength: node.node_id === graph.root_id ? Math.max(0, -rootState) : 0,
       state: node.node_id === graph.root_id ? rootState : 0,
+      verdict: node.node_id === graph.root_id ? rootVerdict : "INSUFFICIENT",
       coverage_percent: 0,
       required: false,
     })),

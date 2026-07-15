@@ -60,6 +60,12 @@ class DocumentRetriever(Protocol):
 class AnalysisModel(Protocol):
     async def structure_thesis(self, raw_input: str) -> StructuredThesis: ...
 
+    async def strengthen_thesis(
+        self,
+        raw_input: str,
+        draft: StructuredThesis,
+    ) -> StructuredThesis: ...
+
     async def classify_evidence(
         self,
         thesis: StructuredThesis,

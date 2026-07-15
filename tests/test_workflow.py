@@ -103,6 +103,49 @@ class FakeContextProvider:
         return context.portfolio_theses
 
 
+class RequiredNodeContextProvider(FakeContextProvider):
+    async def load_analysis_context(self, portfolio_id: str, holding_id: str) -> AnalysisContext:
+        assumption = "AI 인프라 지출 증가"
+        required_thesis = prepare_structured_thesis(
+            StructuredThesis(
+                raw_input="AI 인프라 지출이 증가하면 데이터센터 매출이 성장한다.",
+                main_thesis="AI 인프라 투자에 따른 데이터센터 매출 성장",
+                key_assumptions=[assumption],
+                logic_graph=ThesisLogicGraph(
+                    root_id="root_claim",
+                    nodes=[
+                        ThesisLogicNode(
+                            node_id="root_claim",
+                            kind="CLAIM",
+                            label="AI 인프라 투자에 따른 데이터센터 매출 성장",
+                            operator=LogicOperator.AND,
+                            child_ids=["infrastructure_growth"],
+                        ),
+                        ThesisLogicNode(
+                            node_id="infrastructure_growth",
+                            kind="ASSUMPTION",
+                            label=assumption,
+                            assumption=assumption,
+                        ),
+                    ],
+                ),
+            )
+        )
+        current = PortfolioThesis(
+            holding_id=holding_id,
+            ticker="NVDA",
+            current_weight=100,
+            thesis=required_thesis,
+        )
+        return AnalysisContext(
+            portfolio_id=portfolio_id,
+            holding_id=holding_id,
+            ticker="NVDA",
+            thesis=required_thesis,
+            portfolio_theses=[current],
+        )
+
+
 def document(document_id: str, source_type: EvidenceSourceType, content: str) -> SourceDocument:
     return SourceDocument(
         document_id=document_id,
@@ -326,6 +369,22 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
         ("macro", 1),
         ("macro", 2),
     }
+
+
+@pytest.mark.asyncio
+async def test_required_node_coverage_stops_research_regardless_of_total_evidence_count() -> None:
+    tools = FakeResearchTools()
+    agent = ThesisGuardAgent(
+        context_provider=RequiredNodeContextProvider(),
+        research_tools=tools,
+        model=FakeAnalysisModel(),
+        config=WorkflowConfig(max_research_rounds=2, min_grounded_evidence=99),
+    )
+
+    result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
+
+    assert result.research_rounds == 1
+    assert {round_no for _, round_no in tools.calls} == {1}
 
 
 @pytest.mark.asyncio

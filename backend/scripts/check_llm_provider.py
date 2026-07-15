@@ -1,6 +1,6 @@
 """Sanity check for whichever LLM_PROVIDER/API key is set in backend/.env.
 
-Makes exactly one real call: structures a sample investment thesis. Doesn't
+Makes exactly two real calls: structures and strengthens a sample investment thesis. Doesn't
 touch the DB or any research tool, so it isolates "is my API key/model
 config right" from "does the whole pipeline work" (see check_agent_compat.py
 for the full pipeline check).
@@ -30,7 +30,8 @@ async def main() -> None:
         "NVDA is well positioned as Hyperscaler AI capex keeps growing and demand "
         "for its GPUs stays strong across data center customers."
     )
-    result = await model.structure_thesis(raw_input)
+    draft = await model.structure_thesis(raw_input)
+    result = await model.strengthen_thesis(raw_input, draft)
 
     print("\nStructured thesis returned by the model:")
     print(f"  main_thesis: {result.main_thesis}")

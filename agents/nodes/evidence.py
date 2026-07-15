@@ -6,7 +6,7 @@ import asyncio
 
 from langgraph.runtime import Runtime
 
-from agents.evidence_policy import meaningful_directional_evidence
+from agents.logic_graph import normalize_logic_graph, research_target_assumption_node_ids
 from agents.models import (
     AssumptionAssessment,
     AssumptionFinding,
@@ -151,13 +151,14 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
             EvidenceClassification.CONTRADICT,
         }
         has_directional_findings = any(
-            finding.assessment
-            in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+            finding.assessment in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
             for finding in assessment.assumption_findings
         )
         if (
-            directional or has_directional_findings
-        ) and document.source_url is None and document.vector_doc_id is None:
+            (directional or has_directional_findings)
+            and document.source_url is None
+            and document.vector_doc_id is None
+        ):
             assessment = assessment.model_copy(
                 update={
                     "classification": EvidenceClassification.UNCERTAIN,
@@ -202,21 +203,61 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
     # Keep evidence found in earlier research rounds. Replacing this list with only
     # the current round made valid evidence appear and disappear between rounds.
     evidence = list(cached.values())
-    grounded = meaningful_directional_evidence(evidence)
-    grounded_ids = {item.document_id for item in grounded}
-    needs_more = len(grounded) < runtime.context.config.min_grounded_evidence
-    focus_points = list(
-        dict.fromkeys(
-            assumption
-            for item in evidence
-            if item.document_id not in grounded_ids
-            for assumption in item.related_assumptions
-        )
+    graph = normalize_logic_graph(
+        state["thesis_snapshot"].logic_graph,
+        main_thesis=state["thesis_snapshot"].main_thesis,
+        key_assumptions=state["thesis_snapshot"].key_assumptions,
     )
-    if not focus_points and needs_more:
-        focus_points = state["thesis_snapshot"].key_assumptions
+    target_node_ids = research_target_assumption_node_ids(graph)
+    node_id_by_assumption = {
+        (node.assumption or node.label): node.node_id
+        for node in graph.nodes
+        if node.kind == "ASSUMPTION"
+    }
+    satisfied_node_ids = {
+        score.node_id
+        for score in (
+            state["thesis_snapshot"].score_breakdown.assumption_scores
+            if state["thesis_snapshot"].score_breakdown
+            else []
+        )
+        if score.has_evidence
+    }
+    for item in evidence:
+        directional_findings = {
+            finding.assumption
+            for finding in item.assumption_findings
+            if finding.assessment in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+            and finding.relevance_score >= runtime.context.config.min_relevance_score
+            and finding.source_passage_indices
+        }
+        # Compatibility for directional records created before per-assumption findings.
+        if not item.assumption_findings and item.classification in {
+            EvidenceClassification.SUPPORT,
+            EvidenceClassification.CONTRADICT,
+        }:
+            directional_findings.update(item.related_assumptions)
+        satisfied_node_ids.update(
+            node_id_by_assumption[assumption]
+            for assumption in directional_findings
+            if assumption in node_id_by_assumption
+        )
+
+    unresolved_node_ids = target_node_ids - satisfied_node_ids
+    focus_points = [
+        node.assumption or node.label
+        for node in graph.nodes
+        if node.node_id in unresolved_node_ids and node.kind == "ASSUMPTION"
+    ]
+    target_count = len(target_node_ids)
+    coverage_percent = (
+        len(target_node_ids & satisfied_node_ids) / target_count * 100 if target_count else 100.0
+    )
+    needs_more = bool(unresolved_node_ids)
     return {
         "evidence_list": evidence,
         "needs_more_research": needs_more,
         "focus_points": focus_points,
+        "required_node_coverage_percent": round(coverage_percent, 1),
+        "unresolved_required_assumptions": focus_points,
     }

@@ -12,7 +12,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from agents.logic_graph import (
-    evaluate_logic_graph,
+    evaluate_evidence_graph,
+    evidence_verdict,
     normalize_logic_graph,
     required_assumption_node_ids,
 )
@@ -25,6 +26,7 @@ from agents.models import (
     EvidenceNodeContribution,
     EvidenceScoreImpact,
     LogicNodeScore,
+    NodeEvidenceVerdict,
     StructuredThesis,
     ThesisLogicGraph,
     ThesisScoreBreakdown,
@@ -59,9 +61,7 @@ def _canonical_reference(item: EvidenceItem) -> str:
                 if not key.casefold().startswith(_TRACKING_QUERY_PREFIXES)
             )
         )
-        return urlunsplit(
-            (parts.scheme.casefold(), parts.netloc.casefold(), parts.path, query, "")
-        )
+        return urlunsplit((parts.scheme.casefold(), parts.netloc.casefold(), parts.path, query, ""))
     return f"document:{item.document_id}"
 
 
@@ -109,9 +109,7 @@ def _event_key(item: EvidenceItem, contribution: EvidenceNodeContribution) -> st
             if any(character.isdigit() for character in token)
         }
     )
-    return (
-        f"{direction}|event|{_EVENT_KEY_VERSION}|{day}|{fingerprint:016x}|{','.join(numbers)}"
-    )
+    return f"{direction}|event|{_EVENT_KEY_VERSION}|{day}|{fingerprint:016x}|{','.join(numbers)}"
 
 
 def _same_event(left: str, right: str) -> bool:
@@ -283,9 +281,7 @@ def _attribution_orders(document_ids: Sequence[str]) -> list[tuple[str, ...]]:
     ordered = tuple(sorted(document_ids))
     if len(ordered) <= 7:
         return list(itertools.permutations(ordered))
-    seed = int.from_bytes(
-        hashlib.sha256("\x1f".join(ordered).encode()).digest()[:8], "big"
-    )
+    seed = int.from_bytes(hashlib.sha256("\x1f".join(ordered).encode()).digest()[:8], "big")
     rng = random.Random(seed)
     orders: list[tuple[str, ...]] = [ordered, tuple(reversed(ordered))]
     while len(orders) < _ATTRIBUTION_PERMUTATIONS:
@@ -333,7 +329,8 @@ def _attribute_score_delta(
     def coalition_score(selected: frozenset[str]) -> int:
         if selected in score_cache:
             return score_cache[selected]
-        states: dict[str, float] = {}
+        support_by_node: dict[str, float] = {}
+        contradict_by_node: dict[str, float] = {}
         for node in graph.nodes:
             if node.kind != "ASSUMPTION":
                 continue
@@ -353,10 +350,7 @@ def _attribute_score_delta(
                 ),
                 previous.evidence_event_keys if previous else (),
             )
-            contributions = [
-                contribution
-                for _, contribution, _ in node_edges
-            ]
+            contributions = [contribution for _, contribution, _ in node_edges]
             support = _combine_strength(
                 previous.support_strength if previous else 0,
                 (edge.signed_strength for edge in contributions if edge.signed_strength > 0),
@@ -365,9 +359,16 @@ def _attribute_score_delta(
                 previous.contradict_strength if previous else 0,
                 (-edge.signed_strength for edge in contributions if edge.signed_strength < 0),
             )
-            states[node.node_id] = support - contradict
-        graph_states, _ = evaluate_logic_graph(graph, states, set(states))
-        score_cache[selected] = _health_score(graph_states[graph.root_id])
+            support_by_node[node.node_id] = support
+            contradict_by_node[node.node_id] = contradict
+        graph_support, graph_contradict, _ = evaluate_evidence_graph(
+            graph,
+            support_by_node,
+            contradict_by_node,
+            set(support_by_node),
+        )
+        root_state = graph_support[graph.root_id] - graph_contradict[graph.root_id]
+        score_cache[selected] = _health_score(root_state)
         return score_cache[selected]
 
     attributed = dict.fromkeys(all_document_ids, 0.0)
@@ -381,9 +382,7 @@ def _attribute_score_delta(
                 next_score = coalition_score(frozenset(selected))
                 attributed[document_id] += next_score - running_score
                 running_score = next_score
-        attributed = {
-            document_id: value / len(orders) for document_id, value in attributed.items()
-        }
+        attributed = {document_id: value / len(orders) for document_id, value in attributed.items()}
 
         # Legacy aggregate states can differ slightly from the stored integer score.
         # Reconcile that residual so displayed information impacts sum to the actual move.
@@ -500,6 +499,7 @@ def calculate_score_breakdown(
                 support_strength=support,
                 contradict_strength=contradict,
                 state=max(-1, min(1, support - contradict)),
+                verdict=evidence_verdict(support, contradict),
                 has_evidence=bool((previous and previous.has_evidence) or current_edges),
                 evidence_document_ids=list(
                     dict.fromkeys(
@@ -522,11 +522,18 @@ def calculate_score_breakdown(
             )
         )
 
-    states, coverage_by_node = evaluate_logic_graph(
+    support_by_node, contradict_by_node, coverage_by_node = evaluate_evidence_graph(
         graph,
-        {item.node_id: item.state for item in assumption_scores},
+        {item.node_id: item.support_strength for item in assumption_scores},
+        {item.node_id: item.contradict_strength for item in assumption_scores},
         {item.node_id for item in assumption_scores if item.has_evidence},
     )
+    states = {
+        node_id: max(-1, min(1, support_by_node[node_id] - contradict_by_node[node_id]))
+        for node_id in support_by_node
+    }
+    root_support_strength = support_by_node[graph.root_id]
+    root_contradict_strength = contradict_by_node[graph.root_id]
     root_state = states[graph.root_id]
     health_score = _health_score(root_state)
     previous_score = thesis.confidence_score
@@ -546,7 +553,13 @@ def calculate_score_breakdown(
             label=node.label,
             kind=node.kind,
             operator=node.operator,
+            support_strength=support_by_node[node.node_id],
+            contradict_strength=contradict_by_node[node.node_id],
             state=states[node.node_id],
+            verdict=evidence_verdict(
+                support_by_node[node.node_id],
+                contradict_by_node[node.node_id],
+            ),
             coverage_percent=round(coverage_by_node[node.node_id], 1),
             required=node.node_id in required_node_ids,
         )
@@ -565,7 +578,10 @@ def calculate_score_breakdown(
         previous_score=previous_score,
         health_score=health_score,
         score_delta=health_score - previous_score,
+        root_support_strength=root_support_strength,
+        root_contradict_strength=root_contradict_strength,
         root_state=root_state,
+        root_verdict=evidence_verdict(root_support_strength, root_contradict_strength),
         coverage_percent=round(coverage_by_node[graph.root_id], 1),
         invalidation_policy_version=INVALIDATION_POLICY_VERSION,
         is_broken=is_broken,
@@ -597,9 +613,17 @@ def deterministic_change_reason(breakdown: ThesisScoreBreakdown) -> str:
             "논리를 재설정하기 전까지 이 상태를 유지합니다."
         )
     sign = "+" if breakdown.score_delta > 0 else ""
+    verdict_label = {
+        NodeEvidenceVerdict.SUPPORTED: "지지",
+        NodeEvidenceVerdict.REFUTED: "반박",
+        NodeEvidenceVerdict.CONFLICTING: "상충",
+        NodeEvidenceVerdict.INSUFFICIENT: "근거 부족",
+    }[breakdown.root_verdict]
     return (
         f"정보-노드 기여도 행렬 점수가 {breakdown.previous_score}점에서 "
         f"{breakdown.health_score}점으로 {sign}{breakdown.score_delta}점 변했습니다. "
+        f"루트 근거 판정은 {verdict_label}(지지 {breakdown.root_support_strength:.2f}, "
+        f"반박 {breakdown.root_contradict_strength:.2f})이며, "
         f"근거 충족도는 {breakdown.coverage_percent:.1f}%입니다."
     )
 
@@ -612,7 +636,7 @@ def score_thesis(state: AnalysisState) -> dict:
     conflicting = [
         item.assumption
         for item in breakdown.assumption_scores
-        if item.contradict_strength > item.support_strength
+        if item.verdict in {NodeEvidenceVerdict.REFUTED, NodeEvidenceVerdict.CONFLICTING}
     ]
     return {
         "score_breakdown": breakdown,

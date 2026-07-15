@@ -50,6 +50,8 @@ class AnalysisState(TypedDict, total=False):
     selected_documents: list[SourceDocument]
     evidence_list: list[EvidenceItem]
     needs_more_research: bool
+    required_node_coverage_percent: float
+    unresolved_required_assumptions: list[str]
     bull_report: str
     bear_report: str
     judge_report: str

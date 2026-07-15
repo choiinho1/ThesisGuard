@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Coroutine
 from typing import Any, Literal, TypeVar
 
@@ -37,6 +38,7 @@ from agents.scoring import score_thesis
 from agents.state import AnalysisState, empty_research_data
 
 ResultT = TypeVar("ResultT")
+logger = logging.getLogger(__name__)
 
 
 def build_analysis_graph(config: WorkflowConfig):
@@ -153,9 +155,25 @@ class ThesisGuardAgent:
         runnable_config: RunnableConfig | None = None,
     ) -> StructuredThesis:
         with use_model_runnable_config(runnable_config):
-            return await call_model(
+            draft = await call_model(
                 self.dependencies, self.dependencies.model.structure_thesis, raw_input
             )
+            strengthen = getattr(self.dependencies.model, "strengthen_thesis", None)
+            if strengthen is None:
+                return draft
+            try:
+                return await call_model(
+                    self.dependencies,
+                    strengthen,
+                    raw_input,
+                    draft,
+                )
+            except Exception:
+                logger.warning(
+                    "Thesis strengthening failed; using the faithful first-pass draft",
+                    exc_info=True,
+                )
+                return draft
 
     def structure_thesis(
         self,
