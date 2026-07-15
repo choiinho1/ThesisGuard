@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Annotated
 
@@ -21,6 +22,21 @@ from thesisguard_backend.schemas import (
 )
 
 router = APIRouter(tags=["theses"])
+logger = logging.getLogger(__name__)
+
+
+async def _structure_thesis(agent: Agent, raw_input: str, *, runnable_config=None):
+    try:
+        return await agent.astructure_thesis(raw_input, runnable_config=runnable_config)
+    except Exception as exc:
+        logger.exception("LLM thesis structuring failed")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            (
+                "AI 투자 논리 구조화에 실패했습니다. 잠시 후 다시 시도하거나 "
+                "LLM API 키·할당량·네트워크 상태를 확인해 주세요."
+            ),
+        ) from exc
 
 
 async def get_owned_thesis(
@@ -67,8 +83,10 @@ async def create_thesis(
         },
         tags=["thesis-structure", holding.ticker.lower()],
     ) as trace:
-        structured = await agent.astructure_thesis(
-            payload.raw_input, runnable_config=trace.runnable_config
+        structured = await _structure_thesis(
+            agent,
+            payload.raw_input,
+            runnable_config=trace.runnable_config,
         )
         structured = prepare_structured_thesis(structured)
         trace.set_output(structured.model_dump(mode="json"))
@@ -134,8 +152,10 @@ async def update_thesis(
             },
             tags=["thesis-structure", "thesis-update", holding.ticker.lower()],
         ) as trace:
-            structured = await agent.astructure_thesis(
-                raw_input, runnable_config=trace.runnable_config
+            structured = await _structure_thesis(
+                agent,
+                raw_input,
+                runnable_config=trace.runnable_config,
             )
             structured = prepare_structured_thesis(structured)
             trace.set_output(structured.model_dump(mode="json"))

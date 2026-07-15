@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from agents.models import LogicOperator, StructuredThesis, ThesisLogicGraph, ThesisLogicNode
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from thesisguard_backend import models as orm
@@ -56,6 +57,11 @@ class GraphStructuringAgent:
         )
 
 
+class FailingStructuringAgent:
+    async def astructure_thesis(self, raw_input: str, *, runnable_config=None):
+        raise RuntimeError("provider unavailable")
+
+
 async def _owned_holding(db_session) -> tuple[orm.User, orm.Holding]:
     user = orm.User(email="graph@example.com", password_hash="h")
     portfolio = orm.Portfolio(user=user, name="Graph portfolio")
@@ -88,6 +94,23 @@ async def test_create_thesis_persists_causal_graph_and_neutral_score(db_session)
     assert thesis.score_breakdown["scoring_method"] == "EVIDENCE_NODE_MATRIX_V2"
     assert thesis.score_breakdown["health_score"] == 50
     assert thesis.template_catalog_version == "deprecated"
+
+
+@pytest.mark.asyncio
+async def test_create_thesis_returns_actionable_gateway_error_when_llm_fails(db_session) -> None:
+    user, holding = await _owned_holding(db_session)
+
+    with pytest.raises(HTTPException) as caught:
+        await create_thesis(
+            ThesisCreateRequest(raw_input="AI infrastructure demand will keep expanding."),
+            holding,
+            db_session,
+            FailingStructuringAgent(),  # type: ignore[arg-type]
+            user,
+        )
+
+    assert caught.value.status_code == status.HTTP_502_BAD_GATEWAY
+    assert "LLM API 키·할당량·네트워크" in caught.value.detail
 
 
 @pytest.mark.asyncio
