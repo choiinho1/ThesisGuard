@@ -17,32 +17,60 @@ import type {
 const now = "2026-07-13T02:00:00Z";
 const userId = "00000000-0000-4000-8000-000000000001";
 const portfolioId = "10000000-0000-4000-8000-000000000001";
-const templateCatalogVersion = "1.0.0";
 
-function mockTemplateSnapshot(templateId: string): Record<string, unknown> {
+function mockLogicGraph(
+  mainThesis: string,
+  assumptions: string[],
+): NonNullable<Thesis["logic_graph"]> {
+  const leaves = assumptions.map((assumption, index) => ({
+    node_id: `assumption_${index + 1}`,
+    kind: "ASSUMPTION" as const,
+    label: assumption,
+    operator: null,
+    child_ids: [],
+    assumption,
+  }));
   return {
-    catalog_version: templateCatalogVersion,
-    template_id: templateId,
-    assumption_slots: [],
+    graph_version: "1.0.0",
+    root_id: "root_claim",
+    nodes: [{
+      node_id: "root_claim",
+      kind: "CLAIM",
+      label: mainThesis,
+      operator: "CONTRIBUTING",
+      child_ids: leaves.map((node) => node.node_id),
+      assumption: null,
+    }, ...leaves],
   };
 }
 
 function mockScoreBreakdown(
-  templateId: Thesis["template_id"],
+  graph: NonNullable<Thesis["logic_graph"]>,
   healthScore: number,
 ): NonNullable<Thesis["score_breakdown"]> {
+  const rootState = (healthScore - 50) / 50;
   return {
-    template_id: templateId,
-    template_catalog_version: templateCatalogVersion,
+    scoring_method: "EVIDENCE_NODE_MATRIX_V2",
+    logic_graph_version: graph.graph_version,
     previous_score: healthScore,
     health_score: healthScore,
     score_delta: 0,
+    root_state: rootState,
     coverage_percent: 0,
-    invalidation_policy_version: "1.0.0",
+    invalidation_policy_version: "2.0.0",
     is_broken: false,
     invalidated_assumptions: [],
     assumption_scores: [],
-    slot_scores: [],
+    node_scores: graph.nodes.map((node) => ({
+      node_id: node.node_id,
+      label: node.label,
+      kind: node.kind,
+      operator: node.operator,
+      state: node.node_id === graph.root_id ? rootState : 0,
+      coverage_percent: 0,
+      required: false,
+    })),
+    evidence_impacts: [],
   };
 }
 
@@ -59,6 +87,11 @@ export const mockPortfolios: Portfolio[] = [
   },
 ];
 
+const nvdaGraph = mockLogicGraph(
+  "NVIDIA는 AI 학습·추론 인프라의 표준 지위를 바탕으로 데이터센터 매출 성장을 지속한다.",
+  ["하이퍼스케일러 AI CAPEX가 성장한다", "CUDA 전환 비용이 높게 유지된다"],
+);
+
 const nvdaThesis: Thesis = {
   id: "30000000-0000-4000-8000-000000000001",
   holding_id: "20000000-0000-4000-8000-000000000001",
@@ -68,16 +101,18 @@ const nvdaThesis: Thesis = {
   positive_signals: ["클라우드 사업자 가이던스 상향", "차세대 GPU 수요 증가"],
   negative_signals: ["고객사 자체 ASIC 확대", "데이터센터 투자 효율화"],
   key_risks: ["수출 규제 강화", "대형 고객 매출 집중"],
-  template_id: "SCALABLE_GROWTH",
-  template_catalog_version: templateCatalogVersion,
-  template_snapshot: mockTemplateSnapshot("SCALABLE_GROWTH"),
-  assumption_bindings: [],
-  score_breakdown: mockScoreBreakdown("SCALABLE_GROWTH", 82),
+  logic_graph: nvdaGraph,
+  score_breakdown: mockScoreBreakdown(nvdaGraph, 82),
   confidence_score: 82,
   status: "STRENGTHENED",
   created_at: "2026-03-02T09:00:00Z",
   updated_at: now,
 };
+
+const avgoGraph = mockLogicGraph(
+  "Broadcom은 Custom AI ASIC과 네트워크 칩 수요 증가로 성장한다.",
+  ["주요 고객의 Custom ASIC 물량이 증가한다"],
+);
 
 const avgoThesis: Thesis = {
   id: "30000000-0000-4000-8000-000000000002",
@@ -88,11 +123,8 @@ const avgoThesis: Thesis = {
   positive_signals: ["AI 반도체 수주 확대"],
   negative_signals: ["고객사 발주 지연"],
   key_risks: ["소수 고객 의존도"],
-  template_id: "SCALABLE_GROWTH",
-  template_catalog_version: templateCatalogVersion,
-  template_snapshot: mockTemplateSnapshot("SCALABLE_GROWTH"),
-  assumption_bindings: [],
-  score_breakdown: mockScoreBreakdown("SCALABLE_GROWTH", 54),
+  logic_graph: avgoGraph,
+  score_breakdown: mockScoreBreakdown(avgoGraph, 54),
   confidence_score: 54,
   status: "WEAKENED",
   created_at: "2026-02-10T09:00:00Z",
@@ -294,20 +326,19 @@ export function createMockThesis(holdingId: string, rawInput: string): Thesis {
   const holding = dashboardState.holdings.find((item) => item.id === holdingId);
   if (!holding) throw new Error("보유 종목을 찾을 수 없습니다.");
   const createdAt = new Date().toISOString();
+  const assumptions = ["산업 수요가 투자 기간 동안 성장한다"];
+  const graph = mockLogicGraph(rawInput, assumptions);
   const thesis: Thesis = {
     id: crypto.randomUUID(),
     holding_id: holdingId,
     raw_input: rawInput,
     main_thesis: rawInput,
-    key_assumptions: ["산업 수요가 투자 기간 동안 성장한다"],
+    key_assumptions: assumptions,
     positive_signals: ["수요 가이던스 상향"],
     negative_signals: ["예상보다 느린 수요 회복"],
     key_risks: ["산업 사이클 변동성"],
-    template_id: "GENERAL_FUNDAMENTAL",
-    template_catalog_version: templateCatalogVersion,
-    template_snapshot: mockTemplateSnapshot("GENERAL_FUNDAMENTAL"),
-    assumption_bindings: [],
-    score_breakdown: mockScoreBreakdown("GENERAL_FUNDAMENTAL", 70),
+    logic_graph: graph,
+    score_breakdown: mockScoreBreakdown(graph, 70),
     confidence_score: 70,
     status: "UNCHANGED",
     created_at: createdAt,
@@ -325,19 +356,18 @@ export function createMockThesis(holdingId: string, rawInput: string): Thesis {
 export function updateMockThesis(thesisId: string, rawInput: string): Thesis {
   const holding = dashboardState.holdings.find((item) => item.thesis?.id === thesisId);
   if (!holding?.thesis) throw new Error("수정할 투자 논리를 찾을 수 없습니다.");
+  const assumptions = ["수정된 투자 논리의 핵심 전제가 유지된다"];
+  const graph = mockLogicGraph(rawInput, assumptions);
   const thesis: Thesis = {
     ...holding.thesis,
     raw_input: rawInput,
     main_thesis: rawInput,
-    key_assumptions: ["수정된 투자 논리의 핵심 전제가 유지된다"],
+    key_assumptions: assumptions,
     positive_signals: ["핵심 전제를 뒷받침하는 신규 근거"],
     negative_signals: ["핵심 전제를 약화하는 반대 근거"],
     key_risks: ["수정된 핵심 전제가 성립하지 않을 가능성"],
-    template_id: "GENERAL_FUNDAMENTAL",
-    template_catalog_version: templateCatalogVersion,
-    template_snapshot: mockTemplateSnapshot("GENERAL_FUNDAMENTAL"),
-    assumption_bindings: [],
-    score_breakdown: mockScoreBreakdown("GENERAL_FUNDAMENTAL", 50),
+    logic_graph: graph,
+    score_breakdown: mockScoreBreakdown(graph, 50),
     confidence_score: 50,
     status: "UNCHANGED",
     updated_at: new Date().toISOString(),
@@ -397,8 +427,27 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
       classification: "SUPPORT",
       impact: "HIGH",
       reason: "AI CAPEX 성장 전제를 직접 지지합니다.",
+      related_assumptions: [updatedThesis.key_assumptions[0]],
+      assumption_findings: [{
+        assumption: updatedThesis.key_assumptions[0],
+        assessment: "SUPPORT",
+        impact: "HIGH",
+        relevance_score: 1,
+        reasoning: "AI CAPEX 성장 전제를 직접 지지합니다.",
+        source_passage_indices: [0],
+      }],
+      score_delta: 6,
+      node_contributions: [{
+        node_id: "assumption_1",
+        assumption: updatedThesis.key_assumptions[0],
+        assessment: "SUPPORT",
+        impact: "HIGH",
+        relevance_score: 1,
+        signed_strength: 1,
+      }],
       evidence_scope: "NEW",
       published_at: updatedThesis.updated_at,
+      saved_to_history: true,
       created_at: updatedThesis.updated_at,
     },
   ];

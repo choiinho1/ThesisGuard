@@ -12,6 +12,7 @@ from collections.abc import Callable
 from typing import Annotated
 
 from agents.graph import arun_analysis_workflow
+from agents.logic_graph import normalize_logic_graph
 from agents.models import AlertDecision, EvidenceImpact, EvidenceItem
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -133,6 +134,12 @@ async def run_analysis_and_save(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "이 종목에는 아직 등록된 투자 논리가 없습니다."
         )
+    if not thesis.logic_graph:
+        thesis.logic_graph = normalize_logic_graph(
+            None,
+            main_thesis=thesis.main_thesis,
+            key_assumptions=thesis.key_assumptions,
+        ).model_dump(mode="json")
     portfolio = await db.get(orm.Portfolio, holding.portfolio_id)
     portfolio_holdings = list(
         await db.scalars(select(orm.Holding).where(orm.Holding.portfolio_id == portfolio.id))
@@ -183,10 +190,7 @@ async def run_analysis_and_save(
         "positive_signals": thesis.positive_signals,
         "negative_signals": thesis.negative_signals,
         "key_risks": thesis.key_risks,
-        "template_id": thesis.template_id,
-        "template_catalog_version": thesis.template_catalog_version,
-        "template_snapshot": thesis.template_snapshot,
-        "assumption_bindings": thesis.assumption_bindings,
+        "logic_graph": thesis.logic_graph,
         "score_breakdown": thesis.score_breakdown,
         "confidence_score": thesis.confidence_score,
         "status": thesis.status.value if hasattr(thesis.status, "value") else thesis.status,
@@ -215,6 +219,10 @@ async def run_analysis_and_save(
     thesis.status = result.updated_status
     thesis.score_breakdown = result.score_breakdown.model_dump(mode="json")
 
+    impacts_by_document = {
+        item.document_id: item for item in result.score_breakdown.evidence_impacts
+    }
+
     evidence_rows = [
         orm.Evidence(
             thesis_id=thesis.id,
@@ -228,6 +236,22 @@ async def run_analysis_and_save(
             impact=item.impact,
             reason=item.reason,
             related_assumptions=item.related_assumptions,
+            assumption_findings=[
+                finding.model_dump(mode="json") for finding in item.assumption_findings
+            ],
+            score_delta=(
+                impacts_by_document[item.document_id].score_delta
+                if item.document_id in impacts_by_document
+                else 0
+            ),
+            node_contributions=(
+                [
+                    contribution.model_dump(mode="json")
+                    for contribution in impacts_by_document[item.document_id].node_contributions
+                ]
+                if item.document_id in impacts_by_document
+                else []
+            ),
             published_at=item.published_at,
             saved_to_history=item.impact in _HISTORY_WORTHY_IMPACT,
         )
@@ -452,6 +476,7 @@ async def query_portfolio(
             impact=row.impact,
             reason=row.reason,
             related_assumptions=row.related_assumptions,
+            assumption_findings=row.assumption_findings,
             published_at=row.published_at,
         )
         for row in evidence_rows

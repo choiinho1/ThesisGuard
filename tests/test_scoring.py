@@ -1,41 +1,75 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
+from agents.logic_graph import (
+    build_fallback_logic_graph,
+    evaluate_logic_graph,
+    normalize_logic_graph,
+    required_assumption_node_ids,
+)
 from agents.models import (
-    AssumptionBinding,
+    AssumptionAssessment,
+    AssumptionFinding,
     EvidenceClassification,
     EvidenceImpact,
     EvidenceItem,
+    EvidenceSourceType,
+    LogicOperator,
     StructuredThesis,
+    ThesisLogicGraph,
+    ThesisLogicNode,
     ThesisStatus,
 )
 from agents.scoring import (
     calculate_score_breakdown,
-    normalize_assumption_bindings,
     prepare_structured_thesis,
-    score_thesis,
     status_from_score_delta,
 )
-from agents.thesis_templates import ThesisTemplateId, get_thesis_template
 
-ASSUMPTIONS = [
-    "시장 수요가 계속 성장한다",
-    "회사가 점유율을 확대한다",
-    "단위경제성이 개선된다",
-]
+ASSUMPTIONS = ["Demand keeps growing", "Share remains stable", "Margins remain healthy"]
 
 
-def _thesis() -> StructuredThesis:
+def _graph(operator: LogicOperator = LogicOperator.CONTRIBUTING) -> ThesisLogicGraph:
+    return ThesisLogicGraph(
+        root_id="root_claim",
+        nodes=[
+            ThesisLogicNode(
+                node_id="root_claim",
+                kind="CLAIM",
+                label="The business compounds intrinsic value",
+                operator=operator,
+                child_ids=["demand", "share", "margin"],
+            ),
+            ThesisLogicNode(
+                node_id="demand",
+                kind="ASSUMPTION",
+                label=ASSUMPTIONS[0],
+                assumption=ASSUMPTIONS[0],
+            ),
+            ThesisLogicNode(
+                node_id="share",
+                kind="ASSUMPTION",
+                label=ASSUMPTIONS[1],
+                assumption=ASSUMPTIONS[1],
+            ),
+            ThesisLogicNode(
+                node_id="margin",
+                kind="ASSUMPTION",
+                label=ASSUMPTIONS[2],
+                assumption=ASSUMPTIONS[2],
+            ),
+        ],
+    )
+
+
+def _thesis(operator: LogicOperator = LogicOperator.CONTRIBUTING) -> StructuredThesis:
     return prepare_structured_thesis(
         StructuredThesis(
-            raw_input="시장 성장과 점유율 확대가 규모의 경제를 만들 것이라는 투자 논리입니다.",
-            main_thesis="시장 성장과 점유율 확대로 규모의 경제를 달성한다",
+            raw_input="Demand, share, and margins will support long-term compounding.",
+            main_thesis="The business compounds intrinsic value",
             key_assumptions=ASSUMPTIONS,
-            template_id=ThesisTemplateId.SCALABLE_GROWTH,
-            assumption_bindings=[
-                AssumptionBinding(slot_id="market_demand", assumptions=[ASSUMPTIONS[0]]),
-                AssumptionBinding(slot_id="adoption_share", assumptions=[ASSUMPTIONS[1]]),
-                AssumptionBinding(slot_id="unit_economics", assumptions=[ASSUMPTIONS[2]]),
-            ],
+            logic_graph=_graph(operator),
         )
     )
 
@@ -48,163 +82,362 @@ def _evidence(
 ) -> EvidenceItem:
     return EvidenceItem(
         document_id=document_id,
-        source_type="EARNINGS",
+        source_type=EvidenceSourceType.NEWS,
         source_url=f"https://example.com/{document_id}",
-        content_snippet="검증 가능한 원문",
+        content_snippet="A sourced fact affects the assumption.",
         classification=classification,
         impact=impact,
-        reason="핵심 가정을 직접 검증합니다.",
+        reason="Directly addresses the exact assumption.",
         related_assumptions=[assumption],
     )
 
 
-def test_weighted_score_matches_template_formula() -> None:
-    thesis = _thesis()
-    breakdown = calculate_score_breakdown(
-        thesis,
-        [
-            _evidence(
-                "demand",
-                ASSUMPTIONS[0],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.HIGH,
+def _persist(thesis: StructuredThesis, breakdown) -> StructuredThesis:
+    return thesis.model_copy(
+        update={
+            "confidence_score": breakdown.health_score,
+            "score_breakdown": breakdown,
+            "status": ThesisStatus.BROKEN if breakdown.is_broken else ThesisStatus.UNCHANGED,
+        }
+    )
+
+
+def test_graph_operators_propagate_leaf_states_deterministically() -> None:
+    states = {"demand": 1.0, "share": -0.5, "margin": 0.5}
+    observed = set(states)
+
+    and_states, _ = evaluate_logic_graph(_graph(LogicOperator.AND), states, observed)
+    or_states, _ = evaluate_logic_graph(_graph(LogicOperator.OR), states, observed)
+    contributing_states, coverage = evaluate_logic_graph(
+        _graph(LogicOperator.CONTRIBUTING), states, observed
+    )
+
+    assert and_states["root_claim"] == -0.5
+    assert or_states["root_claim"] == 1.0
+    assert contributing_states["root_claim"] == 1 / 3
+    assert coverage["root_claim"] == 100
+
+
+def test_invalid_graph_falls_back_to_equal_contribution_graph() -> None:
+    disconnected = _graph().model_copy(
+        update={
+            "nodes": [
+                *_graph().nodes,
+                ThesisLogicNode(
+                    node_id="orphan",
+                    kind="ASSUMPTION",
+                    label="Orphan",
+                    assumption="Orphan",
+                ),
+            ]
+        }
+    )
+
+    normalized = normalize_logic_graph(
+        disconnected,
+        main_thesis="The business compounds intrinsic value",
+        key_assumptions=ASSUMPTIONS,
+    )
+
+    assert normalized == build_fallback_logic_graph(
+        "The business compounds intrinsic value", ASSUMPTIONS
+    )
+    assert normalized.nodes[0].operator == LogicOperator.CONTRIBUTING
+
+
+def test_incomplete_model_claim_reaches_fallback_instead_of_raising() -> None:
+    incomplete = ThesisLogicGraph(
+        root_id="root_claim",
+        nodes=[
+            ThesisLogicNode(
+                node_id="root_claim",
+                kind="CLAIM",
+                label="The business compounds intrinsic value",
+                operator=LogicOperator.AND,
             ),
-            _evidence(
-                "share",
-                ASSUMPTIONS[1],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.MEDIUM,
+            *[
+                ThesisLogicNode(
+                    node_id=f"assumption_{index}",
+                    kind="ASSUMPTION",
+                    label=assumption,
+                    assumption=assumption,
+                )
+                for index, assumption in enumerate(ASSUMPTIONS, start=1)
+            ],
+        ],
+    )
+
+    normalized = normalize_logic_graph(
+        incomplete,
+        main_thesis="The business compounds intrinsic value",
+        key_assumptions=ASSUMPTIONS,
+    )
+
+    assert normalized.nodes[0].operator == LogicOperator.CONTRIBUTING
+    assert normalized.nodes[0].child_ids == ["assumption_1", "assumption_2", "assumption_3"]
+
+
+def test_required_assumptions_are_derived_only_through_and_paths() -> None:
+    graph = ThesisLogicGraph(
+        root_id="root_claim",
+        nodes=[
+            ThesisLogicNode(
+                node_id="root_claim",
+                kind="CLAIM",
+                label="Root",
+                operator=LogicOperator.AND,
+                child_ids=["required_leaf", "alternatives"],
             ),
-            _evidence(
-                "economics",
-                ASSUMPTIONS[2],
-                EvidenceClassification.CONTRADICT,
-                EvidenceImpact.MEDIUM,
+            ThesisLogicNode(
+                node_id="required_leaf",
+                kind="ASSUMPTION",
+                label=ASSUMPTIONS[0],
+                assumption=ASSUMPTIONS[0],
+            ),
+            ThesisLogicNode(
+                node_id="alternatives",
+                kind="CLAIM",
+                label="One route can work",
+                operator=LogicOperator.OR,
+                child_ids=["share", "margin"],
+            ),
+            ThesisLogicNode(
+                node_id="share",
+                kind="ASSUMPTION",
+                label=ASSUMPTIONS[1],
+                assumption=ASSUMPTIONS[1],
+            ),
+            ThesisLogicNode(
+                node_id="margin",
+                kind="ASSUMPTION",
+                label=ASSUMPTIONS[2],
+                assumption=ASSUMPTIONS[2],
             ),
         ],
     )
 
-    assert breakdown.health_score == 66
-    assert breakdown.score_delta == 16
-    assert breakdown.coverage_percent == 85.0
-    assert [slot.contribution_points for slot in breakdown.slot_scores] == [
-        15.0,
-        7.5,
-        -6.3,
-        0.0,
-    ]
-    assert status_from_score_delta(breakdown.score_delta) == ThesisStatus.STRONGLY_STRENGTHENED
+    assert required_assumption_node_ids(graph) == {"required_leaf"}
 
 
-def test_no_new_evidence_retains_previous_assumption_states_and_score() -> None:
+def test_independent_evidence_accumulates_with_reduced_strength() -> None:
+    thesis = _thesis()
+    result = calculate_score_breakdown(
+        thesis,
+        [
+            _evidence(
+                "support-1", ASSUMPTIONS[0], EvidenceClassification.SUPPORT, EvidenceImpact.HIGH
+            ),
+            _evidence(
+                "support-2", ASSUMPTIONS[0], EvidenceClassification.SUPPORT, EvidenceImpact.HIGH
+            ),
+        ],
+    )
+
+    demand = result.assumption_scores[0]
+    assert demand.support_strength == 0.3276
+    assert demand.state == 0.3276
+    assert result.root_state == 0.1092
+    assert result.health_score == 55
+
+
+def test_repeated_reports_of_the_same_event_count_once_across_runs() -> None:
+    thesis = _thesis()
+    published_at = datetime(2026, 7, 15, tzinfo=UTC)
+    original = _evidence(
+        "original-report",
+        ASSUMPTIONS[0],
+        EvidenceClassification.SUPPORT,
+        EvidenceImpact.HIGH,
+    ).model_copy(
+        update={
+            "published_at": published_at,
+            "content_snippet": (
+                "Apple reported third-quarter revenue of $85 billion, up 5%, "
+                "as iPhone demand strengthened."
+            ),
+        }
+    )
+    repeated = _evidence(
+        "repeated-report",
+        ASSUMPTIONS[0],
+        EvidenceClassification.SUPPORT,
+        EvidenceImpact.HIGH,
+    ).model_copy(
+        update={
+            "published_at": published_at + timedelta(days=1),
+            "content_snippet": (
+                "Apple's Q3 sales reached $85 billion, a 5 percent increase driven by "
+                "stronger iPhone demand."
+            ),
+        }
+    )
+    later_repeat = _evidence(
+        "later-repeat",
+        ASSUMPTIONS[0],
+        EvidenceClassification.SUPPORT,
+        EvidenceImpact.HIGH,
+    ).model_copy(
+        update={
+            "published_at": published_at + timedelta(days=2),
+            "content_snippet": (
+                "Strong iPhone demand helped Apple post $85 billion in quarterly sales, "
+                "5 percent above the prior year."
+            ),
+        }
+    )
+
+    same_run = calculate_score_breakdown(thesis, [original, repeated])
+    next_run = calculate_score_breakdown(_persist(thesis, same_run), [later_repeat])
+
+    assert same_run.assumption_scores[0].support_strength == 0.18
+    assert len(same_run.assumption_scores[0].evidence_event_keys) == 1
+    assert next_run.assumption_scores[0].support_strength == 0.18
+    assert next_run.score_delta == 0
+
+
+def test_every_information_item_has_one_state_per_assumption_node() -> None:
+    thesis = _thesis()
+    evidence = _evidence(
+        "matrix-item",
+        ASSUMPTIONS[0],
+        EvidenceClassification.SUPPORT,
+        EvidenceImpact.HIGH,
+    ).model_copy(
+        update={
+            "related_assumptions": ASSUMPTIONS[:2],
+            "assumption_findings": [
+                AssumptionFinding(
+                    assumption=ASSUMPTIONS[0],
+                    assessment=AssumptionAssessment.SUPPORT,
+                    impact=EvidenceImpact.HIGH,
+                    relevance_score=0.8,
+                    reasoning="Direct demand evidence.",
+                    source_passage_indices=[0],
+                ),
+                AssumptionFinding(
+                    assumption=ASSUMPTIONS[1],
+                    assessment=AssumptionAssessment.CONTRADICT,
+                    impact=EvidenceImpact.MEDIUM,
+                    relevance_score=0.6,
+                    reasoning="Moderately challenges share stability.",
+                    source_passage_indices=[1],
+                ),
+            ],
+        }
+    )
+
+    result = calculate_score_breakdown(thesis, [evidence])
+
+    impact = result.evidence_impacts[0]
+    assert len(impact.node_contributions) == len(ASSUMPTIONS)
+    assert [item.signed_strength for item in impact.node_contributions] == [0.144, -0.054, 0]
+    assert impact.score_delta == result.score_delta
+
+
+def test_uncited_directional_finding_does_not_change_unaddressed_node() -> None:
+    thesis = _thesis()
+    evidence = _evidence(
+        "valuation-report",
+        ASSUMPTIONS[0],
+        EvidenceClassification.CONTRADICT,
+        EvidenceImpact.HIGH,
+    ).model_copy(
+        update={
+            "related_assumptions": ASSUMPTIONS[:2],
+            "assumption_findings": [
+                AssumptionFinding(
+                    assumption=ASSUMPTIONS[0],
+                    assessment=AssumptionAssessment.CONTRADICT,
+                    impact=EvidenceImpact.HIGH,
+                    relevance_score=0.95,
+                    reasoning="The cited valuation comparison directly contradicts this node.",
+                    source_passage_indices=[0],
+                ),
+                AssumptionFinding(
+                    assumption=ASSUMPTIONS[1],
+                    assessment=AssumptionAssessment.CONTRADICT,
+                    impact=EvidenceImpact.HIGH,
+                    relevance_score=0.95,
+                    reasoning="The report does not mention this node.",
+                    source_passage_indices=[],
+                ),
+            ],
+        }
+    )
+
+    result = calculate_score_breakdown(thesis, [evidence])
+
+    states = {item.assumption: item.state for item in result.assumption_scores}
+    contributions = {
+        item.assumption: item for item in result.evidence_impacts[0].node_contributions
+    }
+    assert states[ASSUMPTIONS[0]] == -0.171
+    assert states[ASSUMPTIONS[1]] == 0
+    assert contributions[ASSUMPTIONS[1]].assessment == AssumptionAssessment.NOT_ADDRESSED
+    assert contributions[ASSUMPTIONS[1]].signed_strength == 0
+
+
+def test_not_addressed_information_preserves_previous_node_state_and_score() -> None:
     thesis = _thesis()
     first = calculate_score_breakdown(
         thesis,
-        [
-            _evidence(
-                "demand",
-                ASSUMPTIONS[0],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.HIGH,
-            )
-        ],
+        [_evidence("support", ASSUMPTIONS[0], EvidenceClassification.SUPPORT, EvidenceImpact.HIGH)],
     )
-    persisted = thesis.model_copy(
-        update={"confidence_score": first.health_score, "score_breakdown": first}
+    persisted = _persist(thesis, first)
+    unrelated = _evidence(
+        "unrelated",
+        ASSUMPTIONS[0],
+        EvidenceClassification.NEUTRAL,
+        EvidenceImpact.LOW,
+    ).model_copy(
+        update={
+            "related_assumptions": [],
+            "assumption_findings": [
+                AssumptionFinding(
+                    assumption=assumption,
+                    assessment=AssumptionAssessment.NOT_ADDRESSED,
+                    impact=EvidenceImpact.LOW,
+                    relevance_score=0,
+                    reasoning="The information does not address this node.",
+                )
+                for assumption in ASSUMPTIONS
+            ],
+        }
     )
 
-    second = calculate_score_breakdown(persisted, [])
+    second = calculate_score_breakdown(persisted, [unrelated])
 
-    assert second.health_score == first.health_score == 65
+    assert second.health_score == first.health_score
     assert second.score_delta == 0
-    assert second.assumption_scores[0].evidence_document_ids == ["demand"]
+    assert second.assumption_scores == first.assumption_scores
+    assert second.evidence_impacts[0].score_delta == 0
 
 
-def test_new_evidence_replaces_only_the_affected_assumption_state() -> None:
+def test_information_attributions_sum_to_nonlinear_final_score_change() -> None:
+    thesis = _thesis(LogicOperator.AND)
+    evidence = [
+        _evidence("demand", ASSUMPTIONS[0], EvidenceClassification.SUPPORT, EvidenceImpact.HIGH),
+        _evidence("share", ASSUMPTIONS[1], EvidenceClassification.SUPPORT, EvidenceImpact.MEDIUM),
+        _evidence("margin", ASSUMPTIONS[2], EvidenceClassification.SUPPORT, EvidenceImpact.HIGH),
+    ]
+
+    result = calculate_score_breakdown(thesis, evidence)
+
+    assert round(sum(item.score_delta for item in result.evidence_impacts), 2) == result.score_delta
+    assert {item.document_id for item in result.evidence_impacts} == {
+        "demand",
+        "share",
+        "margin",
+    }
+
+
+def test_opposing_evidence_cancels_and_no_evidence_preserves_state() -> None:
     thesis = _thesis()
     first = calculate_score_breakdown(
         thesis,
         [
             _evidence(
-                "demand-up",
-                ASSUMPTIONS[0],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.HIGH,
-            ),
-            _evidence(
-                "share-up",
-                ASSUMPTIONS[1],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.MEDIUM,
-            ),
-        ],
-    )
-    persisted = thesis.model_copy(
-        update={"confidence_score": first.health_score, "score_breakdown": first}
-    )
-
-    second = calculate_score_breakdown(
-        persisted,
-        [
-            _evidence(
-                "demand-down",
-                ASSUMPTIONS[0],
-                EvidenceClassification.CONTRADICT,
-                EvidenceImpact.HIGH,
-            )
-        ],
-    )
-
-    assert second.health_score == 43
-    assert second.score_delta == -30
-    assert second.assumption_scores[0].state == -1.0
-    assert second.assumption_scores[1].state == 0.5
-    assert second.assumption_scores[1].evidence_document_ids == ["share-up"]
-
-
-def test_document_count_does_not_multiply_evidence_strength() -> None:
-    thesis = _thesis()
-    one = calculate_score_breakdown(
-        thesis,
-        [
-            _evidence(
-                "article-1",
-                ASSUMPTIONS[0],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.MEDIUM,
-            )
-        ],
-    )
-    many = calculate_score_breakdown(
-        thesis,
-        [
-            _evidence(
-                "article-1",
-                ASSUMPTIONS[0],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.MEDIUM,
-            ),
-            _evidence(
-                "article-2",
-                ASSUMPTIONS[0],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.MEDIUM,
-            ),
-        ],
-    )
-
-    assert one.health_score == many.health_score == 58
-
-
-def test_equal_support_and_contradiction_cancel_with_coverage_retained() -> None:
-    breakdown = calculate_score_breakdown(
-        _thesis(),
-        [
-            _evidence(
-                "support",
-                ASSUMPTIONS[0],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.HIGH,
+                "support", ASSUMPTIONS[0], EvidenceClassification.SUPPORT, EvidenceImpact.HIGH
             ),
             _evidence(
                 "contradict",
@@ -214,147 +447,15 @@ def test_equal_support_and_contradiction_cancel_with_coverage_retained() -> None
             ),
         ],
     )
+    second = calculate_score_breakdown(_persist(thesis, first), [])
 
-    assert breakdown.health_score == 50
-    assert breakdown.coverage_percent == 30.0
-    assert breakdown.assumption_scores[0].state == 0.0
-    assert breakdown.assumption_scores[0].has_evidence is True
-
-
-def test_existing_thesis_keeps_persisted_weights_and_catalog_version() -> None:
-    existing = _thesis()
-    assert existing.score_breakdown is not None
-    persisted_weights = {
-        "market_demand": 7000,
-        "adoption_share": 1000,
-        "unit_economics": 1000,
-        "funding_execution": 1000,
-    }
-    persisted_slots = [
-        slot.model_copy(update={"weight_bps": persisted_weights[slot.slot_id]})
-        for slot in existing.score_breakdown.slot_scores
-    ]
-    existing = existing.model_copy(
-        update={
-            "score_breakdown": existing.score_breakdown.model_copy(
-                update={
-                    "template_catalog_version": "0.9.0",
-                    "slot_scores": persisted_slots,
-                }
-            )
-        }
-    )
-
-    result = calculate_score_breakdown(
-        existing,
-        [
-            _evidence(
-                "support",
-                ASSUMPTIONS[0],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.HIGH,
-            )
-        ],
-    )
-
-    assert result.health_score == 85
-    assert result.template_catalog_version == "0.9.0"
-    assert {slot.slot_id: slot.weight_bps for slot in result.slot_scores} == persisted_weights
+    assert first.assumption_scores[0].state == 0
+    assert second.assumption_scores[0] == first.assumption_scores[0]
+    assert second.health_score == 50
 
 
-def test_binding_normalization_rejects_unknown_paraphrased_and_duplicate_values() -> None:
-    template = get_thesis_template(ThesisTemplateId.SCALABLE_GROWTH)
-    normalized = normalize_assumption_bindings(
-        template.template_id,
-        ASSUMPTIONS,
-        [
-            AssumptionBinding(
-                slot_id="market_demand",
-                assumptions=[ASSUMPTIONS[0], "AI가 바꾼 문장"],
-            ),
-            AssumptionBinding(
-                slot_id="adoption_share",
-                assumptions=[ASSUMPTIONS[0], ASSUMPTIONS[1]],
-            ),
-            AssumptionBinding(slot_id="invalid_slot", assumptions=[ASSUMPTIONS[2]]),
-        ],
-    )
-
-    assert [binding.slot_id for binding in normalized] == [
-        slot.slot_id for slot in template.assumption_slots
-    ]
-    assert normalized[0].assumptions == [ASSUMPTIONS[0]]
-    assert normalized[1].assumptions == [ASSUMPTIONS[1]]
-    assert ASSUMPTIONS[2] not in [
-        assumption for binding in normalized for assumption in binding.assumptions
-    ]
-
-
-def test_two_consecutive_high_contradictions_break_a_core_assumption() -> None:
-    thesis = _thesis()
-    first = calculate_score_breakdown(
-        thesis,
-        [
-            _evidence(
-                "first-contradiction",
-                ASSUMPTIONS[0],
-                EvidenceClassification.CONTRADICT,
-                EvidenceImpact.HIGH,
-            )
-        ],
-    )
-    persisted = thesis.model_copy(
-        update={"confidence_score": first.health_score, "score_breakdown": first}
-    )
-
-    result = score_thesis(
-        {
-            "thesis_snapshot": persisted,
-            "evidence_list": [
-                _evidence(
-                    "second-contradiction",
-                    ASSUMPTIONS[0],
-                    EvidenceClassification.CONTRADICT,
-                    EvidenceImpact.HIGH,
-                )
-            ],
-        }
-    )
-
-    breakdown = result["score_breakdown"]
-    assert first.assumption_scores[0].invalidation_streak == 1
-    assert first.is_broken is False
-    assert breakdown.assumption_scores[0].invalidation_streak == 2
-    assert breakdown.invalidated_assumptions == [ASSUMPTIONS[0]]
-    assert breakdown.is_broken is True
-    assert result["updated_status"] == ThesisStatus.BROKEN
-    assert "2회 연속" in result["deterministic_change_reason"]
-
-
-def test_duplicate_or_missing_evidence_does_not_advance_invalidation_streak() -> None:
-    thesis = _thesis()
-    document = _evidence(
-        "same-document",
-        ASSUMPTIONS[0],
-        EvidenceClassification.CONTRADICT,
-        EvidenceImpact.HIGH,
-    )
-    first = calculate_score_breakdown(thesis, [document])
-    persisted = thesis.model_copy(
-        update={"confidence_score": first.health_score, "score_breakdown": first}
-    )
-
-    duplicate = calculate_score_breakdown(persisted, [document])
-    no_evidence = calculate_score_breakdown(persisted, [])
-
-    assert duplicate.assumption_scores[0].invalidation_streak == 1
-    assert no_evidence.assumption_scores[0].invalidation_streak == 1
-    assert duplicate.is_broken is False
-    assert no_evidence.is_broken is False
-
-
-def test_support_resets_streak_but_broken_state_is_latched_until_logic_reset() -> None:
-    thesis = _thesis()
+def test_two_distinct_high_contradictions_break_required_assumption() -> None:
+    thesis = _thesis(LogicOperator.AND)
     first = calculate_score_breakdown(
         thesis,
         [
@@ -366,25 +467,19 @@ def test_support_resets_streak_but_broken_state_is_latched_until_logic_reset() -
             )
         ],
     )
-    after_first = thesis.model_copy(
-        update={"confidence_score": first.health_score, "score_breakdown": first}
-    )
-    supported = calculate_score_breakdown(
-        after_first,
+    duplicate = calculate_score_breakdown(
+        _persist(thesis, first),
         [
             _evidence(
-                "support-before-break",
+                "contradiction-1",
                 ASSUMPTIONS[0],
-                EvidenceClassification.SUPPORT,
+                EvidenceClassification.CONTRADICT,
                 EvidenceImpact.HIGH,
             )
         ],
     )
-    assert supported.assumption_scores[0].invalidation_streak == 0
-    assert supported.is_broken is False
-
     second = calculate_score_breakdown(
-        after_first,
+        _persist(thesis, first),
         [
             _evidence(
                 "contradiction-2",
@@ -394,75 +489,55 @@ def test_support_resets_streak_but_broken_state_is_latched_until_logic_reset() -
             )
         ],
     )
-    broken = after_first.model_copy(
-        update={
-            "confidence_score": second.health_score,
-            "score_breakdown": second,
-            "status": ThesisStatus.BROKEN,
-        }
-    )
-    after_support = calculate_score_breakdown(
-        broken,
-        [
-            _evidence(
-                "support-after-break",
-                ASSUMPTIONS[0],
-                EvidenceClassification.SUPPORT,
-                EvidenceImpact.HIGH,
-            )
-        ],
-    )
 
-    assert after_support.is_broken is True
-    assert after_support.invalidated_assumptions == [ASSUMPTIONS[0]]
-    reset = prepare_structured_thesis(broken)
-    assert reset.status == ThesisStatus.UNCHANGED
-    assert reset.score_breakdown is not None
-    assert reset.score_breakdown.is_broken is False
-    assert reset.score_breakdown.invalidated_assumptions == []
+    assert first.assumption_scores[0].invalidation_streak == 1
+    assert duplicate.assumption_scores[0].invalidation_streak == 1
+    assert second.assumption_scores[0].invalidation_streak == 2
+    assert second.is_broken is True
+    assert second.invalidated_assumptions == [ASSUMPTIONS[0]]
 
 
-def test_non_core_or_medium_contradiction_never_triggers_hard_gate() -> None:
-    thesis = _thesis()
+def test_broken_state_latches_until_thesis_is_prepared_again() -> None:
+    thesis = _thesis(LogicOperator.AND)
     first = calculate_score_breakdown(
         thesis,
-        [
-            _evidence(
-                "non-core-1",
-                ASSUMPTIONS[2],
-                EvidenceClassification.CONTRADICT,
-                EvidenceImpact.HIGH,
-            ),
-            _evidence(
-                "core-medium-1",
-                ASSUMPTIONS[0],
-                EvidenceClassification.CONTRADICT,
-                EvidenceImpact.MEDIUM,
-            ),
-        ],
+        [_evidence("c1", ASSUMPTIONS[0], EvidenceClassification.CONTRADICT, EvidenceImpact.HIGH)],
     )
-    persisted = thesis.model_copy(
-        update={"confidence_score": first.health_score, "score_breakdown": first}
+    broken = calculate_score_breakdown(
+        _persist(thesis, first),
+        [_evidence("c2", ASSUMPTIONS[0], EvidenceClassification.CONTRADICT, EvidenceImpact.HIGH)],
+    )
+    latched = calculate_score_breakdown(
+        _persist(thesis, broken),
+        [_evidence("s1", ASSUMPTIONS[0], EvidenceClassification.SUPPORT, EvidenceImpact.HIGH)],
+    )
+    reset = prepare_structured_thesis(_persist(thesis, broken))
+
+    assert latched.is_broken is True
+    assert reset.status == ThesisStatus.UNCHANGED
+    assert reset.confidence_score == 50
+    assert reset.score_breakdown is not None
+    assert reset.score_breakdown.is_broken is False
+
+
+def test_contributing_assumptions_do_not_trigger_hard_gate() -> None:
+    thesis = _thesis(LogicOperator.CONTRIBUTING)
+    first = calculate_score_breakdown(
+        thesis,
+        [_evidence("c1", ASSUMPTIONS[0], EvidenceClassification.CONTRADICT, EvidenceImpact.HIGH)],
     )
     second = calculate_score_breakdown(
-        persisted,
-        [
-            _evidence(
-                "non-core-2",
-                ASSUMPTIONS[2],
-                EvidenceClassification.CONTRADICT,
-                EvidenceImpact.HIGH,
-            ),
-            _evidence(
-                "core-medium-2",
-                ASSUMPTIONS[0],
-                EvidenceClassification.CONTRADICT,
-                EvidenceImpact.MEDIUM,
-            ),
-        ],
+        _persist(thesis, first),
+        [_evidence("c2", ASSUMPTIONS[0], EvidenceClassification.CONTRADICT, EvidenceImpact.HIGH)],
     )
 
-    states = {item.assumption: item for item in second.assumption_scores}
-    assert states[ASSUMPTIONS[0]].invalidation_streak == 0
-    assert states[ASSUMPTIONS[2]].invalidation_streak == 0
+    assert first.assumption_scores[0].invalidation_streak == 0
     assert second.is_broken is False
+
+
+def test_status_thresholds_remain_deterministic() -> None:
+    assert status_from_score_delta(15) == ThesisStatus.STRONGLY_STRENGTHENED
+    assert status_from_score_delta(5) == ThesisStatus.STRENGTHENED
+    assert status_from_score_delta(4) == ThesisStatus.UNCHANGED
+    assert status_from_score_delta(-5) == ThesisStatus.WEAKENED
+    assert status_from_score_delta(-15) == ThesisStatus.STRONGLY_WEAKENED

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import httpx
 from agents.graph import ThesisGuardAgent
+from agents.logic_graph import normalize_logic_graph
 from agents.model import LangChainAnalysisModel
 from agents.models import (
     AnalysisContext,
@@ -67,19 +68,32 @@ def _assumption_news_query(
 
 
 def _structured_thesis_from_orm(thesis: orm.Thesis) -> StructuredThesis:
-    return StructuredThesis(
+    score_breakdown = thesis.score_breakdown or None
+    if score_breakdown and score_breakdown.get("scoring_method") != "EVIDENCE_NODE_MATRIX_V2":
+        score_breakdown = None
+    structured = StructuredThesis(
         raw_input=thesis.raw_input,
         main_thesis=thesis.main_thesis,
         key_assumptions=thesis.key_assumptions,
         positive_signals=thesis.positive_signals,
         negative_signals=thesis.negative_signals,
         key_risks=thesis.key_risks,
-        template_id=thesis.template_id,
-        assumption_bindings=thesis.assumption_bindings or [],
-        score_breakdown=thesis.score_breakdown or None,
+        logic_graph=thesis.logic_graph or None,
+        score_breakdown=score_breakdown,
         confidence_score=thesis.confidence_score,
         status=thesis.status,
     )
+    if structured.logic_graph is None:
+        structured = structured.model_copy(
+            update={
+                "logic_graph": normalize_logic_graph(
+                    None,
+                    main_thesis=structured.main_thesis,
+                    key_assumptions=structured.key_assumptions,
+                )
+            }
+        )
+    return structured
 
 
 class BackendContextProvider:

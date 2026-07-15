@@ -6,10 +6,6 @@ import uuid
 from typing import Annotated
 
 from agents.scoring import prepare_structured_thesis
-from agents.thesis_templates import (
-    THESIS_TEMPLATE_CATALOG_VERSION,
-    build_thesis_template_snapshot,
-)
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
@@ -84,12 +80,11 @@ async def create_thesis(
         positive_signals=structured.positive_signals,
         negative_signals=structured.negative_signals,
         key_risks=structured.key_risks,
-        template_id=structured.template_id.value,
-        template_catalog_version=THESIS_TEMPLATE_CATALOG_VERSION,
-        template_snapshot=build_thesis_template_snapshot(structured.template_id),
-        assumption_bindings=[
-            binding.model_dump(mode="json") for binding in structured.assumption_bindings
-        ],
+        template_id="GENERAL_FUNDAMENTAL",
+        template_catalog_version="deprecated",
+        template_snapshot={},
+        assumption_bindings=[],
+        logic_graph=structured.logic_graph.model_dump(mode="json"),
         score_breakdown=(
             structured.score_breakdown.model_dump(mode="json") if structured.score_breakdown else {}
         ),
@@ -150,12 +145,11 @@ async def update_thesis(
         thesis.positive_signals = structured.positive_signals
         thesis.negative_signals = structured.negative_signals
         thesis.key_risks = structured.key_risks
-        thesis.template_id = structured.template_id.value
-        thesis.template_catalog_version = THESIS_TEMPLATE_CATALOG_VERSION
-        thesis.template_snapshot = build_thesis_template_snapshot(structured.template_id)
-        thesis.assumption_bindings = [
-            binding.model_dump(mode="json") for binding in structured.assumption_bindings
-        ]
+        thesis.template_id = "GENERAL_FUNDAMENTAL"
+        thesis.template_catalog_version = "deprecated"
+        thesis.template_snapshot = {}
+        thesis.assumption_bindings = []
+        thesis.logic_graph = structured.logic_graph.model_dump(mode="json")
         thesis.score_breakdown = (
             structured.score_breakdown.model_dump(mode="json") if structured.score_breakdown else {}
         )

@@ -11,7 +11,8 @@ from agents.graph import (
 )
 from agents.models import (
     AnalysisContext,
-    AssumptionBinding,
+    AssumptionAssessment,
+    AssumptionFinding,
     DebateReport,
     EvidenceAssessment,
     EvidenceClassification,
@@ -19,17 +20,19 @@ from agents.models import (
     EvidenceItem,
     EvidenceSourceType,
     JudgeExplanation,
+    LogicOperator,
     PortfolioAnalysis,
     PortfolioThesis,
     ResearchRequest,
     SourceDocument,
     StructuredThesis,
+    ThesisLogicGraph,
+    ThesisLogicNode,
     ThesisScoreBreakdown,
     ThesisStatus,
 )
 from agents.runtime import WorkflowConfig
 from agents.scoring import prepare_structured_thesis
-from agents.thesis_templates import ThesisTemplateId
 
 
 def thesis(status: ThesisStatus = ThesisStatus.UNCHANGED) -> StructuredThesis:
@@ -42,11 +45,30 @@ def thesis(status: ThesisStatus = ThesisStatus.UNCHANGED) -> StructuredThesis:
             positive_signals=["클라우드 사업자 CAPEX 증가"],
             negative_signals=["CAPEX 축소"],
             key_risks=["공급 과잉"],
-            template_id=ThesisTemplateId.SCALABLE_GROWTH,
-            assumption_bindings=[
-                AssumptionBinding(slot_id="market_demand", assumptions=[assumptions[0]]),
-                AssumptionBinding(slot_id="adoption_share", assumptions=[assumptions[1]]),
-            ],
+            logic_graph=ThesisLogicGraph(
+                root_id="root_claim",
+                nodes=[
+                    ThesisLogicNode(
+                        node_id="root_claim",
+                        kind="CLAIM",
+                        label="AI data center investment drives semiconductor demand",
+                        operator=LogicOperator.CONTRIBUTING,
+                        child_ids=["infrastructure_growth", "semiconductor_demand"],
+                    ),
+                    ThesisLogicNode(
+                        node_id="infrastructure_growth",
+                        kind="ASSUMPTION",
+                        label=assumptions[0],
+                        assumption=assumptions[0],
+                    ),
+                    ThesisLogicNode(
+                        node_id="semiconductor_demand",
+                        kind="ASSUMPTION",
+                        label=assumptions[1],
+                        assumption=assumptions[1],
+                    ),
+                ],
+            ),
         )
     )
     return structured.model_copy(update={"status": status})
@@ -160,12 +182,30 @@ class FakeAnalysisModel:
         else:
             classification = EvidenceClassification.UNCERTAIN
             impact = EvidenceImpact.LOW
+        finding_assessment = {
+            EvidenceClassification.SUPPORT: AssumptionAssessment.SUPPORT,
+            EvidenceClassification.CONTRADICT: AssumptionAssessment.CONTRADICT,
+        }.get(classification, AssumptionAssessment.NOT_ADDRESSED)
         return EvidenceAssessment(
             classification=classification,
             impact=impact,
             relevance_score=0.9,
             reason=f"{source.document_id} 분류",
             related_assumptions=[existing_thesis.key_assumptions[0]],
+            assumption_findings=[
+                AssumptionFinding(
+                    assumption=existing_thesis.key_assumptions[0],
+                    assessment=finding_assessment,
+                    impact=impact,
+                    relevance_score=(
+                        0.9 if finding_assessment != AssumptionAssessment.NOT_ADDRESSED else 0
+                    ),
+                    reasoning="The cited passage directly tests the first assumption.",
+                    source_passage_indices=(
+                        [0] if finding_assessment != AssumptionAssessment.NOT_ADDRESSED else []
+                    ),
+                )
+            ],
             source_excerpt=source.content,
             content_snippet=f"{source.document_id} 관련 근거 요약입니다.",
         )
@@ -269,10 +309,10 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
         "uncertain-news",
         "contradict-news",
     }
-    assert result.updated_confidence == 43
-    assert result.updated_status == ThesisStatus.WEAKENED
-    assert result.alert_decision.severity == "MINOR"
-    assert result.alert_decision.delivery == "WEEKLY"
+    assert result.updated_confidence == 48
+    assert result.updated_status == ThesisStatus.UNCHANGED
+    assert result.alert_decision.severity == "NONE"
+    assert result.alert_decision.delivery == "NONE"
     assert result.concentration.has_concentration_risk is True
     assert model.judge_calls == 1
     assert model.classify_calls == 3
@@ -289,7 +329,7 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
 
 
 @pytest.mark.asyncio
-async def test_portfolio_model_failure_is_not_silently_hidden() -> None:
+async def test_portfolio_model_failure_keeps_holding_result_and_reports_error() -> None:
     agent = ThesisGuardAgent(
         context_provider=FakeContextProvider(),
         research_tools=FakeResearchTools(),
@@ -297,8 +337,18 @@ async def test_portfolio_model_failure_is_not_silently_hidden() -> None:
         config=WorkflowConfig(max_research_rounds=1, min_grounded_evidence=1),
     )
 
-    with pytest.raises(RuntimeError, match="portfolio model failure"):
-        await agent.arun_analysis_workflow("portfolio-1", "holding-1")
+    result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
+
+    assert result.updated_confidence == 52
+    assert result.updated_status == ThesisStatus.UNCHANGED
+    assert result.concentration.has_concentration_risk is False
+    assert "개별 종목의 근거·점수·상태 계산 결과는 정상적으로 유지됩니다" in (
+        result.concentration.summary
+    )
+    assert any(
+        error == "portfolio: RuntimeError: portfolio model failure"
+        for error in result.source_errors
+    )
 
 
 @pytest.mark.asyncio
@@ -330,7 +380,8 @@ async def test_one_source_failure_does_not_abort_the_analysis() -> None:
 
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
-    assert result.updated_status == ThesisStatus.WEAKENED
+    assert result.updated_status == ThesisStatus.UNCHANGED
+    assert result.updated_confidence == 48
     assert any(item.source_type == EvidenceSourceType.SEC_FILING for item in result.evidence)
     assert any(error.startswith("macro: RuntimeError:") for error in result.source_errors)
 
@@ -352,9 +403,9 @@ async def test_judge_failure_retries_but_keeps_deterministic_score() -> None:
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert model.judge_calls == 2
-    assert result.updated_status == ThesisStatus.WEAKENED
-    assert result.updated_confidence == 43
-    assert result.alert_decision.should_send is True
+    assert result.updated_status == ThesisStatus.UNCHANGED
+    assert result.updated_confidence == 48
+    assert result.alert_decision.should_send is False
 
 
 def test_sync_team_contract_entrypoint() -> None:

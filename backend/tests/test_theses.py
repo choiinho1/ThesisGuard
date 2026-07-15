@@ -1,12 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from agents.models import AssumptionBinding, StructuredThesis
-from agents.thesis_templates import (
-    THESIS_TEMPLATE_CATALOG_VERSION,
-    ThesisTemplateId,
-    get_thesis_template,
-)
+from agents.models import LogicOperator, StructuredThesis, ThesisLogicGraph, ThesisLogicNode
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from thesisguard_backend import models as orm
@@ -28,27 +23,42 @@ async def db_session():
     await engine.dispose()
 
 
-class TemplateSelectingAgent:
-    def __init__(self, template_id: ThesisTemplateId) -> None:
-        self.template_id = template_id
+class GraphStructuringAgent:
+    def __init__(self, operator: LogicOperator) -> None:
+        self.operator = operator
         self.calls: list[str] = []
 
     async def astructure_thesis(self, raw_input: str, *, runnable_config=None) -> StructuredThesis:
         self.calls.append(raw_input)
         assumption = "A measurable assumption remains valid"
-        first_slot = get_thesis_template(self.template_id).assumption_slots[0].slot_id
         return StructuredThesis(
             raw_input=raw_input,
-            main_thesis=f"{self.template_id.value} investment thesis",
+            main_thesis=f"{self.operator.value} investment thesis",
             key_assumptions=[assumption],
-            template_id=self.template_id,
-            assumption_bindings=[AssumptionBinding(slot_id=first_slot, assumptions=[assumption])],
+            logic_graph=ThesisLogicGraph(
+                root_id="root_claim",
+                nodes=[
+                    ThesisLogicNode(
+                        node_id="root_claim",
+                        kind="CLAIM",
+                        label=f"{self.operator.value} investment thesis",
+                        operator=self.operator,
+                        child_ids=["measurable_assumption"],
+                    ),
+                    ThesisLogicNode(
+                        node_id="measurable_assumption",
+                        kind="ASSUMPTION",
+                        label=assumption,
+                        assumption=assumption,
+                    ),
+                ],
+            ),
         )
 
 
 async def _owned_holding(db_session) -> tuple[orm.User, orm.Holding]:
-    user = orm.User(email="template@example.com", password_hash="h")
-    portfolio = orm.Portfolio(user=user, name="Template portfolio")
+    user = orm.User(email="graph@example.com", password_hash="h")
+    portfolio = orm.Portfolio(user=user, name="Graph portfolio")
     holding = orm.Holding(
         portfolio=portfolio,
         ticker="NVDA",
@@ -61,9 +71,9 @@ async def _owned_holding(db_session) -> tuple[orm.User, orm.Holding]:
 
 
 @pytest.mark.asyncio
-async def test_create_thesis_persists_selected_template_snapshot(db_session) -> None:
+async def test_create_thesis_persists_causal_graph_and_neutral_score(db_session) -> None:
     user, holding = await _owned_holding(db_session)
-    agent = TemplateSelectingAgent(ThesisTemplateId.SCALABLE_GROWTH)
+    agent = GraphStructuringAgent(LogicOperator.AND)
 
     thesis = await create_thesis(
         ThesisCreateRequest(raw_input="AI infrastructure demand will keep expanding."),
@@ -73,43 +83,36 @@ async def test_create_thesis_persists_selected_template_snapshot(db_session) -> 
         user,
     )
 
-    assert thesis.template_id == "SCALABLE_GROWTH"
-    assert thesis.template_catalog_version == THESIS_TEMPLATE_CATALOG_VERSION
-    assert thesis.template_snapshot["template_id"] == "SCALABLE_GROWTH"
-    assert (
-        sum(slot["weight_bps"] for slot in thesis.template_snapshot["assumption_slots"]) == 10_000
-    )
-    assert thesis.assumption_bindings[0]["assumptions"] == ["A measurable assumption remains valid"]
+    assert thesis.logic_graph["root_id"] == "root_claim"
+    assert thesis.logic_graph["nodes"][0]["operator"] == "AND"
+    assert thesis.score_breakdown["scoring_method"] == "EVIDENCE_NODE_MATRIX_V2"
     assert thesis.score_breakdown["health_score"] == 50
+    assert thesis.template_catalog_version == "deprecated"
 
 
 @pytest.mark.asyncio
-async def test_resetting_raw_thesis_reselects_and_replaces_template_snapshot(db_session) -> None:
+async def test_resetting_raw_thesis_rebuilds_graph_and_resets_score(db_session) -> None:
     user, holding = await _owned_holding(db_session)
-    create_agent = TemplateSelectingAgent(ThesisTemplateId.SCALABLE_GROWTH)
     thesis = await create_thesis(
         ThesisCreateRequest(raw_input="AI infrastructure demand will keep expanding."),
         holding,
         db_session,
-        create_agent,  # type: ignore[arg-type]
+        GraphStructuringAgent(LogicOperator.AND),  # type: ignore[arg-type]
         user,
     )
-    reset_agent = TemplateSelectingAgent(ThesisTemplateId.TURNAROUND)
+    reset_agent = GraphStructuringAgent(LogicOperator.OR)
 
     updated = await update_thesis(
-        ThesisUpdateRequest(raw_input="Liquidity and restructuring must restore the business."),
+        ThesisUpdateRequest(raw_input="Alternative routes can restore the business."),
         thesis,
         db_session,
         reset_agent,  # type: ignore[arg-type]
         user,
     )
 
-    assert reset_agent.calls == ["Liquidity and restructuring must restore the business."]
-    assert updated.template_id == "TURNAROUND"
+    assert reset_agent.calls == ["Alternative routes can restore the business."]
+    assert updated.logic_graph["nodes"][0]["operator"] == "OR"
     assert updated.confidence_score == 50
     assert updated.status == "UNCHANGED"
-    assert updated.template_snapshot["template_id"] == "TURNAROUND"
-    core_slots = [
-        slot["slot_id"] for slot in updated.template_snapshot["assumption_slots"] if slot["core"]
-    ]
-    assert core_slots == ["execution_milestones", "liquidity_runway"]
+    assert updated.score_breakdown["root_state"] == 0
+    assert updated.score_breakdown["is_broken"] is False

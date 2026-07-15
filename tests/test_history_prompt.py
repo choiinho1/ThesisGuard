@@ -4,6 +4,8 @@ import pytest
 
 from agents.model import LangChainAnalysisModel
 from agents.models import (
+    AssumptionAssessment,
+    AssumptionFinding,
     EvidenceClassification,
     EvidenceImpact,
     EvidenceModelOutput,
@@ -26,6 +28,16 @@ class _CapturingRunnable:
             relevance_score=0.8,
             reason="현재 문서의 신규 변화가 가정을 지지합니다.",
             related_assumptions=["CAPEX 증가"],
+            assumption_findings=[
+                AssumptionFinding(
+                    assumption="CAPEX 증가",
+                    assessment=AssumptionAssessment.SUPPORT,
+                    impact=EvidenceImpact.MEDIUM,
+                    relevance_score=0.8,
+                    reasoning="The current passage directly supports CAPEX growth.",
+                    source_passage_indices=[0],
+                )
+            ],
             source_passage_indices=[0],
             content_snippet="현재 문서에서 새로운 CAPEX 증가가 확인됐습니다.",
         )

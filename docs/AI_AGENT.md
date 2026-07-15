@@ -16,7 +16,8 @@ agents/
 ├── retrieval.py          # 규칙 기반 후보 선별과 공시 문단 축약
 ├── rag.py                # Multi-query Hybrid RAG, RRF, MMR, 인접 청크 확장
 ├── evidence_policy.py    # 판정에 사용할 유효 근거 기준
-├── scoring.py            # 템플릿 가정별 결정론적 점수 계산
+├── logic_graph.py        # Thesis별 인과 그래프 검증·전파
+├── scoring.py            # 인과 그래프 기반 결정론적 점수 계산
 ├── policy.py             # 규칙 기반 Alert 등급
 ├── nodes/
 │   ├── filing_agent.py
@@ -122,10 +123,15 @@ FastAPI의 async 라우트에서는 이벤트 루프를 막지 않도록 `arun_a
   표시용 설명은 핵심 사실·수치/기간·투자 논리와의 관계를 담은 한국어 2~3문장, 500자 이내로 제한한다.
 - 표시용 한국어 요약 생성 실패는 유효한 분류·영향도 판정을 폐기하지 않는다.
 - 관련도가 0.55 미만인 방향성 판정은 NEUTRAL/LOW로 강등한다.
-- SUPPORT/CONTRADICT이면서 Impact가 MEDIUM/HIGH인 근거만 Bull/Bear와 점수 엔진에 전달한다.
-- 점수 엔진은 가정별 가장 강한 SUPPORT와 CONTRADICT 영향도를 상쇄한 뒤 템플릿 가중치로
-  합산한다. 같은 방향의 문서 수는 점수를 누적하지 않는다.
+- SUPPORT/CONTRADICT이면서 Impact가 MEDIUM/HIGH인 근거만 Bull/Bear에 전달한다.
+- 점수 엔진은 모든 정보×가정 노드 조합을 만들고 방향×영향도×관련도로 signed strength를
+  계산한다. 같은 방향의 여러 근거는 한계효과가 감소하는 고정식으로 결합한 뒤 저장된
+  인과 그래프의 `AND`/`OR`/`CONTRIBUTING` 규칙으로 루트 상태를 계산한다.
+- 각 정보의 최종 점수 변화는 결정론적 Shapley 귀속으로 계산하며, 귀속값 합계는 실제
+  분석 회차의 점수 변화와 일치한다.
 - 새 방향성 근거가 없는 가정은 저장된 이전 상태를 유지한다.
+- 특정 가정에 대한 언급 부재는 반박이 아니라 `NOT_ADDRESSED`다. 노드별 원문 구간을
+  인용하지 않은 SUPPORT/CONTRADICT 판정은 신뢰 코드가 강도 0으로 제외한다.
 - Judge는 계산된 점수·상태를 수정할 수 없고 설명만 생성한다. Judge가 실패해도 결정론적
   점수는 유지한다.
 - 집중도 퍼센트는 LLM 값 대신 실제 보유 비중 합계로 다시 계산한다.

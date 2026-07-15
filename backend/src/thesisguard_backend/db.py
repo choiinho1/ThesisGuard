@@ -59,6 +59,26 @@ def _upgrade_legacy_local_schema(connection: Connection) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_evidence_thesis_version_id "
                 "ON evidence (thesis_version_id)",
             ),
+            (
+                "saved_to_history",
+                "ALTER TABLE evidence ADD COLUMN saved_to_history BOOLEAN " "NOT NULL DEFAULT 0",
+                None,
+            ),
+            (
+                "assumption_findings",
+                "ALTER TABLE evidence ADD COLUMN assumption_findings JSON NOT NULL DEFAULT '[]'",
+                None,
+            ),
+            (
+                "score_delta",
+                "ALTER TABLE evidence ADD COLUMN score_delta FLOAT NOT NULL DEFAULT 0",
+                None,
+            ),
+            (
+                "node_contributions",
+                "ALTER TABLE evidence ADD COLUMN node_contributions JSON NOT NULL DEFAULT '[]'",
+                None,
+            ),
         ),
         "analysis_results": (
             (
@@ -93,8 +113,20 @@ def _upgrade_legacy_local_schema(connection: Connection) -> None:
                 None,
             ),
             (
+                "logic_graph",
+                "ALTER TABLE theses ADD COLUMN logic_graph JSON NOT NULL DEFAULT '{}'",
+                None,
+            ),
+            (
                 "score_breakdown",
                 "ALTER TABLE theses ADD COLUMN score_breakdown JSON NOT NULL DEFAULT '{}'",
+                None,
+            ),
+        ),
+        "alerts": (
+            (
+                "is_scheduled",
+                "ALTER TABLE alerts ADD COLUMN is_scheduled BOOLEAN NOT NULL DEFAULT 0",
                 None,
             ),
         ),
