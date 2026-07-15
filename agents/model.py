@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import TypeVar
 
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 
 from agents.models import (
     AssumptionAssessment,
+    AssumptionFinding,
     DebateReport,
     EvidenceAssessment,
     EvidenceClassification,
@@ -29,7 +31,6 @@ from agents.portfolio_validation import is_absence_label
 from agents.runnable_context import get_model_runnable_config
 from agents.sanitization import normalize_korean_summary, safe_source_snippet, split_source_passages
 from agents.scoring import prepare_structured_thesis
-from agents.thesis_templates import thesis_template_selection_guide
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
@@ -69,6 +70,7 @@ class LangChainAnalysisModel:
 
     def __init__(self, model: BaseChatModel) -> None:
         self._model = model
+        self._repair_missing_assumption_findings = True
 
     async def _invoke(self, schema: type[SchemaT], task: str) -> SchemaT:
         runnable = self._model.with_structured_output(schema)
@@ -81,24 +83,21 @@ class LangChainAnalysisModel:
         return schema.model_validate(result)
 
     async def structure_thesis(self, raw_input: str) -> StructuredThesis:
-        template_guide = thesis_template_selection_guide()
         result = await self._invoke(
             StructuredThesis,
             f"""
 Structure the user's investment thesis. Keep every claim faithful to the input.
 Use confidence 50 and UNCHANGED because no evidence has been analyzed.
 Leave optional lists empty instead of inventing missing details.
-Select exactly one template_id from the catalog below according to the thesis's primary
-value-creation mechanism. Use GENERAL_FUNDAMENTAL only when no specialized template is
-clearly suitable. The template is selected again whenever the user resets the raw thesis.
-After selecting the template, return one assumption_bindings entry for every listed slot.
-Map each key_assumptions string exactly as written to at most one slot. Do not paraphrase it
-inside assumption_bindings and do not invent an assumption for an unmentioned slot; use an
-empty assumptions list instead. Leave score_breakdown null because trusted code calculates it.
-
-<template_catalog>
-{template_guide}
-</template_catalog>
+Build a thesis-specific causal logic_graph instead of selecting a predefined template.
+The graph must contain exactly one CLAIM root and every key_assumptions string exactly once
+as an ASSUMPTION leaf. Copy assumption strings exactly; do not paraphrase or invent them.
+Use intermediate CLAIM nodes only when the input explicitly supports that causal grouping.
+Use AND when every child is necessary, OR when any child is a sufficient alternative, and
+CONTRIBUTING when children independently add to the claim. The graph must be connected,
+acyclic, and every node must be reachable from root_id. Leave score_breakdown null because
+trusted code validates the graph and calculates the result. The graph is regenerated only
+when the user creates or resets the raw thesis logic.
 
 <user_thesis>{raw_input}</user_thesis>
 """.strip(),
@@ -139,6 +138,10 @@ count when they materially change an assumption's plausibility. In particular, a
 competitor's announced or reported product development directly contradicts a categorical
 "no competitor" assumption even if the product has not launched yet. Separate confirmed
 facts from plans, forecasts, and rumors when assigning impact and relevance.
+The absence of information about an assumption is always NOT_ADDRESSED, never CONTRADICT.
+Every SUPPORT or CONTRADICT assumption finding must cite at least one supporting numbered
+passage in its own source_passage_indices. Do not reuse the document-level direction for an
+assumption that the cited passages do not independently address.
 
 Read historical_context first to understand the holding's story and connect the current
 document to prior developments. The classification, impact, and relevance fields must still
@@ -170,6 +173,43 @@ numbered_passages:
             for finding in result.assumption_findings
             if finding.assumption in allowed_assumptions
         ]
+        existing_assumptions = {finding.assumption for finding in findings}
+        missing_assumptions = [
+            assumption
+            for assumption in thesis.key_assumptions
+            if assumption not in existing_assumptions
+        ]
+        if missing_assumptions and getattr(
+            self, "_repair_missing_assumption_findings", False
+        ):
+
+            async def assess_one_assumption(assumption: str) -> AssumptionFinding:
+                finding = await self._invoke(
+                    AssumptionFinding,
+                    f"""
+Assess only the single investment-thesis assumption below against the numbered passages.
+Return SUPPORT or CONTRADICT only when at least one passage directly tests the assumption,
+and cite those passage indexes in source_passage_indices. If the passages do not contain
+information about the assumption, return NOT_ADDRESSED with LOW impact, relevance_score 0,
+and no passage indexes. Absence of mention is never contradiction. Copy the assumption text
+exactly and do not evaluate any other assumption. A passage that states the semantic opposite
+of the assumption directly tests it and must be CONTRADICT, not NOT_ADDRESSED. For example,
+if the assumption says valuation is low and a passage says valuation is high or rich, return
+CONTRADICT and cite that passage.
+
+<assumption>{assumption}</assumption>
+<numbered_passages>
+{numbered_passages}
+</numbered_passages>
+""".strip(),
+                )
+                return finding.model_copy(update={"assumption": assumption})
+
+            findings.extend(
+                await asyncio.gather(
+                    *(assess_one_assumption(assumption) for assumption in missing_assumptions)
+                )
+            )
         selected_indices = list(dict.fromkeys(result.source_passage_indices))
         cited_indices = [
             *selected_indices,
@@ -234,6 +274,7 @@ numbered_passages:
             relevance_score=relevance_score,
             reason=reason,
             related_assumptions=list(dict.fromkeys(related_assumptions)),
+            assumption_findings=findings,
             source_excerpt="\n".join(passages[index] for index in selected_indices),
             content_snippet=normalize_korean_summary(result.content_snippet),
         )

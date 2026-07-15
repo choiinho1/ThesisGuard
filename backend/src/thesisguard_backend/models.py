@@ -21,7 +21,6 @@ from agents.models import (
     EvidenceSourceType,
     ThesisStatus,
 )
-from agents.thesis_templates import THESIS_TEMPLATE_CATALOG_VERSION, ThesisTemplateId
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -243,15 +242,16 @@ class Thesis(Base):
     negative_signals: Mapped[list[str]] = mapped_column(_json_type(), default=list)
     key_risks: Mapped[list[str]] = mapped_column(_json_type(), default=list)
     template_id: Mapped[str] = mapped_column(
-        String(50), default=ThesisTemplateId.GENERAL_FUNDAMENTAL.value, nullable=False
+        String(50), default="GENERAL_FUNDAMENTAL", nullable=False
     )
     template_catalog_version: Mapped[str] = mapped_column(
-        String(20), default=THESIS_TEMPLATE_CATALOG_VERSION, nullable=False
+        String(20), default="deprecated", nullable=False
     )
     template_snapshot: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
     assumption_bindings: Mapped[list[dict]] = mapped_column(
         _json_type(), default=list, nullable=False
     )
+    logic_graph: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
     score_breakdown: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
     confidence_score: Mapped[int] = mapped_column(SmallInteger, default=50)
     status: Mapped[ThesisStatus] = mapped_column(
@@ -324,6 +324,13 @@ class Evidence(Base):
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     related_assumptions: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    assumption_findings: Mapped[list[dict]] = mapped_column(
+        _json_type(), default=list, nullable=False
+    )
+    score_delta: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    node_contributions: Mapped[list[dict]] = mapped_column(
+        _json_type(), default=list, nullable=False
+    )
     # DateTime(timezone=True): agent-supplied values (SEC filing/news pubDate)
     # are tz-aware; the naive-inferred default made asyncpg reject inserts.
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

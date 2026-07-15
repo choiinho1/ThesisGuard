@@ -1,92 +1,194 @@
-"""Deterministic assumption-slot scoring for investment theses."""
+"""Deterministic scoring over an evidence-by-node matrix and causal graph."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import hashlib
+import itertools
+import random
+import re
+from collections.abc import Iterable, Sequence
+from datetime import UTC
 from decimal import ROUND_HALF_UP, Decimal
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from agents.evidence_policy import is_meaningful_directional_evidence
+from agents.logic_graph import (
+    evaluate_logic_graph,
+    normalize_logic_graph,
+    required_assumption_node_ids,
+)
 from agents.models import (
-    AssumptionBinding,
+    AssumptionAssessment,
     AssumptionScoreState,
     EvidenceClassification,
     EvidenceImpact,
     EvidenceItem,
-    SlotScore,
+    EvidenceNodeContribution,
+    EvidenceScoreImpact,
+    LogicNodeScore,
     StructuredThesis,
+    ThesisLogicGraph,
     ThesisScoreBreakdown,
     ThesisStatus,
 )
 from agents.state import AnalysisState
-from agents.thesis_templates import (
-    THESIS_TEMPLATE_CATALOG_VERSION,
-    ThesisTemplateId,
-    get_thesis_template,
-)
 
 _IMPACT_STRENGTH = {
-    EvidenceImpact.MEDIUM: Decimal("0.5"),
-    EvidenceImpact.HIGH: Decimal("1.0"),
+    EvidenceImpact.LOW: Decimal("0.03"),
+    EvidenceImpact.MEDIUM: Decimal("0.09"),
+    EvidenceImpact.HIGH: Decimal("0.18"),
 }
-INVALIDATION_POLICY_VERSION = "1.0.0"
+INVALIDATION_POLICY_VERSION = "2.0.0"
 INVALIDATION_STREAK_REQUIRED = 2
+_ATTRIBUTION_PERMUTATIONS = 128
+_EVENT_KEY_VERSION = "v1"
+_EVENT_MATCH_WINDOW_DAYS = 7
+_EVENT_SIMHASH_DISTANCE = 12
+_EVENT_TOKEN = re.compile(r"[^\W_]+(?:[.%+-][^\W_]+)*", re.UNICODE)
+_TRACKING_QUERY_PREFIXES = ("utm_", "fbclid", "gclid")
 
 
-def normalize_assumption_bindings(
-    template_id: ThesisTemplateId | str,
-    key_assumptions: Iterable[str],
-    proposed_bindings: Iterable[AssumptionBinding],
-    *,
-    slot_ids: Iterable[str] | None = None,
-) -> list[AssumptionBinding]:
-    """Keep only exact, unique model mappings and materialize every template slot."""
-
-    template = get_thesis_template(template_id)
-    assumptions = list(dict.fromkeys(key_assumptions))
-    allowed_assumptions = set(assumptions)
-    slot_order = list(slot_ids or (slot.slot_id for slot in template.assumption_slots))
-    allowed_slots = set(slot_order)
-    mapped: dict[str, list[str]] = {slot_id: [] for slot_id in slot_order}
-    reasons: dict[str, str] = {slot_id: "" for slot_id in slot_order}
-    assigned: set[str] = set()
-
-    for binding in proposed_bindings:
-        if binding.slot_id not in allowed_slots:
-            continue
-        if not reasons[binding.slot_id] and binding.mapping_reason.strip():
-            reasons[binding.slot_id] = binding.mapping_reason.strip()
-        for assumption in binding.assumptions:
-            if assumption not in allowed_assumptions or assumption in assigned:
-                continue
-            mapped[binding.slot_id].append(assumption)
-            assigned.add(assumption)
-
-    return [
-        AssumptionBinding(
-            slot_id=slot_id,
-            assumptions=mapped[slot_id],
-            mapping_reason=reasons[slot_id],
+def _canonical_reference(item: EvidenceItem) -> str:
+    if item.vector_doc_id:
+        return f"vector:{item.vector_doc_id}"
+    if item.source_url:
+        parts = urlsplit(str(item.source_url))
+        query = urlencode(
+            sorted(
+                (key, value)
+                for key, value in parse_qsl(parts.query, keep_blank_values=True)
+                if not key.casefold().startswith(_TRACKING_QUERY_PREFIXES)
+            )
         )
-        for slot_id in slot_order
-    ]
+        return urlunsplit(
+            (parts.scheme.casefold(), parts.netloc.casefold(), parts.path, query, "")
+        )
+    return f"document:{item.document_id}"
+
+
+def _content_simhash(text: str) -> int:
+    """Return a stable near-duplicate fingerprint for one grounded evidence summary."""
+
+    tokens = [token.casefold() for token in _EVENT_TOKEN.findall(text)]
+    features = [(token, 2) for token in tokens]
+    features.extend(
+        (f"{left}\x1f{right}", 1) for left, right in zip(tokens, tokens[1:], strict=False)
+    )
+    if not features:
+        features = [(text.casefold().strip() or "empty", 1)]
+
+    vector = [0] * 64
+    for feature, weight in features:
+        value = int.from_bytes(
+            hashlib.blake2b(feature.encode("utf-8"), digest_size=8).digest(), "big"
+        )
+        for bit in range(64):
+            vector[bit] += weight if value & (1 << bit) else -weight
+
+    fingerprint = 0
+    for bit, value in enumerate(vector):
+        if value >= 0:
+            fingerprint |= 1 << bit
+    return fingerprint
+
+
+def _event_key(item: EvidenceItem, contribution: EvidenceNodeContribution) -> str:
+    direction = "+" if contribution.signed_strength > 0 else "-"
+    if item.published_at is None:
+        reference_hash = hashlib.sha256(_canonical_reference(item).encode("utf-8")).hexdigest()[:16]
+        return f"{direction}|source|{_EVENT_KEY_VERSION}|{reference_hash}"
+
+    published_at = item.published_at
+    if published_at.tzinfo is None:
+        published_at = published_at.replace(tzinfo=UTC)
+    day = published_at.astimezone(UTC).date().toordinal()
+    fingerprint = _content_simhash(item.content_snippet)
+    numbers = sorted(
+        {
+            token.casefold().strip(".%+-")
+            for token in _EVENT_TOKEN.findall(item.content_snippet)
+            if any(character.isdigit() for character in token)
+        }
+    )
+    return (
+        f"{direction}|event|{_EVENT_KEY_VERSION}|{day}|{fingerprint:016x}|{','.join(numbers)}"
+    )
+
+
+def _same_event(left: str, right: str) -> bool:
+    left_parts = left.split("|")
+    right_parts = right.split("|")
+    if len(left_parts) < 4 or len(right_parts) < 4:
+        return left == right
+    if left_parts[:3] != right_parts[:3]:
+        return False
+    if left_parts[1] == "source":
+        return left == right
+    if len(left_parts) not in {5, 6} or len(right_parts) not in {5, 6}:
+        return left == right
+    try:
+        day_distance = abs(int(left_parts[3]) - int(right_parts[3]))
+        hash_distance = (int(left_parts[4], 16) ^ int(right_parts[4], 16)).bit_count()
+    except ValueError:
+        return left == right
+    if day_distance > _EVENT_MATCH_WINDOW_DAYS:
+        return False
+    if hash_distance <= _EVENT_SIMHASH_DISTANCE:
+        return True
+    left_numbers = set(left_parts[5].split(",")) - {""} if len(left_parts) == 6 else set()
+    right_numbers = set(right_parts[5].split(",")) - {""} if len(right_parts) == 6 else set()
+    numeric_overlap = len(left_numbers & right_numbers) / max(1, len(left_numbers | right_numbers))
+    return bool(left_numbers and right_numbers and numeric_overlap >= 0.5 and hash_distance <= 32)
+
+
+def _independent_edges(
+    edges: Iterable[tuple[str, EvidenceNodeContribution, str]],
+    prior_event_keys: Iterable[str],
+) -> tuple[list[tuple[str, EvidenceNodeContribution, str]], list[str]]:
+    """Keep one strongest representative for each independent event."""
+
+    prior = list(prior_event_keys)
+    representatives: list[tuple[str, EvidenceNodeContribution, str]] = []
+    for edge in sorted(edges, key=lambda value: value[0]):
+        document_id, contribution, event_key = edge
+        if any(_same_event(event_key, previous_key) for previous_key in prior):
+            continue
+        matching_index = next(
+            (
+                index
+                for index, (_, _, accepted_key) in enumerate(representatives)
+                if _same_event(event_key, accepted_key)
+            ),
+            None,
+        )
+        if matching_index is None:
+            representatives.append(edge)
+            continue
+        previous = representatives[matching_index]
+        if (abs(contribution.signed_strength), document_id) > (
+            abs(previous[1].signed_strength),
+            previous[0],
+        ):
+            representatives[matching_index] = edge
+    return representatives, [event_key for _, _, event_key in representatives]
 
 
 def initialize_score_breakdown(thesis: StructuredThesis) -> ThesisScoreBreakdown:
-    """Build a neutral score state for a newly created or reset thesis."""
+    """Build a neutral graph score state for a newly created or reset thesis."""
 
     return calculate_score_breakdown(thesis, [])
 
 
 def prepare_structured_thesis(thesis: StructuredThesis) -> StructuredThesis:
-    """Normalize a newly created/reset thesis and initialize its score state."""
+    """Validate/fallback the graph and reset scoring when thesis logic changes."""
 
+    graph = normalize_logic_graph(
+        thesis.logic_graph,
+        main_thesis=thesis.main_thesis,
+        key_assumptions=thesis.key_assumptions,
+    )
     normalized = thesis.model_copy(
         update={
-            "assumption_bindings": normalize_assumption_bindings(
-                thesis.template_id,
-                thesis.key_assumptions,
-                thesis.assumption_bindings,
-            ),
+            "logic_graph": graph,
             "score_breakdown": None,
             "confidence_score": 50,
             "status": ThesisStatus.UNCHANGED,
@@ -95,167 +197,338 @@ def prepare_structured_thesis(thesis: StructuredThesis) -> StructuredThesis:
     return normalized.model_copy(update={"score_breakdown": initialize_score_breakdown(normalized)})
 
 
+def _signed_strength(
+    assessment: AssumptionAssessment,
+    impact: EvidenceImpact,
+    relevance_score: float,
+) -> float:
+    direction = {
+        AssumptionAssessment.SUPPORT: Decimal("1"),
+        AssumptionAssessment.CONTRADICT: Decimal("-1"),
+    }.get(assessment, Decimal("0"))
+    strength = direction * _IMPACT_STRENGTH[impact] * Decimal(str(relevance_score))
+    return float(strength.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP))
+
+
+def _node_contributions(
+    graph: ThesisLogicGraph,
+    item: EvidenceItem,
+) -> list[EvidenceNodeContribution]:
+    """Return one matrix cell for every assumption node, including zero cells."""
+
+    findings = {finding.assumption: finding for finding in item.assumption_findings}
+    result: list[EvidenceNodeContribution] = []
+    for node in graph.nodes:
+        if node.kind != "ASSUMPTION":
+            continue
+        assumption = node.assumption or node.label
+        finding = findings.get(assumption)
+        if finding is not None:
+            if (
+                finding.assessment
+                in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+                and not finding.source_passage_indices
+            ):
+                assessment = AssumptionAssessment.NOT_ADDRESSED
+                impact = EvidenceImpact.LOW
+                relevance_score = 0.0
+            else:
+                assessment = finding.assessment
+                impact = finding.impact
+                relevance_score = finding.relevance_score
+        elif assumption in item.related_assumptions:
+            assessment = {
+                EvidenceClassification.SUPPORT: AssumptionAssessment.SUPPORT,
+                EvidenceClassification.CONTRADICT: AssumptionAssessment.CONTRADICT,
+            }.get(item.classification, AssumptionAssessment.NOT_ADDRESSED)
+            impact = item.impact
+            relevance_score = 1.0 if assessment != AssumptionAssessment.NOT_ADDRESSED else 0.0
+        else:
+            assessment = AssumptionAssessment.NOT_ADDRESSED
+            impact = EvidenceImpact.LOW
+            relevance_score = 0.0
+        result.append(
+            EvidenceNodeContribution(
+                node_id=node.node_id,
+                assumption=assumption,
+                assessment=assessment,
+                impact=impact,
+                relevance_score=relevance_score,
+                signed_strength=_signed_strength(assessment, impact, relevance_score),
+            )
+        )
+    return result
+
+
+def _combine_strength(base: float, additions: Iterable[float]) -> float:
+    """Combine corroborating information with deterministic diminishing returns."""
+
+    remaining = Decimal("1") - Decimal(str(base))
+    for value in additions:
+        remaining *= Decimal("1") - Decimal(str(value))
+    combined = Decimal("1") - remaining
+    return float(combined.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP))
+
+
+def _health_score(root_state: float) -> int:
+    score = (Decimal("50") + Decimal("50") * Decimal(str(root_state))).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
+    return min(100, max(0, int(score)))
+
+
+def _attribution_orders(document_ids: Sequence[str]) -> list[tuple[str, ...]]:
+    """Use exact Shapley orders for small sets and stable sampling for larger sets."""
+
+    ordered = tuple(sorted(document_ids))
+    if len(ordered) <= 7:
+        return list(itertools.permutations(ordered))
+    seed = int.from_bytes(
+        hashlib.sha256("\x1f".join(ordered).encode()).digest()[:8], "big"
+    )
+    rng = random.Random(seed)
+    orders: list[tuple[str, ...]] = [ordered, tuple(reversed(ordered))]
+    while len(orders) < _ATTRIBUTION_PERMUTATIONS:
+        candidate = list(ordered)
+        rng.shuffle(candidate)
+        order = tuple(candidate)
+        if order not in orders:
+            orders.append(order)
+    return orders
+
+
+def _attribute_score_delta(
+    *,
+    graph: ThesisLogicGraph,
+    evidence_items: list[EvidenceItem],
+    contributions_by_document: dict[str, list[EvidenceNodeContribution]],
+    previous_by_node: dict[str, AssumptionScoreState],
+    final_score: int,
+    previous_score: int,
+) -> list[EvidenceScoreImpact]:
+    """Attribute the nonlinear graph movement to information using deterministic Shapley values."""
+
+    evidence_by_document = {item.document_id: item for item in evidence_items}
+    all_document_ids = list(dict.fromkeys(item.document_id for item in evidence_items))
+    active_document_ids = [
+        document_id
+        for document_id in all_document_ids
+        if any(
+            contribution.signed_strength
+            and document_id
+            not in set(
+                previous_by_node.get(
+                    contribution.node_id,
+                    AssumptionScoreState(
+                        assumption=contribution.assumption,
+                        node_id=contribution.node_id,
+                    ),
+                ).evidence_document_ids
+            )
+            for contribution in contributions_by_document[document_id]
+        )
+    ]
+    score_cache: dict[frozenset[str], int] = {}
+
+    def coalition_score(selected: frozenset[str]) -> int:
+        if selected in score_cache:
+            return score_cache[selected]
+        states: dict[str, float] = {}
+        for node in graph.nodes:
+            if node.kind != "ASSUMPTION":
+                continue
+            previous = previous_by_node.get(node.node_id)
+            prior_ids = set(previous.evidence_document_ids if previous else [])
+            node_edges, _ = _independent_edges(
+                (
+                    (
+                        document_id,
+                        contribution,
+                        _event_key(evidence_by_document[document_id], contribution),
+                    )
+                    for document_id in selected
+                    if document_id not in prior_ids
+                    for contribution in contributions_by_document[document_id]
+                    if contribution.node_id == node.node_id and contribution.signed_strength
+                ),
+                previous.evidence_event_keys if previous else (),
+            )
+            contributions = [
+                contribution
+                for _, contribution, _ in node_edges
+            ]
+            support = _combine_strength(
+                previous.support_strength if previous else 0,
+                (edge.signed_strength for edge in contributions if edge.signed_strength > 0),
+            )
+            contradict = _combine_strength(
+                previous.contradict_strength if previous else 0,
+                (-edge.signed_strength for edge in contributions if edge.signed_strength < 0),
+            )
+            states[node.node_id] = support - contradict
+        graph_states, _ = evaluate_logic_graph(graph, states, set(states))
+        score_cache[selected] = _health_score(graph_states[graph.root_id])
+        return score_cache[selected]
+
+    attributed = dict.fromkeys(all_document_ids, 0.0)
+    if active_document_ids:
+        orders = _attribution_orders(active_document_ids)
+        for order in orders:
+            selected: set[str] = set()
+            running_score = coalition_score(frozenset())
+            for document_id in order:
+                selected.add(document_id)
+                next_score = coalition_score(frozenset(selected))
+                attributed[document_id] += next_score - running_score
+                running_score = next_score
+        attributed = {
+            document_id: value / len(orders) for document_id, value in attributed.items()
+        }
+
+        # Legacy aggregate states can differ slightly from the stored integer score.
+        # Reconcile that residual so displayed information impacts sum to the actual move.
+        residual = (final_score - previous_score) - sum(attributed.values())
+        anchor = max(active_document_ids, key=lambda item: abs(attributed[item]))
+        attributed[anchor] += residual
+
+    rounded = {document_id: round(value, 2) for document_id, value in attributed.items()}
+    if active_document_ids:
+        rounding_residual = round((final_score - previous_score) - sum(rounded.values()), 2)
+        anchor = max(active_document_ids, key=lambda item: abs(rounded[item]))
+        rounded[anchor] = round(rounded[anchor] + rounding_residual, 2)
+
+    return [
+        EvidenceScoreImpact(
+            document_id=document_id,
+            score_delta=rounded[document_id],
+            node_contributions=contributions_by_document[document_id],
+        )
+        for document_id in all_document_ids
+    ]
+
+
 def calculate_score_breakdown(
     thesis: StructuredThesis,
     evidence: Iterable[EvidenceItem],
 ) -> ThesisScoreBreakdown:
-    """Update affected assumptions and aggregate them with immutable template weights.
+    """Aggregate every evidence-node cell, propagate graph state, and attribute movement."""
 
-    A newly observed assumption replaces its previous assumption state. Assumptions
-    without new directional evidence retain their prior state, so a scheduled run with
-    no meaningful evidence cannot reset the thesis to 50.
-    """
-
-    template = get_thesis_template(thesis.template_id)
+    graph = normalize_logic_graph(
+        thesis.logic_graph,
+        main_thesis=thesis.main_thesis,
+        key_assumptions=thesis.key_assumptions,
+    )
+    required_node_ids = required_assumption_node_ids(graph)
     previous_breakdown = thesis.score_breakdown
-    persisted_slots = (
-        previous_breakdown.slot_scores
-        if previous_breakdown
-        and previous_breakdown.template_id == thesis.template_id
-        and previous_breakdown.slot_scores
-        else None
-    )
-    scoring_slots = persisted_slots or template.assumption_slots
-    persisted_core_available = bool(persisted_slots and any(slot.core for slot in persisted_slots))
-    template_core = {slot.slot_id: slot.core for slot in template.assumption_slots}
-    core_by_slot = {
-        slot.slot_id: (
-            slot.core
-            if not persisted_slots or persisted_core_available
-            else template_core.get(slot.slot_id, False)
-        )
-        for slot in scoring_slots
+    previous_by_node = {
+        item.node_id: item
+        for item in (previous_breakdown.assumption_scores if previous_breakdown else [])
     }
-    catalog_version = (
-        previous_breakdown.template_catalog_version
-        if persisted_slots and previous_breakdown
-        else THESIS_TEMPLATE_CATALOG_VERSION
-    )
-    bindings = normalize_assumption_bindings(
-        thesis.template_id,
-        thesis.key_assumptions,
-        thesis.assumption_bindings,
-        slot_ids=(slot.slot_id for slot in scoring_slots),
-    )
     evidence_items = list(evidence)
-    previous_by_assumption = {
-        (item.slot_id, item.assumption): item
-        for item in (thesis.score_breakdown.assumption_scores if thesis.score_breakdown else [])
+    contributions_by_document = {
+        item.document_id: _node_contributions(graph, item) for item in evidence_items
     }
-
     assumption_scores: list[AssumptionScoreState] = []
-    scores_by_slot: dict[str, list[AssumptionScoreState]] = {
-        slot.slot_id: [] for slot in scoring_slots
-    }
-    for binding in bindings:
-        for assumption in binding.assumptions:
-            previous = previous_by_assumption.get((binding.slot_id, assumption))
-            current_evidence = [
-                item
-                for item in evidence_items
-                if assumption in item.related_assumptions
-                and is_meaningful_directional_evidence(item)
-            ]
-            current_document_ids = list(
-                dict.fromkeys(item.document_id for item in current_evidence)
-            )
-            has_new_document = bool(
-                current_evidence
-                and (
-                    previous is None
-                    or set(current_document_ids) - set(previous.evidence_document_ids)
-                )
-            )
-            if current_evidence and has_new_document:
-                support = max(
-                    (
-                        _IMPACT_STRENGTH[item.impact]
-                        for item in current_evidence
-                        if item.classification == EvidenceClassification.SUPPORT
-                    ),
-                    default=Decimal("0"),
-                )
-                contradict = max(
-                    (
-                        _IMPACT_STRENGTH[item.impact]
-                        for item in current_evidence
-                        if item.classification == EvidenceClassification.CONTRADICT
-                    ),
-                    default=Decimal("0"),
-                )
-                state = support - contradict
-                if previous and previous.invalidation_triggered:
-                    invalidation_streak = previous.invalidation_streak
-                    invalidation_triggered = True
-                else:
-                    severe_core_contradiction = (
-                        core_by_slot.get(binding.slot_id, False)
-                        and contradict == Decimal("1.0")
-                        and contradict > support
-                    )
-                    invalidation_streak = (
-                        (previous.invalidation_streak if previous else 0) + 1
-                        if severe_core_contradiction
-                        else 0
-                    )
-                    invalidation_triggered = invalidation_streak >= INVALIDATION_STREAK_REQUIRED
-                score = AssumptionScoreState(
-                    assumption=assumption,
-                    slot_id=binding.slot_id,
-                    support_strength=float(support),
-                    contradict_strength=float(contradict),
-                    state=float(state),
-                    has_evidence=True,
-                    evidence_document_ids=current_document_ids,
-                    invalidation_streak=invalidation_streak,
-                    invalidation_triggered=invalidation_triggered,
-                )
-            else:
-                score = previous or AssumptionScoreState(
-                    assumption=assumption,
-                    slot_id=binding.slot_id,
-                )
-            assumption_scores.append(score)
-            scores_by_slot[binding.slot_id].append(score)
 
-    slot_scores: list[SlotScore] = []
-    total_contribution = Decimal("0")
-    total_coverage = Decimal("0")
-    for slot in scoring_slots:
-        scores = scores_by_slot[slot.slot_id]
-        if scores:
-            state = sum(Decimal(str(item.state)) for item in scores) / Decimal(len(scores))
-            observed = sum(item.has_evidence for item in scores)
-            coverage = Decimal(observed) / Decimal(len(scores)) * Decimal("100")
+    for node in graph.nodes:
+        if node.kind != "ASSUMPTION":
+            continue
+        assumption = node.assumption or node.label
+        previous = previous_by_node.get(node.node_id)
+        prior_ids = set(previous.evidence_document_ids if previous else [])
+        raw_current_edges = [
+            (
+                item.document_id,
+                contribution,
+                _event_key(item, contribution),
+            )
+            for item in evidence_items
+            if item.document_id not in prior_ids
+            for contribution in contributions_by_document[item.document_id]
+            if contribution.node_id == node.node_id and contribution.signed_strength
+        ]
+        current_edges, current_event_keys = _independent_edges(
+            raw_current_edges,
+            previous.evidence_event_keys if previous else (),
+        )
+        support = _combine_strength(
+            previous.support_strength if previous else 0,
+            (
+                contribution.signed_strength
+                for _, contribution, _ in current_edges
+                if contribution.signed_strength > 0
+            ),
+        )
+        contradict = _combine_strength(
+            previous.contradict_strength if previous else 0,
+            (
+                -contribution.signed_strength
+                for _, contribution, _ in current_edges
+                if contribution.signed_strength < 0
+            ),
+        )
+        current_document_ids = list(
+            dict.fromkeys(document_id for document_id, _, _ in raw_current_edges)
+        )
+        severe_required_contradiction = (
+            node.node_id in required_node_ids
+            and any(
+                contribution.assessment == AssumptionAssessment.CONTRADICT
+                and contribution.impact == EvidenceImpact.HIGH
+                and contribution.relevance_score >= 0.75
+                for _, contribution, _ in current_edges
+            )
+            and contradict > support
+        )
+        if previous and previous.invalidation_triggered:
+            invalidation_streak = previous.invalidation_streak
+            invalidation_triggered = True
+        elif previous and not current_edges:
+            invalidation_streak = previous.invalidation_streak
+            invalidation_triggered = previous.invalidation_triggered
         else:
-            state = Decimal("0")
-            coverage = Decimal("0")
-        weight = Decimal(slot.weight_bps) / Decimal("10000")
-        contribution = Decimal("50") * weight * state
-        total_contribution += contribution
-        total_coverage += weight * coverage
-        slot_scores.append(
-            SlotScore(
-                slot_id=slot.slot_id,
-                label_ko=slot.label_ko,
-                weight_bps=slot.weight_bps,
-                core=core_by_slot.get(slot.slot_id, False),
-                state=float(state),
-                contribution_points=float(
-                    contribution.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+            invalidation_streak = (
+                (previous.invalidation_streak if previous else 0) + 1
+                if severe_required_contradiction
+                else 0
+            )
+            invalidation_triggered = invalidation_streak >= INVALIDATION_STREAK_REQUIRED
+        assumption_scores.append(
+            AssumptionScoreState(
+                assumption=assumption,
+                node_id=node.node_id,
+                support_strength=support,
+                contradict_strength=contradict,
+                state=max(-1, min(1, support - contradict)),
+                has_evidence=bool((previous and previous.has_evidence) or current_edges),
+                evidence_document_ids=list(
+                    dict.fromkeys(
+                        [
+                            *(previous.evidence_document_ids if previous else []),
+                            *current_document_ids,
+                        ]
+                    )
                 ),
-                coverage_percent=float(coverage.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)),
+                evidence_event_keys=list(
+                    dict.fromkeys(
+                        [
+                            *(previous.evidence_event_keys if previous else []),
+                            *current_event_keys,
+                        ]
+                    )
+                ),
+                invalidation_streak=invalidation_streak,
+                invalidation_triggered=invalidation_triggered,
             )
         )
 
-    has_bound_assumption = any(binding.assumptions for binding in bindings)
-    if not has_bound_assumption and thesis.score_breakdown is None:
-        health_score = thesis.confidence_score
-    else:
-        health_score = int(
-            (Decimal("50") + total_contribution).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        )
-    health_score = min(100, max(0, health_score))
+    states, coverage_by_node = evaluate_logic_graph(
+        graph,
+        {item.node_id: item.state for item in assumption_scores},
+        {item.node_id for item in assumption_scores if item.has_evidence},
+    )
+    root_state = states[graph.root_id]
+    health_score = _health_score(root_state)
     previous_score = thesis.confidence_score
     newly_invalidated = [
         item.assumption for item in assumption_scores if item.invalidation_triggered
@@ -267,18 +540,39 @@ def calculate_score_breakdown(
         or (previous_breakdown and previous_breakdown.is_broken)
         or invalidated_assumptions
     )
+    node_scores = [
+        LogicNodeScore(
+            node_id=node.node_id,
+            label=node.label,
+            kind=node.kind,
+            operator=node.operator,
+            state=states[node.node_id],
+            coverage_percent=round(coverage_by_node[node.node_id], 1),
+            required=node.node_id in required_node_ids,
+        )
+        for node in graph.nodes
+    ]
+    evidence_impacts = _attribute_score_delta(
+        graph=graph,
+        evidence_items=evidence_items,
+        contributions_by_document=contributions_by_document,
+        previous_by_node=previous_by_node,
+        final_score=health_score,
+        previous_score=previous_score,
+    )
     return ThesisScoreBreakdown(
-        template_id=thesis.template_id,
-        template_catalog_version=catalog_version,
+        logic_graph_version=graph.graph_version,
         previous_score=previous_score,
         health_score=health_score,
         score_delta=health_score - previous_score,
-        coverage_percent=float(total_coverage.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)),
+        root_state=root_state,
+        coverage_percent=round(coverage_by_node[graph.root_id], 1),
         invalidation_policy_version=INVALIDATION_POLICY_VERSION,
         is_broken=is_broken,
         invalidated_assumptions=invalidated_assumptions,
         assumption_scores=assumption_scores,
-        slot_scores=slot_scores,
+        node_scores=node_scores,
+        evidence_impacts=evidence_impacts,
     )
 
 
@@ -298,13 +592,13 @@ def deterministic_change_reason(breakdown: ThesisScoreBreakdown) -> str:
     if breakdown.is_broken:
         assumptions = ", ".join(breakdown.invalidated_assumptions) or "기존 무효화 가정"
         return (
-            f"Core 가정 '{assumptions}'이 HIGH 반박 근거로 "
+            f"필수 가정 '{assumptions}'이 HIGH 반박 근거로 "
             f"{INVALIDATION_STREAK_REQUIRED}회 연속 확인되어 투자 논리를 BROKEN으로 판정했습니다. "
             "논리를 재설정하기 전까지 이 상태를 유지합니다."
         )
     sign = "+" if breakdown.score_delta > 0 else ""
     return (
-        f"템플릿 가중 점수가 {breakdown.previous_score}점에서 "
+        f"정보-노드 기여도 행렬 점수가 {breakdown.previous_score}점에서 "
         f"{breakdown.health_score}점으로 {sign}{breakdown.score_delta}점 변했습니다. "
         f"근거 충족도는 {breakdown.coverage_percent:.1f}%입니다."
     )

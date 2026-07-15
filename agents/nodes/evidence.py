@@ -8,6 +8,8 @@ from langgraph.runtime import Runtime
 
 from agents.evidence_policy import meaningful_directional_evidence
 from agents.models import (
+    AssumptionAssessment,
+    AssumptionFinding,
     EvidenceAssessment,
     EvidenceClassification,
     EvidenceImpact,
@@ -59,6 +61,73 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
             if assumption in allowed_assumptions
         ]
         assessment = assessment.model_copy(update={"related_assumptions": related_assumptions})
+        findings_by_assumption = {
+            finding.assumption: finding
+            for finding in assessment.assumption_findings
+            if finding.assumption in allowed_assumptions
+        }
+        assumption_findings = []
+        for assumption in state["thesis_snapshot"].key_assumptions:
+            finding = findings_by_assumption.get(assumption)
+            if finding is None:
+                fallback_assessment = (
+                    {
+                        EvidenceClassification.SUPPORT: AssumptionAssessment.SUPPORT,
+                        EvidenceClassification.CONTRADICT: AssumptionAssessment.CONTRADICT,
+                    }.get(assessment.classification, AssumptionAssessment.NOT_ADDRESSED)
+                    if assumption in related_assumptions
+                    else AssumptionAssessment.NOT_ADDRESSED
+                )
+                finding = AssumptionFinding(
+                    assumption=assumption,
+                    assessment=fallback_assessment,
+                    impact=(
+                        assessment.impact
+                        if fallback_assessment != AssumptionAssessment.NOT_ADDRESSED
+                        else EvidenceImpact.LOW
+                    ),
+                    relevance_score=(
+                        assessment.relevance_score
+                        if fallback_assessment != AssumptionAssessment.NOT_ADDRESSED
+                        else 0
+                    ),
+                    reasoning=(
+                        assessment.reason
+                        if fallback_assessment != AssumptionAssessment.NOT_ADDRESSED
+                        else "이 정보는 해당 가정을 직접 검증하지 않습니다."
+                    ),
+                )
+            elif (
+                finding.assessment
+                in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+                and not finding.source_passage_indices
+            ):
+                finding = finding.model_copy(
+                    update={
+                        "assessment": AssumptionAssessment.NOT_ADDRESSED,
+                        "impact": EvidenceImpact.LOW,
+                        "relevance_score": 0,
+                        "reasoning": (
+                            "해당 노드 판정을 뒷받침하는 원문 구간이 없어 점수에서 제외했습니다."
+                        ),
+                    }
+                )
+            elif (
+                finding.assessment
+                in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+                and finding.relevance_score < runtime.context.config.min_relevance_score
+            ):
+                finding = finding.model_copy(
+                    update={
+                        "assessment": AssumptionAssessment.NOT_ADDRESSED,
+                        "impact": EvidenceImpact.LOW,
+                        "reasoning": (
+                            f"노드 관련도 {finding.relevance_score:.2f}로 판정 기준에 미달했습니다."
+                        ),
+                    }
+                )
+            assumption_findings.append(finding)
+        assessment = assessment.model_copy(update={"assumption_findings": assumption_findings})
         directional = assessment.classification in {
             EvidenceClassification.SUPPORT,
             EvidenceClassification.CONTRADICT,
@@ -81,12 +150,30 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
             EvidenceClassification.SUPPORT,
             EvidenceClassification.CONTRADICT,
         }
-        if directional and document.source_url is None and document.vector_doc_id is None:
+        has_directional_findings = any(
+            finding.assessment
+            in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+            for finding in assessment.assumption_findings
+        )
+        if (
+            directional or has_directional_findings
+        ) and document.source_url is None and document.vector_doc_id is None:
             assessment = assessment.model_copy(
                 update={
                     "classification": EvidenceClassification.UNCERTAIN,
                     "impact": EvidenceImpact.LOW,
                     "reason": "출처 참조가 없어 방향성 판정을 보류했습니다.",
+                    "assumption_findings": [
+                        finding.model_copy(
+                            update={
+                                "assessment": AssumptionAssessment.NOT_ADDRESSED,
+                                "impact": EvidenceImpact.LOW,
+                                "relevance_score": 0,
+                                "reasoning": "출처 참조가 없어 노드 방향성 판정을 보류했습니다.",
+                            }
+                        )
+                        for finding in assessment.assumption_findings
+                    ],
                 }
             )
         return EvidenceItem(
@@ -99,6 +186,7 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
             impact=assessment.impact,
             reason=assessment.reason,
             related_assumptions=assessment.related_assumptions,
+            assumption_findings=assessment.assumption_findings,
             published_at=document.published_at,
         )
 

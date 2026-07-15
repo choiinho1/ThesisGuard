@@ -6,9 +6,14 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, model_validator
-
-from agents.thesis_templates import ThesisTemplateId
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    NonNegativeInt,
+    model_validator,
+)
 
 
 class ContractModel(BaseModel):
@@ -44,6 +49,17 @@ class AssumptionAssessment(StrEnum):
     NOT_ADDRESSED = "NOT_ADDRESSED"
 
 
+class AssumptionFinding(ContractModel):
+    """How one document affects one exact thesis assumption."""
+
+    assumption: str = Field(min_length=1)
+    assessment: AssumptionAssessment
+    impact: EvidenceImpact
+    relevance_score: float = Field(ge=0, le=1)
+    reasoning: str = Field(min_length=1)
+    source_passage_indices: list[NonNegativeInt] = Field(default_factory=list, max_length=3)
+
+
 class EvidenceSourceType(StrEnum):
     SEC_FILING = "SEC_FILING"
     IR = "IR"
@@ -66,47 +82,92 @@ class AnalysisType(StrEnum):
 
 
 class AssumptionBinding(ContractModel):
-    """User assumptions mapped to one immutable template slot."""
+    """Deprecated template binding retained only for old serialized records."""
 
     slot_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     assumptions: list[str] = Field(default_factory=list)
     mapping_reason: str = ""
 
 
+class LogicOperator(StrEnum):
+    AND = "AND"
+    OR = "OR"
+    CONTRIBUTING = "CONTRIBUTING"
+
+
+class ThesisLogicNode(ContractModel):
+    """Potential model output; trusted code validates its semantic shape."""
+
+    node_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    kind: Literal["CLAIM", "ASSUMPTION"]
+    label: str = Field(min_length=1)
+    operator: LogicOperator | None = None
+    child_ids: list[str] = Field(default_factory=list)
+    assumption: str | None = None
+
+
+class ThesisLogicGraph(ContractModel):
+    graph_version: str = "1.0.0"
+    root_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    nodes: list[ThesisLogicNode] = Field(min_length=2)
+
+
 class AssumptionScoreState(ContractModel):
     assumption: str = Field(min_length=1)
-    slot_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
-    support_strength: Literal[0.0, 0.5, 1.0] = 0.0
-    contradict_strength: Literal[0.0, 0.5, 1.0] = 0.0
-    state: Literal[-1.0, -0.5, 0.0, 0.5, 1.0] = 0.0
+    node_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    support_strength: float = Field(default=0, ge=0, le=1)
+    contradict_strength: float = Field(default=0, ge=0, le=1)
+    state: float = Field(default=0, ge=-1, le=1)
     has_evidence: bool = False
     evidence_document_ids: list[str] = Field(default_factory=list)
+    evidence_event_keys: list[str] = Field(default_factory=list)
     invalidation_streak: int = Field(default=0, ge=0)
     invalidation_triggered: bool = False
 
 
-class SlotScore(ContractModel):
-    slot_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
-    label_ko: str = Field(min_length=1)
-    weight_bps: int = Field(gt=0, le=10_000)
-    core: bool = False
+class LogicNodeScore(ContractModel):
+    node_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    label: str = Field(min_length=1)
+    kind: Literal["CLAIM", "ASSUMPTION"]
+    operator: LogicOperator | None = None
     state: float = Field(ge=-1, le=1)
-    contribution_points: float = Field(ge=-50, le=50)
     coverage_percent: float = Field(ge=0, le=100)
+    required: bool = False
+
+
+class EvidenceNodeContribution(ContractModel):
+    """Deterministic signed strength of one evidence item against one leaf node."""
+
+    node_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    assumption: str = Field(min_length=1)
+    assessment: AssumptionAssessment
+    impact: EvidenceImpact
+    relevance_score: float = Field(ge=0, le=1)
+    signed_strength: float = Field(ge=-1, le=1)
+
+
+class EvidenceScoreImpact(ContractModel):
+    """Attribution of the analysis score movement to one information item."""
+
+    document_id: str = Field(min_length=1)
+    score_delta: float = Field(ge=-100, le=100)
+    node_contributions: list[EvidenceNodeContribution] = Field(default_factory=list)
 
 
 class ThesisScoreBreakdown(ContractModel):
-    template_id: ThesisTemplateId
-    template_catalog_version: str = Field(min_length=1)
+    scoring_method: Literal["EVIDENCE_NODE_MATRIX_V2"] = "EVIDENCE_NODE_MATRIX_V2"
+    logic_graph_version: str = "1.0.0"
     previous_score: int = Field(ge=0, le=100)
     health_score: int = Field(ge=0, le=100)
     score_delta: int = Field(ge=-100, le=100)
+    root_state: float = Field(ge=-1, le=1)
     coverage_percent: float = Field(ge=0, le=100)
     invalidation_policy_version: str = "1.0.0"
     is_broken: bool = False
     invalidated_assumptions: list[str] = Field(default_factory=list)
     assumption_scores: list[AssumptionScoreState] = Field(default_factory=list)
-    slot_scores: list[SlotScore] = Field(default_factory=list)
+    node_scores: list[LogicNodeScore] = Field(default_factory=list)
+    evidence_impacts: list[EvidenceScoreImpact] = Field(default_factory=list)
 
 
 class StructuredThesis(ContractModel):
@@ -116,8 +177,7 @@ class StructuredThesis(ContractModel):
     positive_signals: list[str] = Field(default_factory=list)
     negative_signals: list[str] = Field(default_factory=list)
     key_risks: list[str] = Field(default_factory=list)
-    template_id: ThesisTemplateId = ThesisTemplateId.GENERAL_FUNDAMENTAL
-    assumption_bindings: list[AssumptionBinding] = Field(default_factory=list)
+    logic_graph: ThesisLogicGraph | None = None
     score_breakdown: ThesisScoreBreakdown | None = None
     confidence_score: int = Field(default=50, ge=0, le=100)
     status: ThesisStatus = ThesisStatus.UNCHANGED
@@ -173,6 +233,7 @@ class EvidenceItem(ContractModel):
     impact: EvidenceImpact
     reason: str = Field(min_length=1)
     related_assumptions: list[str] = Field(default_factory=list)
+    assumption_findings: list[AssumptionFinding] = Field(default_factory=list)
     published_at: datetime | None = None
 
     @model_validator(mode="after")
@@ -180,7 +241,11 @@ class EvidenceItem(ContractModel):
         directional = self.classification in {
             EvidenceClassification.SUPPORT,
             EvidenceClassification.CONTRADICT,
-        }
+        } or any(
+            finding.assessment
+            in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+            for finding in self.assumption_findings
+        )
         if directional and self.source_url is None and self.vector_doc_id is None:
             raise ValueError("Directional evidence must reference a URL or vector document")
         return self
@@ -192,19 +257,9 @@ class EvidenceAssessment(ContractModel):
     relevance_score: float = Field(ge=0, le=1)
     reason: str = Field(min_length=1)
     related_assumptions: list[str] = Field(default_factory=list)
+    assumption_findings: list[AssumptionFinding] = Field(default_factory=list)
     source_excerpt: str = Field(min_length=1, max_length=2000)
     content_snippet: str = Field(min_length=1, max_length=500)
-
-
-class AssumptionFinding(ContractModel):
-    """How one document affects one exact thesis assumption."""
-
-    assumption: str = Field(min_length=1)
-    assessment: AssumptionAssessment
-    impact: EvidenceImpact
-    relevance_score: float = Field(ge=0, le=1)
-    reasoning: str = Field(min_length=1)
-    source_passage_indices: list[NonNegativeInt] = Field(default_factory=list, max_length=3)
 
 
 class EvidenceModelOutput(ContractModel):

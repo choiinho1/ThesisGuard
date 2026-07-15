@@ -17,14 +17,15 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from agents.models import (
     AlertSeverity,
     AnalysisType,
-    AssumptionBinding,
+    AssumptionFinding,
     EvidenceClassification,
     EvidenceImpact,
+    EvidenceNodeContribution,
     EvidenceSourceType,
+    ThesisLogicGraph,
     ThesisScoreBreakdown,
     ThesisStatus,
 )
-from agents.thesis_templates import ThesisTemplateId
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from thesisguard_backend.models import AlertDelivery, TransactionType
@@ -184,20 +185,25 @@ class ThesisResponse(ORMModel):
     positive_signals: list[str]
     negative_signals: list[str]
     key_risks: list[str]
-    template_id: ThesisTemplateId
-    template_catalog_version: str
-    template_snapshot: dict
-    assumption_bindings: list[AssumptionBinding]
+    logic_graph: ThesisLogicGraph | None
     score_breakdown: ThesisScoreBreakdown | None
     confidence_score: int
     status: ThesisStatus
     created_at: datetime
     updated_at: datetime
 
-    @field_validator("score_breakdown", mode="before")
+    @field_validator("logic_graph", "score_breakdown", mode="before")
     @classmethod
-    def empty_score_breakdown_is_uninitialized(cls, value):
-        return None if value == {} else value
+    def legacy_graph_fields_are_uninitialized(cls, value, info):
+        if not value:
+            return None
+        if (
+            info.field_name == "score_breakdown"
+            and isinstance(value, dict)
+            and value.get("scoring_method") != "EVIDENCE_NODE_MATRIX_V2"
+        ):
+            return None
+        return value
 
 
 class ThesisVersionResponse(ORMModel):
@@ -226,15 +232,19 @@ class EvidenceResponse(ORMModel):
     impact: EvidenceImpact
     reason: str
     related_assumptions: list[str]
+    assumption_findings: list[AssumptionFinding] = Field(default_factory=list)
+    score_delta: float = 0
+    node_contributions: list[EvidenceNodeContribution] = Field(default_factory=list)
     evidence_scope: Literal["NEW", "PAST"] = "NEW"
     published_at: datetime | None
     saved_to_history: bool
     created_at: datetime
 
 
-class EvidenceHistoryEntryResponse(EvidenceResponse):
+class EvidenceHistoryGroupResponse(BaseModel):
     holding_id: uuid.UUID
     ticker: str
+    entries: list[EvidenceResponse]
 
 
 # ------------------------------------------------- Analysis / Concentration

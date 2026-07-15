@@ -40,57 +40,85 @@ export type EvidenceSourceType = "SEC_FILING" | "IR" | "EARNINGS" | "NEWS" | "MA
 export type EvidenceScope = "NEW" | "PAST";
 export type AlertSeverity = "CRITICAL" | "MAJOR" | "MINOR" | "NONE";
 export type AnalysisType = "BULL_BEAR_JUDGE" | "THESIS_CONCENTRATION" | "COMMON_RISK";
-export type ThesisTemplateId =
-  | "GENERAL_FUNDAMENTAL"
-  | "SCALABLE_GROWTH"
-  | "QUALITY_COMPOUNDER"
-  | "MARGIN_EXPANSION"
-  | "TURNAROUND"
-  | "CYCLICAL_RECOVERY"
-  | "CATALYST_EVENT"
-  | "ASSET_VALUE_RERATING"
-  | "INCOME_DISTRIBUTION";
+export type LogicOperator = "AND" | "OR" | "CONTRIBUTING";
+export type AssumptionAssessment = "SUPPORT" | "CONTRADICT" | "MIXED" | "NOT_ADDRESSED";
 
-export interface AssumptionBinding {
-  slot_id: string;
-  assumptions: string[];
-  mapping_reason: string;
+export interface AssumptionFinding {
+  assumption: string;
+  assessment: AssumptionAssessment;
+  impact: EvidenceImpact;
+  relevance_score: number;
+  reasoning: string;
+  source_passage_indices: number[];
+}
+
+export interface ThesisLogicNode {
+  node_id: string;
+  kind: "CLAIM" | "ASSUMPTION";
+  label: string;
+  operator: LogicOperator | null;
+  child_ids: string[];
+  assumption: string | null;
+}
+
+export interface ThesisLogicGraph {
+  graph_version: string;
+  root_id: string;
+  nodes: ThesisLogicNode[];
 }
 
 export interface AssumptionScoreState {
   assumption: string;
-  slot_id: string;
-  support_strength: 0 | 0.5 | 1;
-  contradict_strength: 0 | 0.5 | 1;
-  state: -1 | -0.5 | 0 | 0.5 | 1;
+  node_id: string;
+  support_strength: number;
+  contradict_strength: number;
+  state: number;
   has_evidence: boolean;
   evidence_document_ids: string[];
+  evidence_event_keys: string[];
   invalidation_streak: number;
   invalidation_triggered: boolean;
 }
 
-export interface SlotScore {
-  slot_id: string;
-  label_ko: string;
-  weight_bps: number;
-  core: boolean;
+export interface LogicNodeScore {
+  node_id: string;
+  label: string;
+  kind: "CLAIM" | "ASSUMPTION";
+  operator: LogicOperator | null;
   state: number;
-  contribution_points: number;
   coverage_percent: number;
+  required: boolean;
+}
+
+export interface EvidenceNodeContribution {
+  node_id: string;
+  assumption: string;
+  assessment: AssumptionAssessment;
+  impact: EvidenceImpact;
+  relevance_score: number;
+  signed_strength: number;
+}
+
+export interface EvidenceScoreImpact {
+  document_id: string;
+  score_delta: number;
+  node_contributions: EvidenceNodeContribution[];
 }
 
 export interface ThesisScoreBreakdown {
-  template_id: ThesisTemplateId;
-  template_catalog_version: string;
+  scoring_method: "EVIDENCE_NODE_MATRIX_V2";
+  logic_graph_version: string;
   previous_score: number;
   health_score: number;
   score_delta: number;
+  root_state: number;
   coverage_percent: number;
   invalidation_policy_version: string;
   is_broken: boolean;
   invalidated_assumptions: string[];
   assumption_scores: AssumptionScoreState[];
-  slot_scores: SlotScore[];
+  node_scores: LogicNodeScore[];
+  evidence_impacts: EvidenceScoreImpact[];
 }
 
 export interface Portfolio {
@@ -147,10 +175,7 @@ export interface Thesis {
   positive_signals: string[];
   negative_signals: string[];
   key_risks: string[];
-  template_id: ThesisTemplateId;
-  template_catalog_version: string;
-  template_snapshot: Record<string, unknown>;
-  assumption_bindings: AssumptionBinding[];
+  logic_graph: ThesisLogicGraph | null;
   score_breakdown: ThesisScoreBreakdown | null;
   confidence_score: number;
   status: ThesisStatus;
@@ -182,6 +207,10 @@ export interface Evidence {
   classification: EvidenceClassification;
   impact: EvidenceImpact;
   reason: string;
+  related_assumptions: string[];
+  assumption_findings: AssumptionFinding[];
+  score_delta: number;
+  node_contributions: EvidenceNodeContribution[];
   evidence_scope: EvidenceScope;
   published_at: string | null;
   saved_to_history: boolean;

@@ -10,6 +10,7 @@ from thesisguard_backend import models as orm
 from thesisguard_backend.db import Base
 from thesisguard_backend.routers.analysis import (
     get_evidence_history,
+    get_holding_evidence_history,
     get_latest_analysis,
     get_owned_evidence,
     save_evidence,
@@ -171,18 +172,80 @@ async def _make_owned_holding(db_session, *, ticker: str = "NVDA") -> orm.Holdin
 
 
 @pytest.mark.asyncio
-async def test_evidence_history_only_returns_saved_entries(db_session) -> None:
+async def test_evidence_history_groups_by_holding_and_excludes_unsaved(db_session) -> None:
     """Regression test for auto-saving HIGH/MEDIUM impact evidence to history:
-    the history endpoint must only surface rows flagged saved_to_history=True
-    (set automatically by run_analysis_and_save for HIGH/MEDIUM impact, or
-    manually via save_evidence), never LOW-impact rows that were never saved."""
+    the portfolio-wide history endpoint must group entries per holding (so the
+    frontend can render a per-ticker view whenever routing is decided) and
+    only surface rows flagged saved_to_history=True — never LOW-impact rows
+    that were never saved."""
+
+    portfolio = orm.Portfolio(user=orm.User(email="u@example.com", password_hash="h"), name="T")
+    nvda = orm.Holding(portfolio=portfolio, ticker="NVDA", quantity=1, avg_buy_price=1)
+    aapl = orm.Holding(portfolio=portfolio, ticker="AAPL", quantity=1, avg_buy_price=1)
+    db_session.add_all([nvda, aapl])
+    await db_session.flush()
+    nvda_thesis = orm.Thesis(holding_id=nvda.id, raw_input="x" * 20, main_thesis="m")
+    aapl_thesis = orm.Thesis(holding_id=aapl.id, raw_input="y" * 20, main_thesis="m")
+    db_session.add_all([nvda_thesis, aapl_thesis])
+    await db_session.flush()
+
+    db_session.add(
+        orm.Evidence(
+            thesis_id=nvda_thesis.id,
+            document_id="doc-high",
+            source_type="NEWS",
+            content_snippet="high impact",
+            classification="SUPPORT",
+            impact="HIGH",
+            reason="r",
+            saved_to_history=True,
+        )
+    )
+    db_session.add(
+        orm.Evidence(
+            thesis_id=nvda_thesis.id,
+            document_id="doc-low",
+            source_type="NEWS",
+            content_snippet="low impact",
+            classification="NEUTRAL",
+            impact="LOW",
+            reason="r",
+            saved_to_history=False,
+        )
+    )
+    db_session.add(
+        orm.Evidence(
+            thesis_id=aapl_thesis.id,
+            document_id="doc-medium",
+            source_type="NEWS",
+            content_snippet="medium impact",
+            classification="SUPPORT",
+            impact="MEDIUM",
+            reason="r",
+            saved_to_history=True,
+        )
+    )
+    await db_session.commit()
+
+    history = await get_evidence_history(portfolio, db_session)
+
+    assert {group.ticker for group in history} == {"NVDA", "AAPL"}
+    nvda_group = next(group for group in history if group.ticker == "NVDA")
+    aapl_group = next(group for group in history if group.ticker == "AAPL")
+    assert nvda_group.holding_id == nvda.id
+    assert [entry.document_id for entry in nvda_group.entries] == ["doc-high"]
+    assert [entry.document_id for entry in aapl_group.entries] == ["doc-medium"]
+
+
+@pytest.mark.asyncio
+async def test_holding_evidence_history_scopes_to_one_holding(db_session) -> None:
+    """The per-holding endpoint (for whenever the frontend lands on per-ticker
+    routing) must only return that holding's saved evidence."""
 
     holding = await _make_owned_holding(db_session)
-    portfolio = await db_session.get(orm.Portfolio, holding.portfolio_id)
     thesis = orm.Thesis(holding_id=holding.id, raw_input="x" * 20, main_thesis="m")
     db_session.add(thesis)
     await db_session.flush()
-
     db_session.add(
         orm.Evidence(
             thesis_id=thesis.id,
@@ -195,26 +258,21 @@ async def test_evidence_history_only_returns_saved_entries(db_session) -> None:
             saved_to_history=True,
         )
     )
-    db_session.add(
-        orm.Evidence(
-            thesis_id=thesis.id,
-            document_id="doc-low",
-            source_type="NEWS",
-            content_snippet="low impact",
-            classification="NEUTRAL",
-            impact="LOW",
-            reason="r",
-            saved_to_history=False,
-        )
-    )
     await db_session.commit()
 
-    history = await get_evidence_history(portfolio, db_session)
+    history = await get_holding_evidence_history(holding, db_session)
 
     assert [entry.document_id for entry in history] == ["doc-high"]
-    assert history[0].ticker == "NVDA"
-    assert history[0].holding_id == holding.id
-    assert history[0].saved_to_history is True
+
+
+@pytest.mark.asyncio
+async def test_holding_evidence_history_empty_without_thesis(db_session) -> None:
+    holding = await _make_owned_holding(db_session)
+    await db_session.commit()
+
+    history = await get_holding_evidence_history(holding, db_session)
+
+    assert history == []
 
 
 @pytest.mark.asyncio

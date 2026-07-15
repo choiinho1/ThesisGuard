@@ -34,12 +34,15 @@ export function ThesisDetail({
   const [evidenceSaveError, setEvidenceSaveError] = useState<string | null>(null);
   const thesis = analysis?.thesis ?? holding.thesis;
   const thesisLength = rawInput.trim().length;
-  const pastEvidence = analysis?.evidence.filter(
-    (evidence) => evidence.evidence_scope === "PAST",
-  ) ?? [];
-  const newEvidence = analysis?.evidence.filter(
-    (evidence) => evidence.evidence_scope === "NEW",
-  ) ?? [];
+  const byAbsoluteScoreImpact = (left: Evidence, right: Evidence) =>
+    Math.abs(right.score_delta) - Math.abs(left.score_delta)
+    || right.score_delta - left.score_delta;
+  const pastEvidence = analysis?.evidence
+    .filter((evidence) => evidence.evidence_scope === "PAST")
+    .sort(byAbsoluteScoreImpact) ?? [];
+  const newEvidence = analysis?.evidence
+    .filter((evidence) => evidence.evidence_scope === "NEW")
+    .sort(byAbsoluteScoreImpact) ?? [];
   const emptyEvidenceMessage = "새로운 고유 근거가 없습니다. 과거 근거는 아래에서 확인하세요.";
 
   useEffect(() => {
@@ -177,29 +180,32 @@ export function ThesisDetail({
         <DetailList title="주요 리스크" items={thesis.key_risks} tone="risk" />
       </div>
 
-      {thesis.score_breakdown && thesis.score_breakdown.slot_scores.length > 0 && (
+      {thesis.score_breakdown && thesis.score_breakdown.node_scores.length > 0 && (
         <section className="score-breakdown-panel" aria-label="점수 산정 내역">
           <div className="score-breakdown-header">
             <div>
-              <span>SCORING TEMPLATE</span>
-              <strong>{thesis.score_breakdown.template_id}</strong>
+              <span>CAUSAL LOGIC GRAPH</span>
+              <strong>
+                ROOT {thesis.score_breakdown.root_state > 0 ? "+" : ""}
+                {thesis.score_breakdown.root_state.toFixed(2)}
+              </strong>
             </div>
             <p>
               근거 충족도 <strong>{thesis.score_breakdown.coverage_percent.toFixed(1)}%</strong>
             </p>
           </div>
           <div className="score-breakdown-grid">
-            {thesis.score_breakdown.slot_scores.map((slot) => (
-              <article key={slot.slot_id}>
+            {thesis.score_breakdown.node_scores.map((node) => (
+              <article key={node.node_id}>
                 <div>
-                  <strong>{slot.label_ko}</strong>
+                  <strong>{node.label}</strong>
                   <span>
-                    가중치 {(slot.weight_bps / 100).toFixed(0)}%
-                    {slot.core ? " · CORE" : ""}
+                    {node.kind === "CLAIM" ? node.operator : "가정"}
+                    {node.required ? " · REQUIRED" : ""}
                   </span>
                 </div>
-                <p className={slot.contribution_points > 0 ? "positive" : slot.contribution_points < 0 ? "negative" : ""}>
-                  {slot.contribution_points > 0 ? "+" : ""}{slot.contribution_points.toFixed(1)}점
+                <p className={node.state > 0 ? "positive" : node.state < 0 ? "negative" : ""}>
+                  {node.state > 0 ? "+" : ""}{node.state.toFixed(2)}
                 </p>
               </article>
             ))}
@@ -344,10 +350,22 @@ interface EvidenceRowProps {
 }
 
 function EvidenceRow({ evidence, isSaved, isSaving, onToggleSaved }: EvidenceRowProps) {
+  const directionalNodes = evidence.node_contributions.filter(
+    (contribution) => contribution.signed_strength !== 0,
+  );
   return (
     <article className="evidence-link evidence-link--static">
       <div className="evidence-meta">
         <span>{evidence.classification} · {evidence.impact}</span>
+        <strong className={
+          evidence.score_delta > 0
+            ? "evidence-score-impact positive"
+            : evidence.score_delta < 0
+              ? "evidence-score-impact negative"
+              : "evidence-score-impact"
+        }>
+          최종 점수 {evidence.score_delta > 0 ? "+" : ""}{evidence.score_delta.toFixed(2)}
+        </strong>
         {evidence.published_at ? (
           <time dateTime={evidence.published_at}>
             {formatEvidenceDate(evidence.published_at)}
@@ -357,6 +375,22 @@ function EvidenceRow({ evidence, isSaved, isSaving, onToggleSaved }: EvidenceRow
         )}
       </div>
       <p>{evidence.content_snippet}</p>
+      {directionalNodes.length > 0 && (
+        <details className="evidence-node-contributions">
+          <summary>가정 노드별 기여도 {directionalNodes.length}개</summary>
+          <ul>
+            {directionalNodes.map((contribution) => (
+              <li key={contribution.node_id}>
+                <span>{contribution.assumption}</span>
+                <strong className={contribution.signed_strength > 0 ? "positive" : "negative"}>
+                  {contribution.signed_strength > 0 ? "+" : ""}
+                  {contribution.signed_strength.toFixed(2)}
+                </strong>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <div className="evidence-actions">
         {evidence.source_url && (
           <a
