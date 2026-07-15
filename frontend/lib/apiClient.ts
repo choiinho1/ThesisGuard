@@ -6,7 +6,6 @@ import type {
   CreateHoldingInput,
   DashboardHolding,
   Evidence,
-  EvidenceHistoryEntry,
   EvidenceHistoryGroup,
   HoldingAnalysisResponse,
   HoldingHistoryResponse,
@@ -169,25 +168,9 @@ export async function getPortfolioEvidenceHistory(
   mode = getApiMode(),
 ): Promise<EvidenceHistoryGroup[]> {
   if (mode === "mock") return [];
-  const payload = await request<EvidenceHistoryGroup[] | EvidenceHistoryEntry[]>(
+  return request<EvidenceHistoryGroup[]>(
     `/api/portfolios/${portfolioId}/evidence-history`,
   );
-  if (payload.length === 0) return [];
-  if ("entries" in payload[0]) return payload as EvidenceHistoryGroup[];
-
-  // Compatibility with the currently merged backend, which still returns a
-  // flat list. Remove this normalizer once the grouped response is deployed.
-  const groups = new Map<string, EvidenceHistoryGroup>();
-  for (const item of payload as EvidenceHistoryEntry[]) {
-    const group = groups.get(item.holding_id) ?? {
-      holding_id: item.holding_id,
-      ticker: item.ticker,
-      entries: [],
-    };
-    group.entries.push(item);
-    groups.set(item.holding_id, group);
-  }
-  return [...groups.values()];
 }
 
 export async function getHoldingEvidenceHistory(

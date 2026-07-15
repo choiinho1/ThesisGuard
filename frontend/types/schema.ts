@@ -217,11 +217,6 @@ export interface Evidence {
   created_at: string;
 }
 
-export interface EvidenceHistoryEntry extends Evidence {
-  holding_id: string;
-  ticker: string;
-}
-
 export interface EvidenceHistoryGroup {
   holding_id: string;
   ticker: string;
