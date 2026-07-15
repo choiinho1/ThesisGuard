@@ -309,10 +309,10 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
         "uncertain-news",
         "contradict-news",
     }
-    assert result.updated_confidence == 48
-    assert result.updated_status == ThesisStatus.UNCHANGED
-    assert result.alert_decision.severity == "NONE"
-    assert result.alert_decision.delivery == "NONE"
+    assert result.updated_confidence == 44
+    assert result.updated_status == ThesisStatus.WEAKENED
+    assert result.alert_decision.severity == "MINOR"
+    assert result.alert_decision.delivery == "WEEKLY"
     assert result.concentration.has_concentration_risk is True
     assert model.judge_calls == 1
     assert model.classify_calls == 3
@@ -339,8 +339,8 @@ async def test_portfolio_model_failure_keeps_holding_result_and_reports_error() 
 
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
-    assert result.updated_confidence == 52
-    assert result.updated_status == ThesisStatus.UNCHANGED
+    assert result.updated_confidence == 56
+    assert result.updated_status == ThesisStatus.STRENGTHENED
     assert result.concentration.has_concentration_risk is False
     assert "개별 종목의 근거·점수·상태 계산 결과는 정상적으로 유지됩니다" in (
         result.concentration.summary
@@ -380,8 +380,8 @@ async def test_one_source_failure_does_not_abort_the_analysis() -> None:
 
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
-    assert result.updated_status == ThesisStatus.UNCHANGED
-    assert result.updated_confidence == 48
+    assert result.updated_status == ThesisStatus.WEAKENED
+    assert result.updated_confidence == 44
     assert any(item.source_type == EvidenceSourceType.SEC_FILING for item in result.evidence)
     assert any(error.startswith("macro: RuntimeError:") for error in result.source_errors)
 
@@ -403,9 +403,9 @@ async def test_judge_failure_retries_but_keeps_deterministic_score() -> None:
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert model.judge_calls == 2
-    assert result.updated_status == ThesisStatus.UNCHANGED
-    assert result.updated_confidence == 48
-    assert result.alert_decision.should_send is False
+    assert result.updated_status == ThesisStatus.WEAKENED
+    assert result.updated_confidence == 44
+    assert result.alert_decision.should_send is True
 
 
 def test_sync_team_contract_entrypoint() -> None:

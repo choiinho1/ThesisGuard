@@ -33,9 +33,9 @@ from agents.models import (
 from agents.state import AnalysisState
 
 _IMPACT_STRENGTH = {
-    EvidenceImpact.LOW: Decimal("0.03"),
-    EvidenceImpact.MEDIUM: Decimal("0.09"),
-    EvidenceImpact.HIGH: Decimal("0.18"),
+    EvidenceImpact.LOW: Decimal("0.09"),
+    EvidenceImpact.MEDIUM: Decimal("0.27"),
+    EvidenceImpact.HIGH: Decimal("0.54"),
 }
 INVALIDATION_POLICY_VERSION = "2.0.0"
 INVALIDATION_STREAK_REQUIRED = 2
