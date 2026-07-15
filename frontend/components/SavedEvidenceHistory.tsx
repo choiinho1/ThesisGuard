@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getThesisHistory } from "@/lib/apiClient";
+import {
+  getPortfolioEvidenceHistory,
+  getThesisHistory,
+  removeEvidenceFromHistory,
+} from "@/lib/apiClient";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { ApiMode, DashboardHolding, Evidence, ThesisVersion } from "@/types/schema";
 
@@ -17,13 +21,28 @@ interface ConfidenceEntry {
   version: ThesisVersion;
 }
 
-export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHolding[]; mode: ApiMode }) {
+export function SavedEvidenceHistory({
+  holdings,
+  mode,
+  portfolioId,
+  selectedHoldingId,
+}: {
+  holdings: DashboardHolding[];
+  mode: ApiMode;
+  portfolioId: string;
+  selectedHoldingId: string | null;
+}) {
   const [entries, setEntries] = useState<SavedEvidenceEntry[]>([]);
   const [confidenceEntries, setConfidenceEntries] = useState<ConfidenceEntry[]>([]);
+  const [loadingEvidence, setLoadingEvidence] = useState(true);
   const [loadingConfidence, setLoadingConfidence] = useState(true);
-  const [selectedHoldingId, setSelectedHoldingId] = useState(() => holdings[0]?.id ?? "");
-  const activeHoldingId = holdings.some((holding) => holding.id === selectedHoldingId)
-    ? selectedHoldingId
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [removingEvidenceIds, setRemovingEvidenceIds] = useState<Set<string>>(new Set());
+  const [historyHoldingId, setHistoryHoldingId] = useState(
+    () => selectedHoldingId ?? holdings[0]?.id ?? "",
+  );
+  const activeHoldingId = holdings.some((holding) => holding.id === historyHoldingId)
+    ? historyHoldingId
     : holdings[0]?.id ?? "";
   const activeHolding = holdings.find((holding) => holding.id === activeHoldingId) ?? null;
   const visibleEntries = entries.filter((entry) => entry.holdingId === activeHoldingId);
@@ -32,24 +51,59 @@ export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHo
   );
 
   useEffect(() => {
-    const restored = holdings.flatMap((holding) => {
-      const raw = window.localStorage.getItem(`thesisguard_saved_evidence_${holding.id}`);
-      if (!raw) return [];
-      try {
-        return (JSON.parse(raw) as Evidence[]).map((evidence) => ({
-          evidence,
-          holdingId: holding.id,
-          ticker: holding.ticker,
-        }));
-      } catch {
-        return [];
-      }
-    }).sort((left, right) => (
-      new Date(right.evidence.created_at).getTime() - new Date(left.evidence.created_at).getTime()
-    ));
-    const timer = window.setTimeout(() => setEntries(restored), 0);
+    if (!selectedHoldingId) return;
+    const timer = window.setTimeout(() => setHistoryHoldingId(selectedHoldingId), 0);
     return () => window.clearTimeout(timer);
-  }, [holdings]);
+  }, [selectedHoldingId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (mode === "mock") {
+      const restored = holdings.flatMap((holding) => {
+        const raw = window.localStorage.getItem(`thesisguard_saved_evidence_${holding.id}`);
+        if (!raw) return [];
+        try {
+          return (JSON.parse(raw) as Evidence[]).map((evidence) => ({
+            evidence,
+            holdingId: holding.id,
+            ticker: holding.ticker,
+          }));
+        } catch {
+          return [];
+        }
+      }).sort((left, right) => (
+        new Date(right.evidence.created_at).getTime() - new Date(left.evidence.created_at).getTime()
+      ));
+      const timer = window.setTimeout(() => {
+        setEntries(restored);
+        setEvidenceError(null);
+        setLoadingEvidence(false);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+
+    void getPortfolioEvidenceHistory(portfolioId, mode)
+      .then((items) => {
+        if (!cancelled) {
+          setEntries(items.flatMap((group) => group.entries.map((evidence) => ({
+            evidence,
+            holdingId: group.holding_id,
+            ticker: group.ticker,
+          }))));
+          setEvidenceError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setEvidenceError(error instanceof Error ? error.message : "저장 근거를 불러오지 못했습니다.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEvidence(false);
+      });
+    return () => { cancelled = true; };
+  }, [holdings, mode, portfolioId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,21 +125,55 @@ export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHo
     return () => { cancelled = true; };
   }, [holdings, mode]);
 
-  const removeEntry = (entry: SavedEvidenceEntry) => {
-    const key = `thesisguard_saved_evidence_${entry.holdingId}`;
-    const nextEntries = entries.filter((item) => item.evidence.id !== entry.evidence.id);
-    const remainingForHolding = nextEntries
-      .filter((item) => item.holdingId === entry.holdingId)
-      .map((item) => item.evidence);
-    window.localStorage.setItem(key, JSON.stringify(remainingForHolding));
-    setEntries(nextEntries);
+  const removeEntry = async (entry: SavedEvidenceEntry) => {
+    if (removingEvidenceIds.has(entry.evidence.id)) return;
+    setEvidenceError(null);
+    setRemovingEvidenceIds((current) => new Set(current).add(entry.evidence.id));
+    try {
+      await removeEvidenceFromHistory(entry.evidence.id, mode);
+      const nextEntries = entries.filter((item) => item.evidence.id !== entry.evidence.id);
+      if (mode === "mock") {
+        const remainingForHolding = nextEntries
+          .filter((item) => item.holdingId === entry.holdingId)
+          .map((item) => item.evidence);
+        window.localStorage.setItem(
+          `thesisguard_saved_evidence_${entry.holdingId}`,
+          JSON.stringify(remainingForHolding),
+        );
+      }
+      setEntries(nextEntries);
+    } catch (error) {
+      setEvidenceError(error instanceof Error ? error.message : "저장 근거를 해제하지 못했습니다.");
+    } finally {
+      setRemovingEvidenceIds((current) => {
+        const next = new Set(current);
+        next.delete(entry.evidence.id);
+        return next;
+      });
+    }
   };
 
-  const removeAllVisibleEntries = () => {
+  const removeAllVisibleEntries = async () => {
     if (!activeHolding || visibleEntries.length === 0) return;
     if (!window.confirm(`${activeHolding.ticker}의 저장 근거를 모두 삭제할까요?`)) return;
-    window.localStorage.removeItem(`thesisguard_saved_evidence_${activeHolding.id}`);
-    setEntries((current) => current.filter((entry) => entry.holdingId !== activeHolding.id));
+    const ids = visibleEntries.map((entry) => entry.evidence.id);
+    setEvidenceError(null);
+    setRemovingEvidenceIds((current) => new Set([...current, ...ids]));
+    try {
+      await Promise.all(ids.map((id) => removeEvidenceFromHistory(id, mode)));
+      if (mode === "mock") {
+        window.localStorage.removeItem(`thesisguard_saved_evidence_${activeHolding.id}`);
+      }
+      setEntries((current) => current.filter((entry) => entry.holdingId !== activeHolding.id));
+    } catch (error) {
+      setEvidenceError(error instanceof Error ? error.message : "저장 근거를 모두 해제하지 못했습니다.");
+    } finally {
+      setRemovingEvidenceIds((current) => {
+        const next = new Set(current);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
   };
 
   return (
@@ -101,7 +189,7 @@ export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHo
             aria-pressed={holding.id === activeHoldingId}
             className={holding.id === activeHoldingId ? "is-active" : ""}
             key={holding.id}
-            onClick={() => setSelectedHoldingId(holding.id)}
+            onClick={() => setHistoryHoldingId(holding.id)}
             type="button"
           >
             {holding.ticker}
@@ -155,11 +243,15 @@ export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHo
         </div>
         <div className="history-heading-actions">
           <span className="history-count">{visibleEntries.length} SAVED</span>
-          <button disabled={visibleEntries.length === 0} onClick={removeAllVisibleEntries} type="button">전체 삭제</button>
+          <button disabled={visibleEntries.length === 0 || removingEvidenceIds.size > 0} onClick={removeAllVisibleEntries} type="button">전체 삭제</button>
         </div>
       </div>
 
-      {visibleEntries.length === 0 ? (
+      {loadingEvidence ? (
+        <div className="history-empty"><strong>저장 근거를 불러오는 중…</strong></div>
+      ) : evidenceError ? (
+        <div className="history-empty"><strong>{evidenceError}</strong></div>
+      ) : visibleEntries.length === 0 ? (
         <div className="history-empty">
           <strong>{activeHolding?.ticker ?? "선택 종목"}에 저장한 근거가 없습니다.</strong>
           <p>Main의 분석 결과에서 `주요 근거로 저장`을 선택해 보세요.</p>
@@ -178,7 +270,9 @@ export function SavedEvidenceHistory({ holdings, mode }: { holdings: DashboardHo
                 {entry.evidence.source_url && (
                   <a href={entry.evidence.source_url} rel="noreferrer" target="_blank">원문 보기 ↗</a>
                 )}
-                <button onClick={() => removeEntry(entry)} type="button">History에서 삭제</button>
+                <button disabled={removingEvidenceIds.has(entry.evidence.id)} onClick={() => removeEntry(entry)} type="button">
+                  {removingEvidenceIds.has(entry.evidence.id) ? "처리 중…" : "History에서 삭제"}
+                </button>
               </div>
             </article>
           ))}

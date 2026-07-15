@@ -5,6 +5,9 @@ import type {
   AnalysisScheduleInput,
   CreateHoldingInput,
   DashboardHolding,
+  Evidence,
+  EvidenceHistoryEntry,
+  EvidenceHistoryGroup,
   HoldingAnalysisResponse,
   HoldingHistoryResponse,
   MarketSnapshot,
@@ -159,6 +162,56 @@ export async function deleteAnalysisSchedule(
 ): Promise<void> {
   if (mode === "mock") return;
   await request<void>(`/api/holdings/${holdingId}/analysis-schedule`, { method: "DELETE" });
+}
+
+export async function getPortfolioEvidenceHistory(
+  portfolioId: string,
+  mode = getApiMode(),
+): Promise<EvidenceHistoryGroup[]> {
+  if (mode === "mock") return [];
+  const payload = await request<EvidenceHistoryGroup[] | EvidenceHistoryEntry[]>(
+    `/api/portfolios/${portfolioId}/evidence-history`,
+  );
+  if (payload.length === 0) return [];
+  if ("entries" in payload[0]) return payload as EvidenceHistoryGroup[];
+
+  // Compatibility with the currently merged backend, which still returns a
+  // flat list. Remove this normalizer once the grouped response is deployed.
+  const groups = new Map<string, EvidenceHistoryGroup>();
+  for (const item of payload as EvidenceHistoryEntry[]) {
+    const group = groups.get(item.holding_id) ?? {
+      holding_id: item.holding_id,
+      ticker: item.ticker,
+      entries: [],
+    };
+    group.entries.push(item);
+    groups.set(item.holding_id, group);
+  }
+  return [...groups.values()];
+}
+
+export async function getHoldingEvidenceHistory(
+  holdingId: string,
+  mode = getApiMode(),
+): Promise<Evidence[]> {
+  if (mode === "mock") return [];
+  return request<Evidence[]>(`/api/holdings/${holdingId}/evidence-history`);
+}
+
+export async function saveEvidenceToHistory(
+  evidence: Evidence,
+  mode = getApiMode(),
+): Promise<Evidence> {
+  if (mode === "mock") return { ...evidence, saved_to_history: true };
+  return request<Evidence>(`/api/evidence/${evidence.id}/save`, { method: "POST" });
+}
+
+export async function removeEvidenceFromHistory(
+  evidenceId: string,
+  mode = getApiMode(),
+): Promise<void> {
+  if (mode === "mock") return;
+  await request<void>(`/api/evidence/${evidenceId}/save`, { method: "DELETE" });
 }
 
 export async function createHoldingThesis(

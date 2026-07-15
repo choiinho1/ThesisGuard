@@ -367,8 +367,8 @@ export function Dashboard() {
       {activeSection === "main" && selected && (
         <AutoAnalysisSchedule holding={selected} mode={mode} />
       )}
-      {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} holding={selected} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
-      {activeSection === "history" && <SavedEvidenceHistory holdings={dashboard.holdings} mode={mode} />}
+      {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} holding={selected} mode={mode} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
+      {activeSection === "history" && <SavedEvidenceHistory holdings={dashboard.holdings} mode={mode} portfolioId={dashboard.portfolio.id} selectedHoldingId={selected?.id ?? null} />}
       <footer>
         <span>THESISGUARD</span>
         <span>Evidence-led. Explainable. No investment advice.</span>

@@ -188,7 +188,19 @@ export interface Evidence {
   reason: string;
   evidence_scope: EvidenceScope;
   published_at: string | null;
+  saved_to_history: boolean;
   created_at: string;
+}
+
+export interface EvidenceHistoryEntry extends Evidence {
+  holding_id: string;
+  ticker: string;
+}
+
+export interface EvidenceHistoryGroup {
+  holding_id: string;
+  ticker: string;
+  entries: Evidence[];
 }
 
 export interface AnalysisResult {

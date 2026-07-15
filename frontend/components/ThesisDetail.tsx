@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
-import type { DashboardHolding, Evidence, HoldingAnalysisResponse } from "@/types/schema";
+import { saveEvidenceToHistory } from "@/lib/apiClient";
+import type { ApiMode, DashboardHolding, Evidence, HoldingAnalysisResponse } from "@/types/schema";
 
 interface ThesisDetailProps {
   holding: DashboardHolding;
   analysis: HoldingAnalysisResponse | null;
   analyzing: boolean;
+  mode: ApiMode;
   onAnalyze: () => void;
   onRegister: (rawInput: string) => Promise<void>;
   onUpdate: (rawInput: string) => Promise<void>;
@@ -17,6 +19,7 @@ export function ThesisDetail({
   holding,
   analysis,
   analyzing,
+  mode,
   onAnalyze,
   onRegister,
   onUpdate,
@@ -26,7 +29,9 @@ export function ThesisDetail({
   const [editing, setEditing] = useState(false);
   const [editInput, setEditInput] = useState(holding.thesis?.raw_input ?? "");
   const [savingEdit, setSavingEdit] = useState(false);
-  const [savedEvidence, setSavedEvidence] = useState<Evidence[]>([]);
+  const [savedEvidenceIds, setSavedEvidenceIds] = useState<Set<string>>(new Set());
+  const [savingEvidenceIds, setSavingEvidenceIds] = useState<Set<string>>(new Set());
+  const [evidenceSaveError, setEvidenceSaveError] = useState<string | null>(null);
   const thesis = analysis?.thesis ?? holding.thesis;
   const thesisLength = rawInput.trim().length;
   const pastEvidence = analysis?.evidence.filter(
@@ -38,6 +43,16 @@ export function ThesisDetail({
   const emptyEvidenceMessage = "새로운 고유 근거가 없습니다. 과거 근거는 아래에서 확인하세요.";
 
   useEffect(() => {
+    if (mode === "live") {
+      const ids = new Set(
+        analysis?.evidence
+          .filter((evidence) => evidence.saved_to_history)
+          .map((evidence) => evidence.id) ?? [],
+      );
+      const timer = window.setTimeout(() => setSavedEvidenceIds(ids), 0);
+      return () => window.clearTimeout(timer);
+    }
+
     const stored = window.localStorage.getItem(`thesisguard_saved_evidence_${holding.id}`);
     let restored: Evidence[] = [];
     try {
@@ -45,46 +60,63 @@ export function ThesisDetail({
     } catch {
       restored = [];
     }
-    const timer = window.setTimeout(() => setSavedEvidence(restored), 0);
+    const timer = window.setTimeout(
+      () => setSavedEvidenceIds(new Set(restored.map((evidence) => evidence.id))),
+      0,
+    );
     return () => window.clearTimeout(timer);
-  }, [holding.id]);
+  }, [analysis, holding.id, mode]);
 
   useEffect(() => {
-    if (!analysis) return;
+    if (mode !== "mock" || !analysis) return;
     const automaticallySaved = analysis.evidence.filter(
       (evidence) => evidence.impact === "HIGH" || evidence.impact === "MEDIUM",
     );
     if (automaticallySaved.length === 0) return;
 
     const timer = window.setTimeout(() => {
-      setSavedEvidence((current) => {
-        const currentIds = new Set(current.map((evidence) => evidence.id));
-        const next = [
-          ...automaticallySaved.filter((evidence) => !currentIds.has(evidence.id)),
-          ...current,
-        ];
+      setSavedEvidenceIds((current) => {
+        const nextIds = new Set(current);
+        automaticallySaved.forEach((evidence) => nextIds.add(evidence.id));
         window.localStorage.setItem(
           `thesisguard_saved_evidence_${holding.id}`,
-          JSON.stringify(next),
+          JSON.stringify(analysis.evidence
+            .filter((evidence) => nextIds.has(evidence.id))
+            .map((evidence) => ({ ...evidence, saved_to_history: true }))),
         );
-        return next;
+        return nextIds;
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [analysis, holding.id]);
+  }, [analysis, holding.id, mode]);
 
-  const toggleSavedEvidence = (evidence: Evidence) => {
-    setSavedEvidence((current) => {
-      const exists = current.some((item) => item.id === evidence.id);
-      const next = exists
-        ? current.filter((item) => item.id !== evidence.id)
-        : [evidence, ...current];
-      window.localStorage.setItem(
-        `thesisguard_saved_evidence_${holding.id}`,
-        JSON.stringify(next),
-      );
-      return next;
-    });
+  const toggleSavedEvidence = async (evidence: Evidence) => {
+    if (savingEvidenceIds.has(evidence.id) || savedEvidenceIds.has(evidence.id)) return;
+    setEvidenceSaveError(null);
+    setSavingEvidenceIds((current) => new Set(current).add(evidence.id));
+    try {
+      await saveEvidenceToHistory(evidence, mode);
+      const nextIds = new Set(savedEvidenceIds);
+      nextIds.add(evidence.id);
+      setSavedEvidenceIds(nextIds);
+
+      if (mode === "mock" && analysis) {
+        window.localStorage.setItem(
+          `thesisguard_saved_evidence_${holding.id}`,
+          JSON.stringify(analysis.evidence
+            .filter((item) => nextIds.has(item.id))
+            .map((item) => ({ ...item, saved_to_history: true }))),
+        );
+      }
+    } catch (error) {
+      setEvidenceSaveError(error instanceof Error ? error.message : "근거 저장 상태를 변경하지 못했습니다.");
+    } finally {
+      setSavingEvidenceIds((current) => {
+        const next = new Set(current);
+        next.delete(evidence.id);
+        return next;
+      });
+    }
   };
 
   if (!thesis) {
@@ -249,7 +281,8 @@ export function ThesisDetail({
               {newEvidence.map((evidence) => (
                 <EvidenceRow
                   evidence={evidence}
-                  isSaved={savedEvidence.some((item) => item.id === evidence.id)}
+                  isSaved={savedEvidenceIds.has(evidence.id)}
+                  isSaving={savingEvidenceIds.has(evidence.id)}
                   key={evidence.id}
                   onToggleSaved={toggleSavedEvidence}
                 />
@@ -275,7 +308,8 @@ export function ThesisDetail({
                 {pastEvidence.map((evidence) => (
                   <EvidenceRow
                     evidence={evidence}
-                    isSaved={savedEvidence.some((item) => item.id === evidence.id)}
+                    isSaved={savedEvidenceIds.has(evidence.id)}
+                    isSaving={savingEvidenceIds.has(evidence.id)}
                     key={evidence.id}
                     onToggleSaved={toggleSavedEvidence}
                   />
@@ -283,6 +317,7 @@ export function ThesisDetail({
               </div>
             </details>
           )}
+          {evidenceSaveError && <p className="error-banner" role="alert">{evidenceSaveError}</p>}
         </div>
       )}
 
@@ -304,12 +339,11 @@ export function ThesisDetail({
 interface EvidenceRowProps {
   evidence: Evidence;
   isSaved: boolean;
+  isSaving: boolean;
   onToggleSaved: (evidence: Evidence) => void;
 }
 
-function EvidenceRow({ evidence, isSaved, onToggleSaved }: EvidenceRowProps) {
-  const isAutomaticallySaved = evidence.impact === "HIGH" || evidence.impact === "MEDIUM";
-
+function EvidenceRow({ evidence, isSaved, isSaving, onToggleSaved }: EvidenceRowProps) {
   return (
     <article className="evidence-link evidence-link--static">
       <div className="evidence-meta">
@@ -335,16 +369,16 @@ function EvidenceRow({ evidence, isSaved, onToggleSaved }: EvidenceRowProps) {
           </a>
         )}
         <button
-          className={isAutomaticallySaved
-            ? "evidence-save-button is-saved is-automatic"
-            : isSaved
-              ? "evidence-save-button is-saved"
-              : "evidence-save-button"}
-          disabled={isAutomaticallySaved}
+          className={isSaved ? "evidence-save-button is-saved" : "evidence-save-button"}
+          disabled={isSaving || isSaved}
           onClick={() => onToggleSaved(evidence)}
           type="button"
         >
-          {isAutomaticallySaved ? "자동 저장됨" : isSaved ? "저장됨" : "주요 근거로 저장"}
+          {isSaving
+            ? "처리 중…"
+            : isSaved
+              ? "저장됨"
+              : "주요 근거로 저장"}
         </button>
       </div>
     </article>

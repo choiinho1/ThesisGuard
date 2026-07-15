@@ -399,6 +399,7 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
       reason: "AI CAPEX 성장 전제를 직접 지지합니다.",
       evidence_scope: "NEW",
       published_at: updatedThesis.updated_at,
+      saved_to_history: true,
       created_at: updatedThesis.updated_at,
     },
   ];
