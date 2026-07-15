@@ -7,17 +7,25 @@ analysis_results/alerts, and returns the same result to the caller.
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Callable
 from typing import Annotated
 
 from agents.graph import arun_analysis_workflow
-from agents.models import EvidenceItem
+from agents.models import AlertDecision, EvidenceImpact, EvidenceItem
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.alert_engine import handle_alert_decision
+from thesisguard_backend.config import get_settings
 from thesisguard_backend.deps import Agent, CurrentUser, DbSession, get_owned_portfolio
-from thesisguard_backend.evidence_history import refresh_evidence_history_file
+from thesisguard_backend.evidence_history import (
+    is_duplicate_placeholder,
+    refresh_evidence_history_file,
+    select_substantive_evidence,
+)
 from thesisguard_backend.observability import observe_llm_operation
 from thesisguard_backend.portfolio_analysis import (
     load_portfolio_thesis_holding_ids,
@@ -29,6 +37,7 @@ from thesisguard_backend.routers.holdings import OwnedHolding
 from thesisguard_backend.schemas import (
     AlertResponse,
     AnalysisResultResponse,
+    EvidenceHistoryEntryResponse,
     EvidenceResponse,
     HoldingAnalysisResponse,
     NaturalLanguageQueryRequest,
@@ -41,10 +50,83 @@ router = APIRouter(tags=["analysis"])
 
 OwnedPortfolio = Annotated[orm.Portfolio, Depends(get_owned_portfolio)]
 
+# Evidence at or above this impact is auto-saved to history at analysis time
+# (both manual "재분석" and the scheduler's automatic run share this function),
+# so the user no longer has to remember to click "주요 근거로 저장" for it.
+_HISTORY_WORTHY_IMPACT = {EvidenceImpact.HIGH, EvidenceImpact.MEDIUM}
+
+
+async def get_owned_evidence(
+    evidence_id: uuid.UUID, db: DbSession, current_user: CurrentUser
+) -> orm.Evidence:
+    evidence = await db.get(orm.Evidence, evidence_id)
+    if evidence is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "근거를 찾을 수 없습니다.")
+    thesis = await db.get(orm.Thesis, evidence.thesis_id)
+    holding = await db.get(orm.Holding, thesis.holding_id) if thesis else None
+    portfolio = await db.get(orm.Portfolio, holding.portfolio_id) if holding else None
+    if portfolio is None or portfolio.user_id != current_user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "근거를 찾을 수 없습니다.")
+    return evidence
+
+
+OwnedEvidence = Annotated[orm.Evidence, Depends(get_owned_evidence)]
+
+# (previous_confidence, new_confidence, ticker, change_reason, evidence) ->
+# AlertDecision. Lets callers other than the manual endpoint (e.g. the
+# scheduler) swap in their own alert rule instead of C's LLM-judged
+# result.alert_decision, while still having C's own explanation/evidence
+# available to build a readable email body from.
+AlertDecisionFactory = Callable[[int, int, str, str, list[EvidenceItem]], AlertDecision]
+
+
+async def _load_scoped_evidence(
+    db: AsyncSession, *, thesis_id, current_version_id
+) -> list[EvidenceResponse]:
+    rows = list(
+        await db.scalars(
+            select(orm.Evidence)
+            .where(orm.Evidence.thesis_id == thesis_id)
+            .order_by(orm.Evidence.created_at.asc())
+        )
+    )
+    new_rows = [
+        row
+        for row in rows
+        if row.thesis_version_id == current_version_id and not is_duplicate_placeholder(row)
+    ]
+    new_document_ids = {row.document_id for row in new_rows}
+    past_rows = select_substantive_evidence(
+        [row for row in rows if row.thesis_version_id != current_version_id],
+        max_items=get_settings().evidence_history_max_items,
+    )
+    past_rows = [row for row in reversed(past_rows) if row.document_id not in new_document_ids]
+    return [
+        *(
+            EvidenceResponse.model_validate(row).model_copy(update={"evidence_scope": "NEW"})
+            for row in new_rows
+        ),
+        *(
+            EvidenceResponse.model_validate(row).model_copy(update={"evidence_scope": "PAST"})
+            for row in past_rows
+        ),
+    ]
+
 
 @router.post("/api/holdings/{holding_id}/analyze", response_model=HoldingAnalysisResponse)
 async def analyze_holding(
     holding: OwnedHolding, db: DbSession, current_user: CurrentUser
+) -> HoldingAnalysisResponse:
+    return await run_analysis_and_save(holding, db, current_user)
+
+
+async def run_analysis_and_save(
+    holding: orm.Holding,
+    db: DbSession,
+    current_user: orm.User,
+    *,
+    alert_decision_factory: AlertDecisionFactory | None = None,
+    is_scheduled: bool = False,
 ) -> HoldingAnalysisResponse:
     thesis = await db.scalar(select(orm.Thesis).where(orm.Thesis.holding_id == holding.id))
     if thesis is None:
@@ -101,11 +183,18 @@ async def analyze_holding(
         "positive_signals": thesis.positive_signals,
         "negative_signals": thesis.negative_signals,
         "key_risks": thesis.key_risks,
+        "template_id": thesis.template_id,
+        "template_catalog_version": thesis.template_catalog_version,
+        "template_snapshot": thesis.template_snapshot,
+        "assumption_bindings": thesis.assumption_bindings,
+        "score_breakdown": thesis.score_breakdown,
         "confidence_score": thesis.confidence_score,
         "status": thesis.status.value if hasattr(thesis.status, "value") else thesis.status,
         "created_at": thesis.created_at.isoformat(),
         "updated_at": thesis.updated_at.isoformat(),
     }
+    previous_confidence = thesis.confidence_score
+
     thesis_version = orm.ThesisVersion(
         thesis_id=thesis.id,
         version_no=next_version_no,
@@ -124,6 +213,7 @@ async def analyze_holding(
 
     thesis.confidence_score = result.updated_confidence
     thesis.status = result.updated_status
+    thesis.score_breakdown = result.score_breakdown.model_dump(mode="json")
 
     evidence_rows = [
         orm.Evidence(
@@ -139,6 +229,7 @@ async def analyze_holding(
             reason=item.reason,
             related_assumptions=item.related_assumptions,
             published_at=item.published_at,
+            saved_to_history=item.impact in _HISTORY_WORTHY_IMPACT,
         )
         for item in result.evidence
     ]
@@ -169,19 +260,33 @@ async def analyze_holding(
     await db.refresh(analysis_result)
     await refresh_evidence_history_file(db, holding=holding, thesis=thesis)
 
+    decision = (
+        alert_decision_factory(
+            previous_confidence,
+            result.updated_confidence,
+            holding.ticker,
+            result.change_reason,
+            result.evidence,
+        )
+        if alert_decision_factory is not None
+        else result.alert_decision
+    )
     alert = await handle_alert_decision(
         db,
         user=current_user,
         portfolio=portfolio,
         thesis=thesis,
         ticker=holding.ticker,
-        decision=result.alert_decision,
+        decision=decision,
+        is_scheduled=is_scheduled,
     )
 
     return HoldingAnalysisResponse(
         thesis=ThesisResponse.model_validate(thesis),
         version=ThesisVersionResponse.model_validate(thesis_version),
-        evidence=[EvidenceResponse.model_validate(row) for row in evidence_rows],
+        evidence=await _load_scoped_evidence(
+            db, thesis_id=thesis.id, current_version_id=thesis_version.id
+        ),
         analysis_result=AnalysisResultResponse.model_validate(analysis_result),
         alert=AlertResponse.model_validate(alert) if alert else None,
     )
@@ -215,11 +320,6 @@ async def get_latest_analysis(holding: OwnedHolding, db: DbSession) -> HoldingAn
         .order_by(orm.AnalysisResult.created_at.desc())
         .limit(1)
     )
-    evidence_rows = list(
-        await db.scalars(
-            select(orm.Evidence).where(orm.Evidence.thesis_version_id == thesis_version.id)
-        )
-    )
     alert = await db.scalar(
         select(orm.Alert)
         .where(orm.Alert.thesis_id == thesis.id)
@@ -230,7 +330,9 @@ async def get_latest_analysis(holding: OwnedHolding, db: DbSession) -> HoldingAn
     return HoldingAnalysisResponse(
         thesis=ThesisResponse.model_validate(thesis),
         version=ThesisVersionResponse.model_validate(thesis_version),
-        evidence=[EvidenceResponse.model_validate(row) for row in evidence_rows],
+        evidence=await _load_scoped_evidence(
+            db, thesis_id=thesis.id, current_version_id=thesis_version.id
+        ),
         analysis_result=AnalysisResultResponse.model_validate(analysis_result),
         alert=AlertResponse.model_validate(alert) if alert else None,
     )
@@ -267,6 +369,49 @@ async def get_common_risk(portfolio: OwnedPortfolio, db: DbSession) -> list[orm.
     )
     current_holding_ids = await load_portfolio_thesis_holding_ids(db, portfolio.id)
     return [row for row in result if matches_portfolio_snapshot(row, current_holding_ids)]
+
+
+@router.get(
+    "/api/portfolios/{portfolio_id}/evidence-history",
+    response_model=list[EvidenceHistoryEntryResponse],
+)
+async def get_evidence_history(
+    portfolio: OwnedPortfolio, db: DbSession
+) -> list[EvidenceHistoryEntryResponse]:
+    rows = (
+        await db.execute(
+            select(orm.Evidence, orm.Holding.id, orm.Holding.ticker)
+            .join(orm.Thesis, orm.Thesis.id == orm.Evidence.thesis_id)
+            .join(orm.Holding, orm.Holding.id == orm.Thesis.holding_id)
+            .where(
+                orm.Holding.portfolio_id == portfolio.id,
+                orm.Evidence.saved_to_history.is_(True),
+            )
+            .order_by(orm.Evidence.created_at.desc())
+        )
+    ).all()
+    return [
+        EvidenceHistoryEntryResponse(
+            **EvidenceResponse.model_validate(evidence).model_dump(),
+            holding_id=holding_id,
+            ticker=ticker,
+        )
+        for evidence, holding_id, ticker in rows
+    ]
+
+
+@router.post("/api/evidence/{evidence_id}/save", response_model=EvidenceResponse)
+async def save_evidence(evidence: OwnedEvidence, db: DbSession) -> orm.Evidence:
+    evidence.saved_to_history = True
+    await db.commit()
+    await db.refresh(evidence)
+    return evidence
+
+
+@router.delete("/api/evidence/{evidence_id}/save", status_code=status.HTTP_204_NO_CONTENT)
+async def unsave_evidence(evidence: OwnedEvidence, db: DbSession) -> None:
+    evidence.saved_to_history = False
+    await db.commit()
 
 
 @router.post("/api/portfolios/{portfolio_id}/query", response_model=NaturalLanguageQueryResponse)

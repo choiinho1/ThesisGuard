@@ -50,7 +50,13 @@ DB 테이블과 Alembic은 B가 소유한다. C는 아래 enum과 필드명을 �
 요약이며 파일 내용 그대로 분류/Bull/Bear/Judge 프롬프트에 전달한다. 이 문맥은 현재
 종목의 스토리와 새 정보의 연속성·반전·구체화를 파악하기 위한 용도일 뿐 점수 입력이
 아니다. 과거 근거는 현재 Thesis 기준점에 이미 반영된 것으로 취급한다.
-`evidence_history_document_ids`에 포함된 동일 문서는 Evidence 노드가 모델 호출 전에
-NEUTRAL/LOW로 중복 제외하여 한 정보가 여러 분석에서 반복 가산되지 않게 한다.
+`evidence_history_document_ids`와 `evidence_history_source_urls`에 포함된 동일 문서는 Source
+Selector가 모델 호출 전에 제외한다. URL 비교 시 추적 파라미터를 제거하며, 제외된 자리는
+뒤의 신규 후보로 보충한다. 중복 문서를 NEUTRAL/LOW Evidence로 다시 저장하지 않아 기존의
+실질적인 SUPPORT/CONTRADICT 판정이 덮이지 않고 한 정보가 반복 가산되지 않게 한다.
+
+REST `EvidenceResponse.evidence_scope`는 `NEW` 또는 `PAST`다. 과거 근거도 원래 평가된
+classification과 impact를 보존하며, 시점 구분은 평가 강도와 독립적이다. 따라서 `PAST`가
+자동으로 `NEUTRAL/LOW`를 의미하지 않는다.
 
 그래프 내부용 재시도 횟수, 모델 출력 객체, 포트폴리오 문맥은 추가 필드로만 관리하며 B에 노출하지 않는다.

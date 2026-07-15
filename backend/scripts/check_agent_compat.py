@@ -21,7 +21,7 @@ from agents.models import (
     EvidenceAssessment,
     EvidenceClassification,
     EvidenceImpact,
-    JudgeDecision,
+    JudgeExplanation,
     PortfolioAnalysis,
     PortfolioQueryAnswer,
     StructuredThesis,
@@ -91,10 +91,10 @@ class FakeAnalysisModel:
     async def build_bear_report(self, thesis, evidence) -> DebateReport:
         return DebateReport(summary="fake bear case")
 
-    async def judge(self, thesis, evidence, bull_report, bear_report) -> JudgeDecision:
-        return JudgeDecision(
-            updated_confidence=thesis.confidence_score,
-            updated_status=ThesisStatus.UNCHANGED,
+    async def judge(
+        self, thesis, evidence, bull_report, bear_report, score_breakdown
+    ) -> JudgeExplanation:
+        return JudgeExplanation(
             change_reason="fake judge — no real evidence classification happened",
             judge_summary="fake judge summary",
         )
@@ -151,7 +151,7 @@ async def check_full_graph() -> None:
     # Prove B can actually persist this shape (build the ORM rows without a real DB session).
     from thesisguard_backend import models as orm
 
-    thesis_version = orm.ThesisVersion(
+    _thesis_version = orm.ThesisVersion(
         thesis_id=None,
         version_no=1,
         confidence_score=result.updated_confidence,

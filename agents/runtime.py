@@ -36,8 +36,8 @@ class WorkflowConfig:
             raise ValueError("min_relevance_score must be between 0 and 1")
         if not 0 <= self.min_news_selection_score <= 1:
             raise ValueError("min_news_selection_score must be between 0 and 1")
-        if not 1 <= self.news_lookback_days <= 365:
-            raise ValueError("news_lookback_days must be between 1 and 365")
+        if not 1 <= self.news_lookback_days <= 30:
+            raise ValueError("news_lookback_days must be between 1 and 30")
         if not 1 <= self.news_candidate_limit <= 50:
             raise ValueError("news_candidate_limit must be between 1 and 50")
         if (

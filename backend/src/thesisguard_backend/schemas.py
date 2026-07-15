@@ -9,18 +9,22 @@ feature/fe-schema-alignment) — keep the two in sync when either changes.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, time
+from datetime import datetime, time
 from re import fullmatch
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agents.models import (
     AlertSeverity,
     AnalysisType,
+    AssumptionBinding,
     EvidenceClassification,
     EvidenceImpact,
     EvidenceSourceType,
+    ThesisScoreBreakdown,
     ThesisStatus,
 )
+from agents.thesis_templates import ThesisTemplateId
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from thesisguard_backend.models import AlertDelivery, TransactionType
@@ -134,17 +138,6 @@ class MarketSnapshotResponse(BaseModel):
     volume: int | None
 
 
-# -------------------------------------------------------- Market Quote ----
-class MarketQuoteResponse(BaseModel):
-    ticker: str
-    as_of: date
-    price: float
-    day_high: float
-    day_low: float
-    volume: int
-    change_pct_30d: float | None
-
-
 # ------------------------------------------------------- Rebalancing ----
 class RebalanceHoldingInput(BaseModel):
     holding_id: uuid.UUID
@@ -191,10 +184,20 @@ class ThesisResponse(ORMModel):
     positive_signals: list[str]
     negative_signals: list[str]
     key_risks: list[str]
+    template_id: ThesisTemplateId
+    template_catalog_version: str
+    template_snapshot: dict
+    assumption_bindings: list[AssumptionBinding]
+    score_breakdown: ThesisScoreBreakdown | None
     confidence_score: int
     status: ThesisStatus
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("score_breakdown", mode="before")
+    @classmethod
+    def empty_score_breakdown_is_uninitialized(cls, value):
+        return None if value == {} else value
 
 
 class ThesisVersionResponse(ORMModel):
@@ -223,8 +226,15 @@ class EvidenceResponse(ORMModel):
     impact: EvidenceImpact
     reason: str
     related_assumptions: list[str]
+    evidence_scope: Literal["NEW", "PAST"] = "NEW"
     published_at: datetime | None
+    saved_to_history: bool
     created_at: datetime
+
+
+class EvidenceHistoryEntryResponse(EvidenceResponse):
+    holding_id: uuid.UUID
+    ticker: str
 
 
 # ------------------------------------------------- Analysis / Concentration

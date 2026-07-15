@@ -15,11 +15,13 @@ def finalize(state: AnalysisState) -> dict:
         judge_summary=state["judge_report"],
         updated_confidence=state["updated_confidence"],
         updated_status=state["updated_status"],
+        score_breakdown=state["score_breakdown"],
         change_reason=state["change_reason"],
         conflicting_assumptions=state["conflicting_assumptions"],
         observation_points=state["observation_points"],
         concentration=state["portfolio_analysis"],
         alert_decision=state["alert_decision"],
         research_rounds=state["research_round"],
+        source_errors=list(dict.fromkeys(state.get("source_errors", []))),
     )
     return {"result": result}

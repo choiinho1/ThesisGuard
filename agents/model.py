@@ -17,17 +17,19 @@ from agents.models import (
     EvidenceImpact,
     EvidenceItem,
     EvidenceModelOutput,
-    JudgeDecision,
+    JudgeExplanation,
     PortfolioAnalysis,
     PortfolioQueryAnswer,
     PortfolioThesis,
     SourceDocument,
     StructuredThesis,
-    ThesisStatus,
+    ThesisScoreBreakdown,
 )
 from agents.portfolio_validation import is_absence_label
 from agents.runnable_context import get_model_runnable_config
 from agents.sanitization import normalize_korean_summary, safe_source_snippet, split_source_passages
+from agents.scoring import prepare_structured_thesis
+from agents.thesis_templates import thesis_template_selection_guide
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
@@ -79,23 +81,29 @@ class LangChainAnalysisModel:
         return schema.model_validate(result)
 
     async def structure_thesis(self, raw_input: str) -> StructuredThesis:
+        template_guide = thesis_template_selection_guide()
         result = await self._invoke(
             StructuredThesis,
             f"""
 Structure the user's investment thesis. Keep every claim faithful to the input.
 Use confidence 50 and UNCHANGED because no evidence has been analyzed.
 Leave optional lists empty instead of inventing missing details.
+Select exactly one template_id from the catalog below according to the thesis's primary
+value-creation mechanism. Use GENERAL_FUNDAMENTAL only when no specialized template is
+clearly suitable. The template is selected again whenever the user resets the raw thesis.
+After selecting the template, return one assumption_bindings entry for every listed slot.
+Map each key_assumptions string exactly as written to at most one slot. Do not paraphrase it
+inside assumption_bindings and do not invent an assumption for an unmentioned slot; use an
+empty assumptions list instead. Leave score_breakdown null because trusted code calculates it.
+
+<template_catalog>
+{template_guide}
+</template_catalog>
 
 <user_thesis>{raw_input}</user_thesis>
 """.strip(),
         )
-        return result.model_copy(
-            update={
-                "raw_input": raw_input,
-                "confidence_score": 50,
-                "status": ThesisStatus.UNCHANGED,
-            }
-        )
+        return prepare_structured_thesis(result.model_copy(update={"raw_input": raw_input}))
 
     async def classify_evidence(
         self,
@@ -300,19 +308,18 @@ add strength or weight to the challenging case and must not be listed as current
         evidence: list[EvidenceItem],
         bull_report: DebateReport,
         bear_report: DebateReport,
+        score_breakdown: ThesisScoreBreakdown,
         evidence_history_summary: str = "",
-    ) -> JudgeDecision:
+    ) -> JudgeExplanation:
         return await self._invoke(
-            JudgeDecision,
+            JudgeExplanation,
             f"""
-Act as the Judge Agent. Re-check both reports against the evidence. Conflicting or weak
-evidence should stay near UNCHANGED. BROKEN requires direct HIGH-impact contradiction
-of a key assumption. First use historical_context to reconstruct the holding's story and
-interpret whether the current evidence continues, reverses, or qualifies that story. Then
-set updated_confidence and updated_status using only the incremental current evidence below.
-The previous thesis confidence/status already includes all historical evidence, so applying
-any historical fact again is double counting and prohibited. A repeated fact has zero new
-weight. Explain the result without investment advice.
+Act as a narrative-only Judge Agent. Re-check both reports against the evidence and explain
+the deterministic score_breakdown supplied by trusted code. You must not calculate, revise,
+or propose a score or status. Use historical_context only to explain continuity or reversal;
+historical facts are already reflected in the stored assumption states and must not be counted
+again. Keep conflicting_assumptions limited to exact key_assumptions strings. Explain the
+result without investment advice.
 <previous_thesis>{_json(thesis)}</previous_thesis>
 <historical_context role="narrative_only_non_scoring">
 {_history_context(evidence_history_summary)}
@@ -320,6 +327,7 @@ weight. Explain the result without investment advice.
 <evidence>{_json(evidence)}</evidence>
 <bull_report>{_json(bull_report)}</bull_report>
 <bear_report>{_json(bear_report)}</bear_report>
+<score_breakdown authority="trusted_code_read_only">{_json(score_breakdown)}</score_breakdown>
 """.strip(),
         )
 

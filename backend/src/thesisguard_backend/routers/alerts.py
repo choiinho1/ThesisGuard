@@ -16,9 +16,11 @@ router = APIRouter(prefix="/api", tags=["alerts"])
 
 @router.get("/alerts", response_model=list[AlertResponse])
 async def list_alerts(db: DbSession, current_user: CurrentUser) -> list[orm.Alert]:
+    # 자동(스케줄) 재분석에서 발생한 알림만 노출한다 — 수동 재분석은 사용자가 직접
+    # 실행하고 결과를 바로 확인하므로 별도 알림함에 띄울 필요가 없다.
     result = await db.scalars(
         select(orm.Alert)
-        .where(orm.Alert.user_id == current_user.id)
+        .where(orm.Alert.user_id == current_user.id, orm.Alert.is_scheduled.is_(True))
         .order_by(orm.Alert.created_at.desc())
     )
     return list(result)

@@ -19,6 +19,7 @@ from thesisguard_backend.config import get_settings
 class EvidenceHistorySnapshot:
     summary: str
     document_ids: list[str]
+    source_urls: list[str]
     path: Path
 
 
@@ -47,6 +48,31 @@ def _sort_timestamp(value: datetime) -> float:
     return value.timestamp()
 
 
+def is_duplicate_placeholder(row: orm.Evidence) -> bool:
+    """Identify legacy rows that represented exclusion, not an assessment."""
+
+    reason = str(row.reason or "")
+    snippet = str(row.content_snippet or "")
+    return "동일 document_id" in reason or "이번 판단에서 중복 제외" in snippet
+
+
+def select_substantive_evidence(
+    evidence_rows: list[orm.Evidence], *, max_items: int | None = None
+) -> list[orm.Evidence]:
+    """Keep the latest real assessment per document and discard legacy placeholders."""
+
+    latest_by_document: dict[str, orm.Evidence] = {}
+    for row in evidence_rows:
+        if is_duplicate_placeholder(row):
+            continue
+        latest_by_document[row.document_id] = row
+    selected = sorted(
+        latest_by_document.values(),
+        key=lambda row: (_sort_timestamp(row.published_at or row.created_at), row.document_id),
+    )
+    return selected[-max_items:] if max_items is not None else selected
+
+
 def _history_path(holding_id: uuid.UUID, history_dir: Path | None = None) -> Path:
     directory = history_dir or get_settings().evidence_history_dir
     return Path(directory).resolve() / f"{holding_id}.md"
@@ -70,15 +96,14 @@ def _render_summary(
     analyses: list[orm.AnalysisResult],
     evidence_rows: list[orm.Evidence],
     max_items: int,
-) -> tuple[str, list[str]]:
-    latest_by_document: dict[str, orm.Evidence] = {}
-    for row in evidence_rows:
-        latest_by_document[row.document_id] = row
-    unique_evidence = sorted(
-        latest_by_document.values(),
-        key=lambda row: (_sort_timestamp(row.published_at or row.created_at), row.document_id),
-    )[-max_items:]
-    document_ids = [row.document_id for row in unique_evidence]
+) -> tuple[str, list[str], list[str]]:
+    # Exclusion must consider the complete DB history, not only the entries shown
+    # in the capped narrative file.
+    document_ids = list(dict.fromkeys(row.document_id for row in evidence_rows))
+    source_urls = list(
+        dict.fromkeys(str(row.source_url) for row in evidence_rows if row.source_url)
+    )
+    unique_evidence = select_substantive_evidence(evidence_rows, max_items=max_items)
 
     analyses_by_version = {
         row.thesis_version_id: row for row in analyses if row.thesis_version_id is not None
@@ -175,7 +200,7 @@ def _render_summary(
             "",
         ]
     )
-    return "\n".join(lines), document_ids
+    return "\n".join(lines), document_ids, source_urls
 
 
 async def refresh_evidence_history_file(
@@ -211,7 +236,7 @@ async def refresh_evidence_history_file(
             .order_by(orm.Evidence.created_at.asc())
         )
     )
-    summary, document_ids = _render_summary(
+    summary, document_ids, source_urls = _render_summary(
         holding=holding,
         thesis=thesis,
         versions=versions,
@@ -221,7 +246,12 @@ async def refresh_evidence_history_file(
     )
     path = _history_path(holding.id, history_dir)
     await asyncio.to_thread(_atomic_write, path, summary)
-    return EvidenceHistorySnapshot(summary=summary, document_ids=document_ids, path=path)
+    return EvidenceHistorySnapshot(
+        summary=summary,
+        document_ids=document_ids,
+        source_urls=source_urls,
+        path=path,
+    )
 
 
 async def refresh_all_evidence_history_files(

@@ -4,8 +4,9 @@ import pytest
 
 from agents.graph import ThesisGuardAgent
 from agents.model import LangChainAnalysisModel
-from agents.models import StructuredThesis, ThesisStatus
+from agents.models import AssumptionBinding, StructuredThesis, ThesisStatus
 from agents.runnable_context import get_model_runnable_config
+from agents.thesis_templates import ThesisTemplateId
 
 
 def _structured_thesis() -> StructuredThesis:
@@ -13,6 +14,13 @@ def _structured_thesis() -> StructuredThesis:
         raw_input="AI infrastructure spending will grow.",
         main_thesis="AI infrastructure spending growth",
         key_assumptions=["Infrastructure budgets continue to grow."],
+        template_id=ThesisTemplateId.SCALABLE_GROWTH,
+        assumption_bindings=[
+            AssumptionBinding(
+                slot_id="market_demand",
+                assumptions=["Infrastructure budgets continue to grow."],
+            )
+        ],
         confidence_score=50,
         status=ThesisStatus.UNCHANGED,
     )
@@ -21,9 +29,11 @@ def _structured_thesis() -> StructuredThesis:
 class CapturingRunnable:
     def __init__(self) -> None:
         self.config = None
+        self.messages = None
 
     async def ainvoke(self, messages, config=None):
         self.config = config
+        self.messages = messages
         return _structured_thesis()
 
 
@@ -51,5 +61,12 @@ async def test_direct_model_call_receives_request_local_runnable_config() -> Non
     )
 
     assert result.main_thesis == "AI infrastructure spending growth"
+    assert result.template_id == ThesisTemplateId.SCALABLE_GROWTH
+    assert result.assumption_bindings[0].assumptions == ["Infrastructure budgets continue to grow."]
+    assert result.score_breakdown is not None
+    assert result.score_breakdown.health_score == 50
     assert runnable.config == config
+    assert runnable.messages is not None
+    assert "SCALABLE_GROWTH" in str(runnable.messages[-1].content)
+    assert "GENERAL_FUNDAMENTAL" in str(runnable.messages[-1].content)
     assert get_model_runnable_config() is None

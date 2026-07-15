@@ -1,15 +1,11 @@
-"""Bull, Bear, and Judge Agentic Debate nodes."""
+"""Bull and Bear reports plus a narrative-only Judge explanation."""
 
 from __future__ import annotations
 
 from langgraph.runtime import Runtime
 
 from agents.evidence_policy import meaningful_directional_evidence
-from agents.models import (
-    DebateReport,
-    JudgeDecision,
-    ThesisStatus,
-)
+from agents.models import DebateReport, JudgeExplanation
 from agents.runtime import AgentDependencies, call_model
 from agents.state import AnalysisState
 
@@ -29,7 +25,7 @@ async def bull_agent(state: AnalysisState, runtime: Runtime[AgentDependencies]) 
             state.get("evidence_history_summary", ""),
         )
     except Exception:
-        report = DebateReport(summary="Bull Agent 응답 실패로 지지 판단을 보류했습니다.")
+        report = DebateReport(summary="Bull Agent 설명 생성에 실패했습니다.")
     return {
         "bull_report": report.summary,
         "bull_report_data": report,
@@ -48,7 +44,7 @@ async def bear_agent(state: AnalysisState, runtime: Runtime[AgentDependencies]) 
             state.get("evidence_history_summary", ""),
         )
     except Exception:
-        report = DebateReport(summary="Bear Agent 응답 실패로 반박 판단을 보류했습니다.")
+        report = DebateReport(summary="Bear Agent 설명 생성에 실패했습니다.")
     return {
         "bear_report": report.summary,
         "bear_report_data": report,
@@ -60,11 +56,9 @@ async def judge_agent(state: AnalysisState, runtime: Runtime[AgentDependencies])
     directional = meaningful_directional_evidence(state["evidence_list"])
     thesis = state["thesis_snapshot"]
     if not directional:
-        decision = JudgeDecision(
-            updated_confidence=thesis.confidence_score,
-            updated_status=ThesisStatus.UNCHANGED,
-            change_reason="검증 가능한 방향성 근거가 없어 기존 Thesis를 유지합니다.",
-            judge_summary="신규 근거가 부족하여 판단을 보류했습니다.",
+        decision = JudgeExplanation(
+            change_reason=state["deterministic_change_reason"],
+            judge_summary="점수에 반영할 새로운 방향성 근거가 없어 기존 가정 상태를 유지했습니다.",
             observation_points=state.get("focus_points", []),
         )
     else:
@@ -76,22 +70,21 @@ async def judge_agent(state: AnalysisState, runtime: Runtime[AgentDependencies])
                 directional,
                 state["bull_report_data"],
                 state["bear_report_data"],
+                state["score_breakdown"],
                 state.get("evidence_history_summary", ""),
             )
         except Exception:
-            decision = JudgeDecision(
-                updated_confidence=thesis.confidence_score,
-                updated_status=ThesisStatus.UNCHANGED,
-                change_reason="Judge Agent 재시도 실패로 기존 Thesis를 유지합니다.",
-                judge_summary="판정 모델 응답을 검증할 수 없어 판단을 보류했습니다.",
+            decision = JudgeExplanation(
+                change_reason=state["deterministic_change_reason"],
+                judge_summary=(
+                    "Judge 설명 생성에 실패했지만 점수는 결정론적 계산 결과를 유지했습니다."
+                ),
                 observation_points=state.get("focus_points", []),
             )
     return {
         "judge_report": decision.judge_summary,
         "judge_decision": decision,
-        "updated_confidence": decision.updated_confidence,
-        "updated_status": decision.updated_status,
         "change_reason": decision.change_reason,
-        "conflicting_assumptions": decision.conflicting_assumptions,
+        "conflicting_assumptions": state["deterministic_conflicting_assumptions"],
         "observation_points": decision.observation_points,
     }

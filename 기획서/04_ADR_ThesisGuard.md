@@ -6,7 +6,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 상태 | 수락됨 · 2026-07-10 (가이드에 명시된 기존 결정) |
+| 상태 | 대체됨 · 2026-07-15 · ADR-0005 |
 | 결정자 | C(AI/Agent Core) |
 
 **맥락 (Context)**
@@ -81,6 +81,32 @@ ThesisGuard의 핵심은 Request Router → Research(3개 Agent 병렬) → Evid
 좋아지는 것: PRD의 핵심 지표인 Citation Groundedness·Contradiction Detection Accuracy 확보에 유리.
 감수: holding 1건 분석당 LLM 호출·토큰 비용이 늘어남 → PRD 7절의 "비용·지연" 벤치마크 필요.
 새 리스크: Bull/Bear가 모두 극단적으로 편향된 리포트를 낼 경우 Judge도 왜곡될 수 있음 → Judge 프롬프트에 "증거 자체로 재검증" 지시 추가 검토.
+
+---
+
+## ADR-0005 · Thesis 점수: 템플릿 가중 결정론적 산정 채택
+
+| 항목 | 내용 |
+|---|---|
+| 상태 | 수락됨 · 2026-07-15 |
+| 결정자 | C(AI/Agent Core), B(Backend) 공동 |
+
+**맥락 (Context)**
+Judge Agent가 `updated_confidence`와 `updated_status`를 직접 생성하면 동일 근거에도 점수가
+달라질 수 있고, 개별 핵심 가정이 최종 점수에 얼마나 기여했는지 감사하기 어렵다.
+
+**결정 (Decision)**
+Thesis 생성·논리 재설정 시 AI가 사전 정의된 유형 템플릿을 선택하고 사용자 가정을 템플릿
+슬롯에 매핑한다. 분석 시 코드는 가정별 SUPPORT/CONTRADICT 영향도를 `0/0.5/1`로 변환해
+상쇄하고, 템플릿의 고정 basis-point 가중치로 0~100 점수를 계산한다. 새 근거가 없는 가정은
+이전 상태를 유지한다. Judge Agent는 Bull/Bear와 계산 내역을 바탕으로 설명만 생성하며 점수와
+상태를 변경할 수 없다.
+
+**결과 (Consequences)**
+같은 입력에 같은 점수가 나오고, 슬롯별 가중치·상태·기여 점수를 API와 UI에서 확인할 수
+있다. AI의 Evidence 분류 품질은 여전히 결과에 영향을 주므로 분류 평가셋은 계속 운영해야
+한다. `BROKEN`은 점수와 분리해, Core 가정이 서로 다른 분석 회차에서 HIGH 반박으로 2회
+연속 확인될 때만 발동한다. 발동 후에는 논리 재설정 전까지 상태를 유지한다.
 
 ---
 

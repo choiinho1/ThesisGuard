@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from agents.models import ResearchRequest, StructuredThesis
 
@@ -43,7 +45,7 @@ async def test_backend_news_search_covers_each_key_assumption(monkeypatch) -> No
             NewsItem(
                 title=f"Robinhood update {len(calls)}",
                 url=f"https://example.com/{len(calls)}",
-                published_at=None,
+                published_at=datetime.now(UTC) - timedelta(days=1),
                 source="Example",
                 summary=f"Robinhood report for query {query}",
             )
@@ -87,3 +89,78 @@ async def test_backend_news_search_covers_each_key_assumption(monkeypatch) -> No
     assert len(documents) == 4
     assert all("Meta Platforms" in document.content for document in documents)
     assert all(document.metadata["full_article_fetched"] is True for document in documents)
+
+
+@pytest.mark.asyncio
+async def test_backend_news_discards_stale_undated_and_future_items_before_fetch(
+    monkeypatch,
+) -> None:
+    now = datetime.now(UTC)
+    fetched_urls: list[str] = []
+
+    async def fake_company_name(ticker: str) -> str:
+        return ticker
+
+    async def fake_get_news(query: str, limit: int) -> list[NewsItem]:
+        del query
+        return [
+            NewsItem(
+                title="HOOD recent",
+                url="https://example.com/recent",
+                published_at=now - timedelta(days=2),
+                source="Example",
+                summary="HOOD recent report",
+            ),
+            NewsItem(
+                title="HOOD stale",
+                url="https://example.com/stale",
+                published_at=now - timedelta(days=31),
+                source="Example",
+                summary="HOOD stale report",
+            ),
+            NewsItem(
+                title="HOOD undated",
+                url="https://example.com/undated",
+                published_at=None,
+                source="Example",
+                summary="HOOD undated report",
+            ),
+            NewsItem(
+                title="HOOD future",
+                url="https://example.com/future",
+                published_at=now + timedelta(days=1),
+                source="Example",
+                summary="HOOD future report",
+            ),
+        ][:limit]
+
+    async def fake_fetch_news_text(url: str) -> str:
+        fetched_urls.append(url)
+        return "HOOD recent report with enough relevant article context."
+
+    monkeypatch.setattr(
+        "thesisguard_backend.agent_adapters.sec.get_company_name",
+        fake_company_name,
+    )
+    monkeypatch.setattr(news, "get_news", fake_get_news)
+    monkeypatch.setattr(
+        "thesisguard_backend.agent_adapters._fetch_news_text",
+        fake_fetch_news_text,
+    )
+    request = ResearchRequest(
+        portfolio_id="portfolio-1",
+        holding_id="holding-1",
+        ticker="HOOD",
+        thesis=StructuredThesis(
+            raw_input="최근 사업 성장이 지속된다는 투자 논리입니다.",
+            main_thesis="Robinhood의 장기 성장",
+            key_assumptions=["사업 성장이 지속된다"],
+        ),
+        round_no=1,
+        candidate_limit=10,
+    )
+
+    documents = await BackendResearchTools().get_news(request)
+
+    assert [item.document_id for item in documents] == ["https://example.com/recent"]
+    assert fetched_urls == ["https://example.com/recent"]

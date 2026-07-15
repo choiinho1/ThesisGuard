@@ -32,22 +32,6 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
                 unique_documents.setdefault(document.document_id, document)
 
     async def classify(document: SourceDocument) -> EvidenceItem:
-        if document.document_id in historical_document_ids:
-            return EvidenceItem(
-                document_id=document.document_id,
-                source_type=document.source_type,
-                source_url=document.source_url,
-                vector_doc_id=document.vector_doc_id,
-                content_snippet=(
-                    "과거 분석에서 이미 반영된 동일 문서이므로 "
-                    "이번 판단에서 중복 제외했습니다."
-                ),
-                classification=EvidenceClassification.NEUTRAL,
-                impact=EvidenceImpact.LOW,
-                reason="동일 document_id의 과거 근거가 이미 현재 신뢰도에 반영되어 있습니다.",
-                related_assumptions=[],
-                published_at=document.published_at,
-            )
         try:
             assessment = await call_model(
                 runtime.context,
@@ -120,11 +104,16 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
 
     cached = {item.document_id: item for item in state.get("evidence_list", [])}
     new_documents = [
-        document for document in unique_documents.values() if document.document_id not in cached
+        document
+        for document in unique_documents.values()
+        if document.document_id not in cached
+        and document.document_id not in historical_document_ids
     ]
     new_evidence = await asyncio.gather(*(classify(doc) for doc in new_documents))
     cached.update({item.document_id: item for item in new_evidence})
-    evidence = [cached[document_id] for document_id in unique_documents]
+    # Keep evidence found in earlier research rounds. Replacing this list with only
+    # the current round made valid evidence appear and disappear between rounds.
+    evidence = list(cached.values())
     grounded = meaningful_directional_evidence(evidence)
     grounded_ids = {item.document_id for item in grounded}
     needs_more = len(grounded) < runtime.context.config.min_grounded_evidence

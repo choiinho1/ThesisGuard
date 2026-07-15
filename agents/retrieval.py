@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from agents.models import EvidenceSourceType, SourceDocument, StructuredThesis
 from agents.sanitization import sanitize_source_text
 from agents.state import ResearchData
+
+MAX_SOURCE_LOOKBACK_DAYS = 30
 
 _TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
 _TRACKING_QUERY_PREFIXES = ("utm_", "fbclid", "gclid")
@@ -65,10 +67,10 @@ def thesis_search_terms(thesis: StructuredThesis, focus_points: Sequence[str]) -
     )
 
 
-def _canonical_url(document: SourceDocument) -> str:
-    if document.source_url is None:
+def _canonical_url_value(value: str | None) -> str:
+    if not value:
         return ""
-    parts = urlsplit(str(document.source_url))
+    parts = urlsplit(value)
     query = urlencode(
         sorted(
             (key, value)
@@ -77,6 +79,10 @@ def _canonical_url(document: SourceDocument) -> str:
         )
     )
     return urlunsplit((parts.scheme.casefold(), parts.netloc.casefold(), parts.path, query, ""))
+
+
+def _canonical_url(document: SourceDocument) -> str:
+    return _canonical_url_value(str(document.source_url) if document.source_url else None)
 
 
 def _title_key(document: SourceDocument) -> str:
@@ -103,6 +109,26 @@ def _published_at(document: SourceDocument) -> datetime:
     if document.published_at.tzinfo is None:
         return document.published_at.replace(tzinfo=UTC)
     return document.published_at.astimezone(UTC)
+
+
+def is_within_source_window(
+    published_at: datetime | None,
+    *,
+    now: datetime | None = None,
+    lookback_days: int = MAX_SOURCE_LOOKBACK_DAYS,
+) -> bool:
+    """Return whether a dated source is usable under the strict 30-day policy."""
+
+    if published_at is None:
+        return False
+    reference = (now or datetime.now(UTC)).astimezone(UTC)
+    normalized = (
+        published_at.replace(tzinfo=UTC)
+        if published_at.tzinfo is None
+        else published_at.astimezone(UTC)
+    )
+    effective_days = min(lookback_days, MAX_SOURCE_LOOKBACK_DAYS)
+    return reference - timedelta(days=effective_days) <= normalized <= reference
 
 
 def _company_identity_tokens(document: SourceDocument) -> set[str]:
@@ -150,6 +176,8 @@ def preselect_documents(
     lookback_days: int,
     min_news_score: float,
     source_limits: dict[str, int],
+    excluded_document_ids: Collection[str] = (),
+    excluded_source_urls: Collection[str] = (),
     now: datetime | None = None,
 ) -> list[SourceDocument]:
     """Remove stale/duplicate candidates and retain a diverse, ranked source set."""
@@ -161,7 +189,11 @@ def preselect_documents(
     macro_relevant = bool(query_tokens & _MACRO_TERMS) or any(
         stem in search_text for stem in _MACRO_KOREAN_STEMS
     )
-    cutoff = now - timedelta(days=lookback_days)
+    effective_lookback_days = min(lookback_days, MAX_SOURCE_LOOKBACK_DAYS)
+    excluded_ids = set(excluded_document_ids)
+    excluded_urls = {
+        canonical for value in excluded_source_urls if (canonical := _canonical_url_value(value))
+    }
     seen_ids: set[str] = set()
     seen_urls: set[str] = set()
     seen_titles: set[str] = set()
@@ -179,12 +211,12 @@ def preselect_documents(
                 continue
             if key == "macro" and not macro_relevant:
                 continue
-            if key == "news" and document.published_at is not None:
-                published_at = document.published_at
-                if published_at.tzinfo is None:
-                    published_at = published_at.replace(tzinfo=UTC)
-                if published_at.astimezone(UTC) < cutoff:
-                    continue
+            if key in {"filings", "news"} and not is_within_source_window(
+                document.published_at,
+                now=now,
+                lookback_days=effective_lookback_days,
+            ):
+                continue
             if key == "news":
                 identity_tokens = _company_identity_tokens(document)
                 document_tokens = _tokens([document.title, document.content[:4000]])
@@ -192,6 +224,10 @@ def preselect_documents(
                     continue
 
             canonical_url = _canonical_url(document)
+            if document.document_id in excluded_ids or (
+                canonical_url and canonical_url in excluded_urls
+            ):
+                continue
             title_key = _title_key(document)
             duplicate = (
                 document.document_id in seen_ids
@@ -211,7 +247,7 @@ def preselect_documents(
                 ticker=ticker,
                 query_tokens=query_tokens,
                 now=now,
-                lookback_days=lookback_days,
+                lookback_days=effective_lookback_days,
             )
             if key == "news" and score < min_news_score:
                 continue

@@ -11,34 +11,45 @@ from agents.graph import (
 )
 from agents.models import (
     AnalysisContext,
+    AssumptionBinding,
     DebateReport,
     EvidenceAssessment,
     EvidenceClassification,
     EvidenceImpact,
     EvidenceItem,
     EvidenceSourceType,
-    JudgeDecision,
+    JudgeExplanation,
     PortfolioAnalysis,
     PortfolioThesis,
     ResearchRequest,
     SourceDocument,
     StructuredThesis,
+    ThesisScoreBreakdown,
     ThesisStatus,
 )
 from agents.runtime import WorkflowConfig
+from agents.scoring import prepare_structured_thesis
+from agents.thesis_templates import ThesisTemplateId
 
 
 def thesis(status: ThesisStatus = ThesisStatus.UNCHANGED) -> StructuredThesis:
-    return StructuredThesis(
-        raw_input="AI 데이터센터 투자가 확대되면 반도체 수요가 장기간 성장할 것이다.",
-        main_thesis="AI 데이터센터 투자 확대에 따른 반도체 수요 성장",
-        key_assumptions=["AI 인프라 지출 증가", "데이터센터용 반도체 수요 증가"],
-        positive_signals=["클라우드 사업자 CAPEX 증가"],
-        negative_signals=["CAPEX 축소"],
-        key_risks=["공급 과잉"],
-        confidence_score=70,
-        status=status,
+    assumptions = ["AI 인프라 지출 증가", "데이터센터용 반도체 수요 증가"]
+    structured = prepare_structured_thesis(
+        StructuredThesis(
+            raw_input="AI 데이터센터 투자가 확대되면 반도체 수요가 장기간 성장할 것이다.",
+            main_thesis="AI 데이터센터 투자 확대에 따른 반도체 수요 성장",
+            key_assumptions=assumptions,
+            positive_signals=["클라우드 사업자 CAPEX 증가"],
+            negative_signals=["CAPEX 축소"],
+            key_risks=["공급 과잉"],
+            template_id=ThesisTemplateId.SCALABLE_GROWTH,
+            assumption_bindings=[
+                AssumptionBinding(slot_id="market_demand", assumptions=[assumptions[0]]),
+                AssumptionBinding(slot_id="adoption_share", assumptions=[assumptions[1]]),
+            ],
+        )
     )
+    return structured.model_copy(update={"status": status})
 
 
 class FakeContextProvider:
@@ -193,13 +204,12 @@ class FakeAnalysisModel:
         evidence: list[EvidenceItem],
         bull_report: DebateReport,
         bear_report: DebateReport,
+        score_breakdown: ThesisScoreBreakdown,
         evidence_history_summary: str = "",
-    ) -> JudgeDecision:
+    ) -> JudgeExplanation:
         self.judge_calls += 1
         self.history_contexts.append(evidence_history_summary)
-        return JudgeDecision(
-            updated_confidence=45,
-            updated_status=ThesisStatus.STRONGLY_WEAKENED,
+        return JudgeExplanation(
             change_reason="반박 근거의 영향도가 더 큽니다.",
             judge_summary="고객 CAPEX 축소가 핵심 전제를 훼손합니다.",
             conflicting_assumptions=[existing_thesis.key_assumptions[0]],
@@ -228,8 +238,9 @@ class FailingJudgeModel(FakeAnalysisModel):
         evidence: list[EvidenceItem],
         bull_report: DebateReport,
         bear_report: DebateReport,
+        score_breakdown: ThesisScoreBreakdown,
         evidence_history_summary: str = "",
-    ) -> JudgeDecision:
+    ) -> JudgeExplanation:
         self.judge_calls += 1
         raise RuntimeError("temporary model failure")
 
@@ -258,9 +269,10 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
         "uncertain-news",
         "contradict-news",
     }
-    assert result.updated_status == ThesisStatus.STRONGLY_WEAKENED
-    assert result.alert_decision.severity == "MAJOR"
-    assert result.alert_decision.delivery == "IMMEDIATE"
+    assert result.updated_confidence == 43
+    assert result.updated_status == ThesisStatus.WEAKENED
+    assert result.alert_decision.severity == "MINOR"
+    assert result.alert_decision.delivery == "WEEKLY"
     assert result.concentration.has_concentration_risk is True
     assert model.judge_calls == 1
     assert model.classify_calls == 3
@@ -302,7 +314,7 @@ async def test_no_directional_evidence_keeps_thesis_unchanged_without_llm_judgme
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert result.updated_status == ThesisStatus.UNCHANGED
-    assert result.updated_confidence == 70
+    assert result.updated_confidence == 50
     assert result.alert_decision.should_send is False
     assert model.judge_calls == 0
 
@@ -318,12 +330,13 @@ async def test_one_source_failure_does_not_abort_the_analysis() -> None:
 
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
-    assert result.updated_status == ThesisStatus.STRONGLY_WEAKENED
+    assert result.updated_status == ThesisStatus.WEAKENED
     assert any(item.source_type == EvidenceSourceType.SEC_FILING for item in result.evidence)
+    assert any(error.startswith("macro: RuntimeError:") for error in result.source_errors)
 
 
 @pytest.mark.asyncio
-async def test_judge_failure_retries_then_keeps_existing_thesis() -> None:
+async def test_judge_failure_retries_but_keeps_deterministic_score() -> None:
     model = FailingJudgeModel()
     agent = ThesisGuardAgent(
         context_provider=FakeContextProvider(),
@@ -339,9 +352,9 @@ async def test_judge_failure_retries_then_keeps_existing_thesis() -> None:
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert model.judge_calls == 2
-    assert result.updated_status == ThesisStatus.UNCHANGED
-    assert result.updated_confidence == 70
-    assert result.alert_decision.should_send is False
+    assert result.updated_status == ThesisStatus.WEAKENED
+    assert result.updated_confidence == 43
+    assert result.alert_decision.should_send is True
 
 
 def test_sync_team_contract_entrypoint() -> None:

@@ -52,25 +52,63 @@ def _upgrade_legacy_local_schema(connection: Connection) -> None:
     inspector = inspect(connection)
     additive_columns = {
         "evidence": (
-            "thesis_version_id",
-            "ALTER TABLE evidence ADD COLUMN thesis_version_id CHAR(32) "
-            "REFERENCES thesis_versions (id) ON DELETE SET NULL",
-            "CREATE INDEX IF NOT EXISTS ix_evidence_thesis_version_id "
-            "ON evidence (thesis_version_id)",
+            (
+                "thesis_version_id",
+                "ALTER TABLE evidence ADD COLUMN thesis_version_id CHAR(32) "
+                "REFERENCES thesis_versions (id) ON DELETE SET NULL",
+                "CREATE INDEX IF NOT EXISTS ix_evidence_thesis_version_id "
+                "ON evidence (thesis_version_id)",
+            ),
         ),
         "analysis_results": (
-            "thesis_version_id",
-            "ALTER TABLE analysis_results ADD COLUMN thesis_version_id CHAR(32) "
-            "REFERENCES thesis_versions (id) ON DELETE SET NULL",
-            "CREATE INDEX IF NOT EXISTS ix_analysis_results_thesis_version_id "
-            "ON analysis_results (thesis_version_id)",
+            (
+                "thesis_version_id",
+                "ALTER TABLE analysis_results ADD COLUMN thesis_version_id CHAR(32) "
+                "REFERENCES thesis_versions (id) ON DELETE SET NULL",
+                "CREATE INDEX IF NOT EXISTS ix_analysis_results_thesis_version_id "
+                "ON analysis_results (thesis_version_id)",
+            ),
+        ),
+        "theses": (
+            (
+                "template_id",
+                "ALTER TABLE theses ADD COLUMN template_id VARCHAR(50) NOT NULL "
+                "DEFAULT 'GENERAL_FUNDAMENTAL'",
+                None,
+            ),
+            (
+                "template_catalog_version",
+                "ALTER TABLE theses ADD COLUMN template_catalog_version VARCHAR(20) "
+                "NOT NULL DEFAULT '1.0.0'",
+                None,
+            ),
+            (
+                "template_snapshot",
+                "ALTER TABLE theses ADD COLUMN template_snapshot JSON NOT NULL DEFAULT '{}'",
+                None,
+            ),
+            (
+                "assumption_bindings",
+                "ALTER TABLE theses ADD COLUMN assumption_bindings JSON NOT NULL DEFAULT '[]'",
+                None,
+            ),
+            (
+                "score_breakdown",
+                "ALTER TABLE theses ADD COLUMN score_breakdown JSON NOT NULL DEFAULT '{}'",
+                None,
+            ),
         ),
     }
-    for table_name, (column_name, alter_sql, index_sql) in additive_columns.items():
+    table_names = set(inspector.get_table_names())
+    for table_name, columns in additive_columns.items():
+        if table_name not in table_names:
+            continue
         existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
-        if column_name not in existing_columns:
-            connection.exec_driver_sql(alter_sql)
-        connection.exec_driver_sql(index_sql)
+        for column_name, alter_sql, index_sql in columns:
+            if column_name not in existing_columns:
+                connection.exec_driver_sql(alter_sql)
+            if index_sql is not None:
+                connection.exec_driver_sql(index_sql)
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:

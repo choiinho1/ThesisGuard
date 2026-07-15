@@ -9,27 +9,33 @@ from agents.graph import (
 from agents.models import (
     AlertDecision,
     AlertSeverity,
+    AssumptionBinding,
     EvidenceClassification,
     EvidenceImpact,
     EvidenceItem,
     EvidenceSourceType,
     StructuredThesis,
     ThesisAnalysisResult,
+    ThesisScoreBreakdown,
     ThesisStatus,
 )
 from agents.runtime import WorkflowConfig
+from agents.thesis_templates import ThesisTemplateId
 
 __all__ = [
     "AlertDecision",
     "AlertSeverity",
+    "AssumptionBinding",
     "EvidenceClassification",
     "EvidenceImpact",
     "EvidenceItem",
     "EvidenceSourceType",
     "StructuredThesis",
     "ThesisAnalysisResult",
+    "ThesisScoreBreakdown",
     "ThesisGuardAgent",
     "ThesisStatus",
+    "ThesisTemplateId",
     "WorkflowConfig",
     "arun_analysis_workflow",
     "configure_agent",

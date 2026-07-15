@@ -34,6 +34,9 @@ async def run_research_tool(
         documents = await method(research_request(state, runtime))
         research_data: ResearchData = empty_research_data()
         research_data[key] = documents  # type: ignore[literal-required]
-        return {"research_data": research_data}
+        result: dict = {"research_data": research_data}
+        if not documents:
+            result["source_errors"] = [f"{key}: no documents returned"]
+        return result
     except Exception as exc:
         return {"source_errors": [f"{key}: {type(exc).__name__}: {exc}"]}

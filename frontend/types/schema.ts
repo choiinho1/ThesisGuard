@@ -37,8 +37,61 @@ export type ThesisStatus =
 
 export type EvidenceImpact = "HIGH" | "MEDIUM" | "LOW";
 export type EvidenceSourceType = "SEC_FILING" | "IR" | "EARNINGS" | "NEWS" | "MACRO";
+export type EvidenceScope = "NEW" | "PAST";
 export type AlertSeverity = "CRITICAL" | "MAJOR" | "MINOR" | "NONE";
 export type AnalysisType = "BULL_BEAR_JUDGE" | "THESIS_CONCENTRATION" | "COMMON_RISK";
+export type ThesisTemplateId =
+  | "GENERAL_FUNDAMENTAL"
+  | "SCALABLE_GROWTH"
+  | "QUALITY_COMPOUNDER"
+  | "MARGIN_EXPANSION"
+  | "TURNAROUND"
+  | "CYCLICAL_RECOVERY"
+  | "CATALYST_EVENT"
+  | "ASSET_VALUE_RERATING"
+  | "INCOME_DISTRIBUTION";
+
+export interface AssumptionBinding {
+  slot_id: string;
+  assumptions: string[];
+  mapping_reason: string;
+}
+
+export interface AssumptionScoreState {
+  assumption: string;
+  slot_id: string;
+  support_strength: 0 | 0.5 | 1;
+  contradict_strength: 0 | 0.5 | 1;
+  state: -1 | -0.5 | 0 | 0.5 | 1;
+  has_evidence: boolean;
+  evidence_document_ids: string[];
+  invalidation_streak: number;
+  invalidation_triggered: boolean;
+}
+
+export interface SlotScore {
+  slot_id: string;
+  label_ko: string;
+  weight_bps: number;
+  core: boolean;
+  state: number;
+  contribution_points: number;
+  coverage_percent: number;
+}
+
+export interface ThesisScoreBreakdown {
+  template_id: ThesisTemplateId;
+  template_catalog_version: string;
+  previous_score: number;
+  health_score: number;
+  score_delta: number;
+  coverage_percent: number;
+  invalidation_policy_version: string;
+  is_broken: boolean;
+  invalidated_assumptions: string[];
+  assumption_scores: AssumptionScoreState[];
+  slot_scores: SlotScore[];
+}
 
 export interface Portfolio {
   id: string;
@@ -98,6 +151,11 @@ export interface Thesis {
   positive_signals: string[];
   negative_signals: string[];
   key_risks: string[];
+  template_id: ThesisTemplateId;
+  template_catalog_version: string;
+  template_snapshot: Record<string, unknown>;
+  assumption_bindings: AssumptionBinding[];
+  score_breakdown: ThesisScoreBreakdown | null;
   confidence_score: number;
   status: ThesisStatus;
   created_at: string;
@@ -128,6 +186,7 @@ export interface Evidence {
   classification: EvidenceClassification;
   impact: EvidenceImpact;
   reason: string;
+  evidence_scope: EvidenceScope;
   published_at: string | null;
   created_at: string;
 }

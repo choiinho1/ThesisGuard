@@ -27,6 +27,8 @@ async def select_sources(state: AnalysisState, runtime: Runtime[AgentDependencie
         lookback_days=config.news_lookback_days,
         min_news_score=config.min_news_selection_score,
         source_limits={key: value * candidate_multiplier for key, value in source_limits.items()},
+        excluded_document_ids=state.get("evidence_history_document_ids", []),
+        excluded_source_urls=state.get("evidence_history_source_urls", []),
     )
     if runtime.context.retriever is None:
         return {"selected_documents": candidates}
@@ -38,6 +40,10 @@ async def select_sources(state: AnalysisState, runtime: Runtime[AgentDependencie
             documents=candidates,
             source_limits=source_limits,
         )
-    except Exception:  # noqa: BLE001 - RAG failure must retain deterministic retrieval
+    except Exception as exc:  # noqa: BLE001 - RAG failure must retain deterministic retrieval
         documents = limit_documents_by_source(candidates, source_limits)
+        return {
+            "selected_documents": documents,
+            "source_errors": [f"rag: {type(exc).__name__}: deterministic fallback applied"],
+        }
     return {"selected_documents": documents}

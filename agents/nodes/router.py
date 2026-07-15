@@ -21,6 +21,7 @@ async def request_router(state: AnalysisState, runtime: Runtime[AgentDependencie
         "portfolio_theses": context.portfolio_theses,
         "evidence_history_summary": context.evidence_history_summary,
         "evidence_history_document_ids": context.evidence_history_document_ids,
+        "evidence_history_source_urls": context.evidence_history_source_urls,
         "focus_points": context.thesis.key_assumptions,
     }
 

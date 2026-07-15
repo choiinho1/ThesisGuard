@@ -21,8 +21,10 @@ from agents.models import (
     EvidenceSourceType,
     ThesisStatus,
 )
+from agents.thesis_templates import THESIS_TEMPLATE_CATALOG_VERSION, ThesisTemplateId
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -240,6 +242,17 @@ class Thesis(Base):
     positive_signals: Mapped[list[str]] = mapped_column(_json_type(), default=list)
     negative_signals: Mapped[list[str]] = mapped_column(_json_type(), default=list)
     key_risks: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    template_id: Mapped[str] = mapped_column(
+        String(50), default=ThesisTemplateId.GENERAL_FUNDAMENTAL.value, nullable=False
+    )
+    template_catalog_version: Mapped[str] = mapped_column(
+        String(20), default=THESIS_TEMPLATE_CATALOG_VERSION, nullable=False
+    )
+    template_snapshot: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
+    assumption_bindings: Mapped[list[dict]] = mapped_column(
+        _json_type(), default=list, nullable=False
+    )
+    score_breakdown: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
     confidence_score: Mapped[int] = mapped_column(SmallInteger, default=50)
     status: Mapped[ThesisStatus] = mapped_column(
         SAEnum(ThesisStatus, name="thesis_status"), default=ThesisStatus.UNCHANGED, nullable=False
@@ -314,6 +327,11 @@ class Evidence(Base):
     # DateTime(timezone=True): agent-supplied values (SEC filing/news pubDate)
     # are tz-aware; the naive-inferred default made asyncpg reject inserts.
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set automatically at analysis time for HIGH/MEDIUM impact evidence (see
+    # routers/analysis.py's run_analysis_and_save), and toggleable afterwards
+    # via POST/DELETE /api/evidence/{id}/save for LOW-impact evidence the user
+    # wants to keep anyway. Backs the "주요 근거 History" view.
+    saved_to_history: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = _created_at()
 
     thesis: Mapped[Thesis] = relationship(back_populates="evidence")
@@ -369,6 +387,10 @@ class Alert(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     is_sent: Mapped[bool] = mapped_column(default=False, nullable=False)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # True only for alerts raised by the scheduled (automatic) re-analysis run —
+    # manual "재분석" clicks still create/email an alert but are excluded from
+    # the alert UI, since the user already watched that run and saw its result.
+    is_scheduled: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = _created_at()
 
     user: Mapped[User] = relationship(back_populates="alerts")

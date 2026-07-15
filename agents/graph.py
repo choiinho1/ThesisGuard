@@ -33,6 +33,7 @@ from agents.nodes.router import prepare_research, request_router
 from agents.nodes.source_selector import select_sources
 from agents.runnable_context import use_model_runnable_config
 from agents.runtime import AgentDependencies, WorkflowConfig, call_model
+from agents.scoring import score_thesis
 from agents.state import AnalysisState, empty_research_data
 
 ResultT = TypeVar("ResultT")
@@ -50,6 +51,7 @@ def build_analysis_graph(config: WorkflowConfig):
     graph.add_node("debate_start", debate_start)
     graph.add_node("bull_agent", bull_agent)
     graph.add_node("bear_agent", bear_agent)
+    graph.add_node("score_thesis", score_thesis)
     graph.add_node("judge_agent", judge_agent)
     graph.add_node("portfolio_agent", portfolio_agent)
     graph.add_node("alert_decision", alert_decision)
@@ -77,7 +79,8 @@ def build_analysis_graph(config: WorkflowConfig):
     )
     graph.add_edge("debate_start", "bull_agent")
     graph.add_edge("debate_start", "bear_agent")
-    graph.add_edge(["bull_agent", "bear_agent"], "judge_agent")
+    graph.add_edge("debate_start", "score_thesis")
+    graph.add_edge(["bull_agent", "bear_agent", "score_thesis"], "judge_agent")
     graph.add_edge("judge_agent", "portfolio_agent")
     graph.add_edge("portfolio_agent", "alert_decision")
     graph.add_edge("alert_decision", "finalize")

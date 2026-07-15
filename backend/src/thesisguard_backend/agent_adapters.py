@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -24,7 +25,11 @@ from agents.models import (
     StructuredThesis,
 )
 from agents.rag import HybridRAGRetriever
-from agents.retrieval import extract_relevant_passages, thesis_search_terms
+from agents.retrieval import (
+    extract_relevant_passages,
+    is_within_source_window,
+    thesis_search_terms,
+)
 from agents.sanitization import sanitize_source_text
 from bs4 import BeautifulSoup
 from sqlalchemy import select
@@ -69,6 +74,9 @@ def _structured_thesis_from_orm(thesis: orm.Thesis) -> StructuredThesis:
         positive_signals=thesis.positive_signals,
         negative_signals=thesis.negative_signals,
         key_risks=thesis.key_risks,
+        template_id=thesis.template_id,
+        assumption_bindings=thesis.assumption_bindings or [],
+        score_breakdown=thesis.score_breakdown or None,
         confidence_score=thesis.confidence_score,
         status=thesis.status,
     )
@@ -114,6 +122,7 @@ class BackendContextProvider:
                 portfolio_theses=portfolio_theses,
                 evidence_history_summary=history.summary,
                 evidence_history_document_ids=history.document_ids,
+                evidence_history_source_urls=history.source_urls,
             )
 
     async def load_portfolio_theses(self, portfolio_id: str) -> list[PortfolioThesis]:
@@ -143,9 +152,16 @@ class BackendResearchTools:
     """Implements ``agents.contracts.ResearchTools`` using the MCP tool modules."""
 
     async def get_filings(self, request: ResearchRequest) -> list[SourceDocument]:
-        records = await sec.get_filings(request.ticker, limit=3)
+        records = await sec.get_filings(request.ticker, limit=9)
+        collected_at = datetime.now(UTC)
         documents: list[SourceDocument] = []
         for record in records:
+            if not is_within_source_window(
+                record.filed_at,
+                now=collected_at,
+                lookback_days=request.lookback_days,
+            ):
+                continue
             content = await _fetch_text(record.url)
             if not content:
                 continue
@@ -172,6 +188,7 @@ class BackendResearchTools:
         return documents
 
     async def get_news(self, request: ResearchRequest) -> list[SourceDocument]:
+        collected_at = datetime.now(UTC)
         company_name = await sec.get_company_name(request.ticker)
         company_query = f'"{company_name}" {request.ticker}' if company_name else request.ticker
         focus_terms = list(dict.fromkeys([*request.focus_points, *request.thesis.key_assumptions]))[
@@ -198,6 +215,12 @@ class BackendResearchTools:
         seen_titles: set[str] = set()
         for query, items in zip(queries, batches, strict=True):
             for item in items:
+                if not is_within_source_window(
+                    item.published_at,
+                    now=collected_at,
+                    lookback_days=request.lookback_days,
+                ):
+                    continue
                 title = sanitize_source_text(item.title)
                 title_key = title.casefold()
                 if item.url in seen_urls or title_key in seen_titles:
@@ -319,18 +342,36 @@ async def get_market_snapshot(ticker: str) -> market.MarketData:
 
 
 def create_chat_model():
-    """Builds the LangChain chat model selected via LLM_PROVIDER/LLM_MODEL."""
+    """Builds the LangChain chat model selected via LLM_PROVIDER/LLM_MODEL.
+
+    timeout + max_retries are set explicitly on every provider: without them,
+    a rate-limited/quota-exhausted call (e.g. Gemini free-tier 429) doesn't
+    fail fast — the client library's own backoff retries it for minutes,
+    which the frontend just sees as a hung "Failed to fetch" with no error
+    message. Better to fail in ~30-60s with a real exception the caller can
+    surface.
+    """
 
     settings = get_settings()
     if settings.llm_provider == "openai":
         from langchain_openai import ChatOpenAI
 
-        return ChatOpenAI(model=settings.llm_model, api_key=settings.openai_api_key, temperature=0)
+        return ChatOpenAI(
+            model=settings.llm_model,
+            api_key=settings.openai_api_key,
+            temperature=0,
+            timeout=30,
+            max_retries=1,
+        )
     if settings.llm_provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         return ChatGoogleGenerativeAI(
-            model=settings.llm_model, google_api_key=settings.google_api_key, temperature=0
+            model=settings.llm_model,
+            google_api_key=settings.google_api_key,
+            temperature=0,
+            timeout=30,
+            max_retries=1,
         )
     if settings.llm_provider == "upstage":
         from langchain_upstage import ChatUpstage
@@ -339,6 +380,8 @@ def create_chat_model():
             model=settings.llm_model,
             upstage_api_key=settings.upstage_api_key,
             temperature=0,
+            timeout=30,
+            max_retries=1,
         )
     raise ValueError(
         f"Unsupported LLM_PROVIDER={settings.llm_provider!r}. "

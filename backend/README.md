@@ -85,9 +85,12 @@ copy .env.example .env
 서버 시작 시와 종목 분석 완료 후 DB의 과거 근거·판단을 종목별 Markdown으로 갱신한다.
 기본 위치는 `backend/data/evidence_history/{holding_id}.md`이며 소스 관리에는 포함하지 않는다.
 분석 Agent는 이 파일 내용을 종목의 스토리를 이해하는 비점수 문맥으로 전달받는다. 과거 근거는
-현재 신뢰도·상태에 이미 반영된 기준점이므로 다시 점수화하지 않으며, 동일 `document_id`는 현재
-분석에서 중복 제외한다. 저장 위치와 보관할 고유 근거 수는 `EVIDENCE_HISTORY_DIR`,
-`EVIDENCE_HISTORY_MAX_ITEMS`로 조정할 수 있다.
+현재 신뢰도·상태에 이미 반영된 기준점이므로 다시 점수화하지 않는다. 전체 이력의 문서 ID와
+정규화한 원문 URL은 분류 전에 제외하고, 제외 문서는 Evidence로 재저장하지 않는다. Markdown
+표시 개수 제한과 무관하게 전체 이력을 중복 검사에 사용한다. 저장 위치와 표시할 고유 근거 수는
+`EVIDENCE_HISTORY_DIR`, `EVIDENCE_HISTORY_MAX_ITEMS`로 조정할 수 있다.
+분석 응답에서는 과거의 실질 판정을 `evidence_scope=PAST`, 이번 분석의 신규 판정을
+`evidence_scope=NEW`로 구분한다. PAST 근거의 classification/impact는 원래 값을 유지한다.
 
 ## DB 준비 & 마이그레이션
 
@@ -157,8 +160,8 @@ curl localhost:8000/api/holdings/$HID/analysis -H "Authorization: Bearer $TOKEN"
 curl -X POST localhost:8000/api/portfolios/$PID/query -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" -d '{"question":"내 포트폴리오에서 가장 위험한 종목은?"}'
 
-# 티커 현재 시세 (일중 고가/저가, 거래량, 30일 등락률 — Yahoo Finance, 지연 시세)
-curl localhost:8000/api/market/NVDA/quote -H "Authorization: Bearer $TOKEN"
+# 종목 현재 시세 (일중 고가/저가, 거래량, 30일 등락률 — Yahoo Finance, 지연 시세)
+curl localhost:8000/api/holdings/$HID/market-snapshot -H "Authorization: Bearer $TOKEN"
 ```
 
 ## 분석 결과 재조회 (`GET /api/holdings/{id}/analysis`)
@@ -206,8 +209,9 @@ C의 `agents/` 패키지는 이미 한 번 구조가 크게 바뀐 적이 있다
 - **News MCP**: 원래 TDD의 MCP Tool 표에는 없었지만 `ResearchTools.get_news()` 계약을 채우기 위해
   Bing News RSS 우선·Google News RSS 대체 구조로 추가했다(`mcp_tools/news.py`). 검색 시 SEC 정식
   회사명·티커 기본 검색과 핵심 가정별 검색을 병렬 실행하고, Agent Source Selector가 회사명
-  불일치·최소 관련도 미달 결과를 제외한다. 발행사 본문을 읽을 수 있으면 관련 문단을 사용하고,
-  동적 페이지·차단·유료벽에서는 RSS 설명으로 안전하게 대체한다.
+  불일치·최소 관련도 미달 결과를 제외한다. 뉴스와 공시는 발행일이 확인된 최근 30일 자료만
+  사용하며 날짜 없음·기간 초과·미래 날짜 자료는 다운로드 전에 제외한다. 발행사 본문을 읽을 수
+  있으면 관련 문단을 사용하고, 동적 페이지·차단·유료벽에서는 RSS 설명으로 안전하게 대체한다.
 - `POST /api/portfolios/{id}/rebalance`는 리밸런싱 기록만 남기고, TDD가 언급한 "집중도 변화 분석"은
   자동으로 트리거하지 않는다. 필요하면 리밸런싱 이후 프론트에서 `/analyze`를 각 종목에 대해 호출한다.
 - **`backend/app/`, `backend/mcp_tools/`(레포 최상위 빈 `.gitkeep` 폴더)는 이 백엔드가 쓰는 폴더가
