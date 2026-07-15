@@ -1,6 +1,8 @@
 import { addMockHolding, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, getMockThesisHistory, mockPortfolios, removeMockAlert, removeMockHolding, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
 import type {
   ApiMode,
+  AnalysisSchedule,
+  AnalysisScheduleInput,
   CreateHoldingInput,
   DashboardHolding,
   HoldingAnalysisResponse,
@@ -46,6 +48,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function optionalRequest<T>(path: string, init?: RequestInit): Promise<T | null> {
+  const token = typeof window === "undefined" ? null : localStorage.getItem("thesisguard_access_token");
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { detail?: string } | null;
+    throw new Error(payload?.detail || `API 요청 실패 (${response.status})`);
+  }
+  return response.json() as Promise<T>;
+}
+
 export function getApiMode(): ApiMode {
   if (typeof window === "undefined") return "mock";
   return (localStorage.getItem(MODE_KEY) as ApiMode | null) ??
@@ -86,6 +106,59 @@ export async function analyzeHolding(
   return request<HoldingAnalysisResponse>(`/api/holdings/${holdingId}/analyze`, {
     method: "POST",
   });
+}
+
+export async function getLatestHoldingAnalysis(
+  holdingId: string,
+  mode = getApiMode(),
+): Promise<HoldingAnalysisResponse | null> {
+  if (mode === "mock") return null;
+  return optionalRequest<HoldingAnalysisResponse>(`/api/holdings/${holdingId}/analysis`);
+}
+
+export async function listAnalysisSchedules(
+  mode = getApiMode(),
+): Promise<AnalysisSchedule[]> {
+  if (mode === "mock") return [];
+  return request<AnalysisSchedule[]>("/api/analysis-schedules");
+}
+
+export async function saveAnalysisSchedule(
+  holdingId: string,
+  input: AnalysisScheduleInput,
+  mode = getApiMode(),
+): Promise<AnalysisSchedule> {
+  if (mode === "mock") {
+    const now = new Date();
+    const [hours, minutes] = input.daily_time.split(":").map(Number);
+    const next = new Date(now);
+    next.setHours(hours, minutes, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    return {
+      id: `mock-schedule-${holdingId}`,
+      holding_id: holdingId,
+      ticker: "MOCK",
+      enabled: input.enabled,
+      daily_time: `${input.daily_time}:00`,
+      timezone: input.timezone,
+      recipient_email: "mock@thesisguard.local",
+      last_run_at: null,
+      last_run_status: null,
+      next_run_at: next.toISOString(),
+    };
+  }
+  return request<AnalysisSchedule>(`/api/holdings/${holdingId}/analysis-schedule`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteAnalysisSchedule(
+  holdingId: string,
+  mode = getApiMode(),
+): Promise<void> {
+  if (mode === "mock") return;
+  await request<void>(`/api/holdings/${holdingId}/analysis-schedule`, { method: "DELETE" });
 }
 
 export async function createHoldingThesis(

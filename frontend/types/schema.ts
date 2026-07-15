@@ -240,6 +240,25 @@ export interface HoldingAnalysisResponse {
   alert: Alert | null;
 }
 
+export interface AnalysisScheduleInput {
+  enabled: boolean;
+  daily_time: string;
+  timezone: string;
+}
+
+export interface AnalysisSchedule {
+  id: string;
+  holding_id: string;
+  ticker: string;
+  enabled: boolean;
+  daily_time: string;
+  timezone: string;
+  recipient_email: string;
+  last_run_at: string | null;
+  last_run_status: string | null;
+  next_run_at: string;
+}
+
 export interface HistoryEntry {
   version: ThesisVersion;
   analysis_result: AnalysisResult | null;

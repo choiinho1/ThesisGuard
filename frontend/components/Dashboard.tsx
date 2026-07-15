@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddHoldingForm } from "@/components/AddHoldingForm";
+import { AutoAnalysisSchedule } from "@/components/AutoAnalysisSchedule";
 import { AllocationPanel } from "@/components/AllocationPanel";
 import { HoldingGrid } from "@/components/HoldingGrid";
 import { InsightPanel } from "@/components/InsightPanel";
@@ -15,7 +16,9 @@ import {
   deletePortfolioHolding,
   deleteAlert,
   getPortfolioDashboard,
+  getLatestHoldingAnalysis,
   getHoldingMarketSnapshot,
+  getApiMode,
   listPortfolios,
   setApiMode,
   updateHoldingPosition,
@@ -49,6 +52,28 @@ export function Dashboard() {
   useEffect(() => {
     selectedIdRef.current = selected?.id ?? null;
   }, [selected]);
+
+  useEffect(() => {
+    const preferredMode = getApiMode();
+    // This one-time hydration sync applies the user's persisted API mode.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (preferredMode !== mode) setMode(preferredMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "live" || !selected?.thesis) return;
+    let cancelled = false;
+    const holdingId = selected.id;
+    void getLatestHoldingAnalysis(holdingId, mode)
+      .then((result) => {
+        if (!cancelled && selectedIdRef.current === holdingId) setAnalysis(result);
+      })
+      .catch(() => {
+        // A holding without a completed analysis legitimately has no result yet.
+      });
+    return () => { cancelled = true; };
+  }, [mode, selected?.id, selected?.thesis]);
 
   const loadDashboard = useCallback(async (nextMode: ApiMode) => {
     await Promise.resolve();
@@ -339,6 +364,9 @@ export function Dashboard() {
           History
         </button>
       </nav>
+      {activeSection === "main" && selected && (
+        <AutoAnalysisSchedule holding={selected} mode={mode} />
+      )}
       {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} holding={selected} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
       {activeSection === "history" && <SavedEvidenceHistory holdings={dashboard.holdings} mode={mode} />}
       <footer>
