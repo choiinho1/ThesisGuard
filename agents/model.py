@@ -104,6 +104,42 @@ when the user creates or resets the raw thesis logic.
         )
         return prepare_structured_thesis(result.model_copy(update={"raw_input": raw_input}))
 
+    async def strengthen_thesis(
+        self,
+        raw_input: str,
+        draft: StructuredThesis,
+    ) -> StructuredThesis:
+        """Turn a faithful first-pass draft into a testable causal thesis."""
+
+        result = await self._invoke(
+            StructuredThesis,
+            f"""
+Act as the Thesis Strengthening Agent. Make the draft more specific, falsifiable, and useful
+for evidence retrieval while preserving the user's original intent. Stronger means more
+testable, not more optimistic. You may expose logically necessary bridge assumptions that the
+user left implicit, but state them only as assumptions or conditions; never invent company
+facts, figures, dates, forecasts, market shares, or events.
+
+Produce a concise main_thesis and a non-duplicative set of measurable key_assumptions. Each
+assumption must describe a condition that future filings, news, earnings, or macro data could
+support or refute. Fill positive_signals and negative_signals with observable indicators and
+key_risks with plausible failure modes derived from the causal logic. Do not claim that any
+indicator has already occurred unless the user explicitly said so.
+
+Rebuild logic_graph from the strengthened thesis. Every key_assumptions string must appear
+exactly once as an ASSUMPTION leaf and must be copied verbatim. Use intermediate CLAIM nodes
+only for a clear causal bridge. Use AND when every child is necessary, OR when any child is a
+sufficient alternative, and CONTRIBUTING when the children independently add strength. The
+graph must be connected and acyclic. Set confidence_score to 50, status to UNCHANGED, and
+score_breakdown to null because trusted code owns scoring. Keep raw_input exactly equal to the
+original user input.
+
+<original_user_input>{raw_input}</original_user_input>
+<first_pass_draft>{_json(draft)}</first_pass_draft>
+""".strip(),
+        )
+        return prepare_structured_thesis(result.model_copy(update={"raw_input": raw_input}))
+
     async def classify_evidence(
         self,
         thesis: StructuredThesis,
@@ -179,9 +215,7 @@ numbered_passages:
             for assumption in thesis.key_assumptions
             if assumption not in existing_assumptions
         ]
-        if missing_assumptions and getattr(
-            self, "_repair_missing_assumption_findings", False
-        ):
+        if missing_assumptions and getattr(self, "_repair_missing_assumption_findings", False):
 
             async def assess_one_assumption(assumption: str) -> AssumptionFinding:
                 finding = await self._invoke(

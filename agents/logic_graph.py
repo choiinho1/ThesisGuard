@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from agents.models import LogicOperator, ThesisLogicGraph, ThesisLogicNode
+from agents.models import (
+    LogicOperator,
+    NodeEvidenceVerdict,
+    ThesisLogicGraph,
+    ThesisLogicNode,
+)
 
 LOGIC_GRAPH_VERSION = "1.0.0"
 
@@ -113,6 +118,15 @@ def required_assumption_node_ids(graph: ThesisLogicGraph) -> set[str]:
     return required
 
 
+def research_target_assumption_node_ids(graph: ThesisLogicGraph) -> set[str]:
+    """Return strict AND requirements, or all leaves when the graph has no strict requirement."""
+
+    required = required_assumption_node_ids(graph)
+    if required:
+        return required
+    return {node.node_id for node in graph.nodes if node.kind == "ASSUMPTION"}
+
+
 def evaluate_logic_graph(
     graph: ThesisLogicGraph,
     assumption_states: Mapping[str, float],
@@ -149,3 +163,64 @@ def evaluate_logic_graph(
 
     evaluate(graph.root_id)
     return states, coverage
+
+
+def evidence_verdict(
+    support_strength: float,
+    contradict_strength: float,
+) -> NodeEvidenceVerdict:
+    """Classify independent support/refutation axes without cancelling conflict."""
+
+    has_support = support_strength > 0
+    has_contradiction = contradict_strength > 0
+    if has_support and has_contradiction:
+        return NodeEvidenceVerdict.CONFLICTING
+    if has_support:
+        return NodeEvidenceVerdict.SUPPORTED
+    if has_contradiction:
+        return NodeEvidenceVerdict.REFUTED
+    return NodeEvidenceVerdict.INSUFFICIENT
+
+
+def evaluate_evidence_graph(
+    graph: ThesisLogicGraph,
+    assumption_support: Mapping[str, float],
+    assumption_contradict: Mapping[str, float],
+    observed_assumption_ids: set[str],
+) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+    """Propagate support and contradiction separately through the causal graph."""
+
+    nodes = {node.node_id: node for node in graph.nodes}
+    support: dict[str, float] = {}
+    contradict: dict[str, float] = {}
+    coverage: dict[str, float] = {}
+
+    def evaluate(node_id: str) -> tuple[float, float, set[str]]:
+        node = nodes[node_id]
+        if node.kind == "ASSUMPTION":
+            node_support = float(assumption_support.get(node_id, 0.0))
+            node_contradict = float(assumption_contradict.get(node_id, 0.0))
+            leaves = {node_id}
+        else:
+            child_results = [evaluate(child_id) for child_id in node.child_ids]
+            child_support = [result[0] for result in child_results]
+            child_contradict = [result[1] for result in child_results]
+            leaves = set().union(*(result[2] for result in child_results))
+            if node.operator == LogicOperator.AND:
+                node_support = min(child_support)
+                node_contradict = max(child_contradict)
+            elif node.operator == LogicOperator.OR:
+                node_support = max(child_support)
+                node_contradict = min(child_contradict)
+            else:
+                node_support = sum(child_support) / len(child_support)
+                node_contradict = sum(child_contradict) / len(child_contradict)
+        support[node_id] = node_support
+        contradict[node_id] = node_contradict
+        coverage[node_id] = (
+            len(leaves & observed_assumption_ids) / len(leaves) * 100 if leaves else 0.0
+        )
+        return node_support, node_contradict, leaves
+
+    evaluate(graph.root_id)
+    return support, contradict, coverage

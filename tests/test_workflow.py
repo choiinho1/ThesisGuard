@@ -103,6 +103,49 @@ class FakeContextProvider:
         return context.portfolio_theses
 
 
+class RequiredNodeContextProvider(FakeContextProvider):
+    async def load_analysis_context(self, portfolio_id: str, holding_id: str) -> AnalysisContext:
+        assumption = "AI 인프라 지출 증가"
+        required_thesis = prepare_structured_thesis(
+            StructuredThesis(
+                raw_input="AI 인프라 지출이 증가하면 데이터센터 매출이 성장한다.",
+                main_thesis="AI 인프라 투자에 따른 데이터센터 매출 성장",
+                key_assumptions=[assumption],
+                logic_graph=ThesisLogicGraph(
+                    root_id="root_claim",
+                    nodes=[
+                        ThesisLogicNode(
+                            node_id="root_claim",
+                            kind="CLAIM",
+                            label="AI 인프라 투자에 따른 데이터센터 매출 성장",
+                            operator=LogicOperator.AND,
+                            child_ids=["infrastructure_growth"],
+                        ),
+                        ThesisLogicNode(
+                            node_id="infrastructure_growth",
+                            kind="ASSUMPTION",
+                            label=assumption,
+                            assumption=assumption,
+                        ),
+                    ],
+                ),
+            )
+        )
+        current = PortfolioThesis(
+            holding_id=holding_id,
+            ticker="NVDA",
+            current_weight=100,
+            thesis=required_thesis,
+        )
+        return AnalysisContext(
+            portfolio_id=portfolio_id,
+            holding_id=holding_id,
+            ticker="NVDA",
+            thesis=required_thesis,
+            portfolio_theses=[current],
+        )
+
+
 def document(document_id: str, source_type: EvidenceSourceType, content: str) -> SourceDocument:
     return SourceDocument(
         document_id=document_id,
@@ -309,10 +352,10 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
         "uncertain-news",
         "contradict-news",
     }
-    assert result.updated_confidence == 48
-    assert result.updated_status == ThesisStatus.UNCHANGED
-    assert result.alert_decision.severity == "NONE"
-    assert result.alert_decision.delivery == "NONE"
+    assert result.updated_confidence == 44
+    assert result.updated_status == ThesisStatus.WEAKENED
+    assert result.alert_decision.severity == "MINOR"
+    assert result.alert_decision.delivery == "WEEKLY"
     assert result.concentration.has_concentration_risk is True
     assert model.judge_calls == 1
     assert model.classify_calls == 3
@@ -329,6 +372,22 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
 
 
 @pytest.mark.asyncio
+async def test_required_node_coverage_stops_research_regardless_of_total_evidence_count() -> None:
+    tools = FakeResearchTools()
+    agent = ThesisGuardAgent(
+        context_provider=RequiredNodeContextProvider(),
+        research_tools=tools,
+        model=FakeAnalysisModel(),
+        config=WorkflowConfig(max_research_rounds=2, min_grounded_evidence=99),
+    )
+
+    result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
+
+    assert result.research_rounds == 1
+    assert {round_no for _, round_no in tools.calls} == {1}
+
+
+@pytest.mark.asyncio
 async def test_portfolio_model_failure_keeps_holding_result_and_reports_error() -> None:
     agent = ThesisGuardAgent(
         context_provider=FakeContextProvider(),
@@ -339,8 +398,8 @@ async def test_portfolio_model_failure_keeps_holding_result_and_reports_error() 
 
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
-    assert result.updated_confidence == 52
-    assert result.updated_status == ThesisStatus.UNCHANGED
+    assert result.updated_confidence == 56
+    assert result.updated_status == ThesisStatus.STRENGTHENED
     assert result.concentration.has_concentration_risk is False
     assert "개별 종목의 근거·점수·상태 계산 결과는 정상적으로 유지됩니다" in (
         result.concentration.summary
@@ -380,8 +439,8 @@ async def test_one_source_failure_does_not_abort_the_analysis() -> None:
 
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
-    assert result.updated_status == ThesisStatus.UNCHANGED
-    assert result.updated_confidence == 48
+    assert result.updated_status == ThesisStatus.WEAKENED
+    assert result.updated_confidence == 44
     assert any(item.source_type == EvidenceSourceType.SEC_FILING for item in result.evidence)
     assert any(error.startswith("macro: RuntimeError:") for error in result.source_errors)
 
@@ -403,9 +462,9 @@ async def test_judge_failure_retries_but_keeps_deterministic_score() -> None:
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert model.judge_calls == 2
-    assert result.updated_status == ThesisStatus.UNCHANGED
-    assert result.updated_confidence == 48
-    assert result.alert_decision.should_send is False
+    assert result.updated_status == ThesisStatus.WEAKENED
+    assert result.updated_confidence == 44
+    assert result.alert_decision.should_send is True
 
 
 def test_sync_team_contract_entrypoint() -> None:

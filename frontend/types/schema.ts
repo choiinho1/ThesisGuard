@@ -42,6 +42,11 @@ export type AlertSeverity = "CRITICAL" | "MAJOR" | "MINOR" | "NONE";
 export type AnalysisType = "BULL_BEAR_JUDGE" | "THESIS_CONCENTRATION" | "COMMON_RISK";
 export type LogicOperator = "AND" | "OR" | "CONTRIBUTING";
 export type AssumptionAssessment = "SUPPORT" | "CONTRADICT" | "MIXED" | "NOT_ADDRESSED";
+export type NodeEvidenceVerdict =
+  | "SUPPORTED"
+  | "REFUTED"
+  | "CONFLICTING"
+  | "INSUFFICIENT";
 
 export interface AssumptionFinding {
   assumption: string;
@@ -73,6 +78,7 @@ export interface AssumptionScoreState {
   support_strength: number;
   contradict_strength: number;
   state: number;
+  verdict: NodeEvidenceVerdict;
   has_evidence: boolean;
   evidence_document_ids: string[];
   evidence_event_keys: string[];
@@ -85,7 +91,10 @@ export interface LogicNodeScore {
   label: string;
   kind: "CLAIM" | "ASSUMPTION";
   operator: LogicOperator | null;
+  support_strength: number;
+  contradict_strength: number;
   state: number;
+  verdict: NodeEvidenceVerdict;
   coverage_percent: number;
   required: boolean;
 }
@@ -111,7 +120,10 @@ export interface ThesisScoreBreakdown {
   previous_score: number;
   health_score: number;
   score_delta: number;
+  root_support_strength: number;
+  root_contradict_strength: number;
   root_state: number;
+  root_verdict: NodeEvidenceVerdict;
   coverage_percent: number;
   invalidation_policy_version: string;
   is_broken: boolean;

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from agents.logic_graph import (
     build_fallback_logic_graph,
+    evaluate_evidence_graph,
     evaluate_logic_graph,
     normalize_logic_graph,
     required_assumption_node_ids,
@@ -11,11 +12,13 @@ from agents.logic_graph import (
 from agents.models import (
     AssumptionAssessment,
     AssumptionFinding,
+    AssumptionScoreState,
     EvidenceClassification,
     EvidenceImpact,
     EvidenceItem,
     EvidenceSourceType,
     LogicOperator,
+    NodeEvidenceVerdict,
     StructuredThesis,
     ThesisLogicGraph,
     ThesisLogicNode,
@@ -116,6 +119,33 @@ def test_graph_operators_propagate_leaf_states_deterministically() -> None:
     assert or_states["root_claim"] == 1.0
     assert contributing_states["root_claim"] == 1 / 3
     assert coverage["root_claim"] == 100
+
+
+def test_four_value_graph_propagates_support_and_contradiction_independently() -> None:
+    graph = _graph(LogicOperator.AND)
+    support, contradict, _ = evaluate_evidence_graph(
+        graph,
+        {"demand": 0.8, "share": 0.7, "margin": 0.9},
+        {"demand": 0.0, "share": 0.6, "margin": 0.0},
+        {"demand", "share", "margin"},
+    )
+
+    assert support["root_claim"] == 0.7
+    assert contradict["root_claim"] == 0.6
+
+
+def test_legacy_assumption_state_derives_four_value_verdict() -> None:
+    legacy = AssumptionScoreState.model_validate(
+        {
+            "assumption": ASSUMPTIONS[0],
+            "node_id": "demand",
+            "support_strength": 0.4,
+            "contradict_strength": 0.3,
+            "state": 0.1,
+        }
+    )
+
+    assert legacy.verdict == NodeEvidenceVerdict.CONFLICTING
 
 
 def test_invalid_graph_falls_back_to_equal_contribution_graph() -> None:
@@ -234,10 +264,10 @@ def test_independent_evidence_accumulates_with_reduced_strength() -> None:
     )
 
     demand = result.assumption_scores[0]
-    assert demand.support_strength == 0.3276
-    assert demand.state == 0.3276
-    assert result.root_state == 0.1092
-    assert result.health_score == 55
+    assert demand.support_strength == 0.7884
+    assert demand.state == 0.7884
+    assert result.root_state == 0.2628
+    assert result.health_score == 63
 
 
 def test_repeated_reports_of_the_same_event_count_once_across_runs() -> None:
@@ -289,9 +319,9 @@ def test_repeated_reports_of_the_same_event_count_once_across_runs() -> None:
     same_run = calculate_score_breakdown(thesis, [original, repeated])
     next_run = calculate_score_breakdown(_persist(thesis, same_run), [later_repeat])
 
-    assert same_run.assumption_scores[0].support_strength == 0.18
+    assert same_run.assumption_scores[0].support_strength == 0.54
     assert len(same_run.assumption_scores[0].evidence_event_keys) == 1
-    assert next_run.assumption_scores[0].support_strength == 0.18
+    assert next_run.assumption_scores[0].support_strength == 0.54
     assert next_run.score_delta == 0
 
 
@@ -330,7 +360,7 @@ def test_every_information_item_has_one_state_per_assumption_node() -> None:
 
     impact = result.evidence_impacts[0]
     assert len(impact.node_contributions) == len(ASSUMPTIONS)
-    assert [item.signed_strength for item in impact.node_contributions] == [0.144, -0.054, 0]
+    assert [item.signed_strength for item in impact.node_contributions] == [0.432, -0.162, 0]
     assert impact.score_delta == result.score_delta
 
 
@@ -371,7 +401,7 @@ def test_uncited_directional_finding_does_not_change_unaddressed_node() -> None:
     contributions = {
         item.assumption: item for item in result.evidence_impacts[0].node_contributions
     }
-    assert states[ASSUMPTIONS[0]] == -0.171
+    assert states[ASSUMPTIONS[0]] == -0.513
     assert states[ASSUMPTIONS[1]] == 0
     assert contributions[ASSUMPTIONS[1]].assessment == AssumptionAssessment.NOT_ADDRESSED
     assert contributions[ASSUMPTIONS[1]].signed_strength == 0
@@ -431,7 +461,7 @@ def test_information_attributions_sum_to_nonlinear_final_score_change() -> None:
     }
 
 
-def test_opposing_evidence_cancels_and_no_evidence_preserves_state() -> None:
+def test_opposing_evidence_is_conflicting_even_when_numeric_projection_cancels() -> None:
     thesis = _thesis()
     first = calculate_score_breakdown(
         thesis,
@@ -450,7 +480,12 @@ def test_opposing_evidence_cancels_and_no_evidence_preserves_state() -> None:
     second = calculate_score_breakdown(_persist(thesis, first), [])
 
     assert first.assumption_scores[0].state == 0
+    assert first.assumption_scores[0].verdict == NodeEvidenceVerdict.CONFLICTING
+    assert first.root_verdict == NodeEvidenceVerdict.CONFLICTING
+    assert first.root_support_strength > 0
+    assert first.root_contradict_strength > 0
     assert second.assumption_scores[0] == first.assumption_scores[0]
+    assert second.root_verdict == NodeEvidenceVerdict.CONFLICTING
     assert second.health_score == 50
 
 

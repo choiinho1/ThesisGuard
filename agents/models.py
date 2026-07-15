@@ -49,6 +49,27 @@ class AssumptionAssessment(StrEnum):
     NOT_ADDRESSED = "NOT_ADDRESSED"
 
 
+class NodeEvidenceVerdict(StrEnum):
+    """Four-valued evidence state; support and contradiction are independent axes."""
+
+    SUPPORTED = "SUPPORTED"
+    REFUTED = "REFUTED"
+    CONFLICTING = "CONFLICTING"
+    INSUFFICIENT = "INSUFFICIENT"
+
+
+def _node_evidence_verdict(support: float, contradict: float) -> NodeEvidenceVerdict:
+    has_support = support > 0
+    has_contradiction = contradict > 0
+    if has_support and has_contradiction:
+        return NodeEvidenceVerdict.CONFLICTING
+    if has_support:
+        return NodeEvidenceVerdict.SUPPORTED
+    if has_contradiction:
+        return NodeEvidenceVerdict.REFUTED
+    return NodeEvidenceVerdict.INSUFFICIENT
+
+
 class AssumptionFinding(ContractModel):
     """How one document affects one exact thesis assumption."""
 
@@ -118,11 +139,23 @@ class AssumptionScoreState(ContractModel):
     support_strength: float = Field(default=0, ge=0, le=1)
     contradict_strength: float = Field(default=0, ge=0, le=1)
     state: float = Field(default=0, ge=-1, le=1)
+    verdict: NodeEvidenceVerdict = NodeEvidenceVerdict.INSUFFICIENT
     has_evidence: bool = False
     evidence_document_ids: list[str] = Field(default_factory=list)
     evidence_event_keys: list[str] = Field(default_factory=list)
     invalidation_streak: int = Field(default=0, ge=0)
     invalidation_triggered: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_legacy_verdict(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "verdict" not in value:
+            value = dict(value)
+            value["verdict"] = _node_evidence_verdict(
+                float(value.get("support_strength", 0)),
+                float(value.get("contradict_strength", 0)),
+            )
+        return value
 
 
 class LogicNodeScore(ContractModel):
@@ -130,9 +163,30 @@ class LogicNodeScore(ContractModel):
     label: str = Field(min_length=1)
     kind: Literal["CLAIM", "ASSUMPTION"]
     operator: LogicOperator | None = None
+    support_strength: float = Field(default=0, ge=0, le=1)
+    contradict_strength: float = Field(default=0, ge=0, le=1)
     state: float = Field(ge=-1, le=1)
+    verdict: NodeEvidenceVerdict = NodeEvidenceVerdict.INSUFFICIENT
     coverage_percent: float = Field(ge=0, le=100)
     required: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_legacy_axes_and_verdict(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        value = dict(value)
+        state = float(value.get("state", 0))
+        value.setdefault("support_strength", max(0.0, state))
+        value.setdefault("contradict_strength", max(0.0, -state))
+        value.setdefault(
+            "verdict",
+            _node_evidence_verdict(
+                float(value["support_strength"]),
+                float(value["contradict_strength"]),
+            ),
+        )
+        return value
 
 
 class EvidenceNodeContribution(ContractModel):
@@ -160,7 +214,10 @@ class ThesisScoreBreakdown(ContractModel):
     previous_score: int = Field(ge=0, le=100)
     health_score: int = Field(ge=0, le=100)
     score_delta: int = Field(ge=-100, le=100)
+    root_support_strength: float = Field(default=0, ge=0, le=1)
+    root_contradict_strength: float = Field(default=0, ge=0, le=1)
     root_state: float = Field(ge=-1, le=1)
+    root_verdict: NodeEvidenceVerdict = NodeEvidenceVerdict.INSUFFICIENT
     coverage_percent: float = Field(ge=0, le=100)
     invalidation_policy_version: str = "1.0.0"
     is_broken: bool = False
@@ -168,6 +225,24 @@ class ThesisScoreBreakdown(ContractModel):
     assumption_scores: list[AssumptionScoreState] = Field(default_factory=list)
     node_scores: list[LogicNodeScore] = Field(default_factory=list)
     evidence_impacts: list[EvidenceScoreImpact] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_legacy_root_axes_and_verdict(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        value = dict(value)
+        root_state = float(value.get("root_state", 0))
+        value.setdefault("root_support_strength", max(0.0, root_state))
+        value.setdefault("root_contradict_strength", max(0.0, -root_state))
+        value.setdefault(
+            "root_verdict",
+            _node_evidence_verdict(
+                float(value["root_support_strength"]),
+                float(value["root_contradict_strength"]),
+            ),
+        )
+        return value
 
 
 class StructuredThesis(ContractModel):
@@ -242,8 +317,7 @@ class EvidenceItem(ContractModel):
             EvidenceClassification.SUPPORT,
             EvidenceClassification.CONTRADICT,
         } or any(
-            finding.assessment
-            in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+            finding.assessment in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
             for finding in self.assumption_findings
         )
         if directional and self.source_url is None and self.vector_doc_id is None:

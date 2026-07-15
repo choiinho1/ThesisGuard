@@ -3,7 +3,49 @@
 import { useEffect, useState } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { saveEvidenceToHistory } from "@/lib/apiClient";
-import type { ApiMode, DashboardHolding, Evidence, HoldingAnalysisResponse } from "@/types/schema";
+import type {
+  ApiMode,
+  DashboardHolding,
+  Evidence,
+  HoldingAnalysisResponse,
+  NodeEvidenceVerdict,
+} from "@/types/schema";
+
+const evidenceVerdictLabel: Record<NodeEvidenceVerdict, string> = {
+  SUPPORTED: "지지",
+  REFUTED: "반박",
+  CONFLICTING: "충돌",
+  INSUFFICIENT: "근거 부족",
+};
+
+function finiteNumber(value: number | null | undefined, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function evidenceAxes(value: {
+  state?: number | null;
+  support_strength?: number | null;
+  contradict_strength?: number | null;
+}) {
+  const state = finiteNumber(value.state);
+  return {
+    state,
+    support: finiteNumber(value.support_strength, Math.max(0, state)),
+    contradict: finiteNumber(value.contradict_strength, Math.max(0, -state)),
+  };
+}
+
+function resolveEvidenceVerdict(
+  verdict: NodeEvidenceVerdict | null | undefined,
+  support: number,
+  contradict: number,
+): NodeEvidenceVerdict {
+  if (verdict && verdict in evidenceVerdictLabel) return verdict;
+  if (support > 0 && contradict > 0) return "CONFLICTING";
+  if (support > 0) return "SUPPORTED";
+  if (contradict > 0) return "REFUTED";
+  return "INSUFFICIENT";
+}
 
 interface ThesisDetailProps {
   holding: DashboardHolding;
@@ -34,9 +76,11 @@ export function ThesisDetail({
   const [evidenceSaveError, setEvidenceSaveError] = useState<string | null>(null);
   const thesis = analysis?.thesis ?? holding.thesis;
   const thesisLength = rawInput.trim().length;
-  const byAbsoluteScoreImpact = (left: Evidence, right: Evidence) =>
-    Math.abs(right.score_delta) - Math.abs(left.score_delta)
-    || right.score_delta - left.score_delta;
+  const byAbsoluteScoreImpact = (left: Evidence, right: Evidence) => {
+    const leftDelta = finiteNumber(left.score_delta);
+    const rightDelta = finiteNumber(right.score_delta);
+    return Math.abs(rightDelta) - Math.abs(leftDelta) || rightDelta - leftDelta;
+  };
   const pastEvidence = analysis?.evidence
     .filter((evidence) => evidence.evidence_scope === "PAST")
     .sort(byAbsoluteScoreImpact) ?? [];
@@ -158,6 +202,17 @@ export function ThesisDetail({
     );
   }
 
+  const rootAxes = evidenceAxes({
+    state: thesis.score_breakdown?.root_state,
+    support_strength: thesis.score_breakdown?.root_support_strength,
+    contradict_strength: thesis.score_breakdown?.root_contradict_strength,
+  });
+  const rootVerdict = resolveEvidenceVerdict(
+    thesis.score_breakdown?.root_verdict,
+    rootAxes.support,
+    rootAxes.contradict,
+  );
+
   return (
     <section className="panel thesis-detail">
       <div className="thesis-title-row">
@@ -185,30 +240,39 @@ export function ThesisDetail({
           <div className="score-breakdown-header">
             <div>
               <span>CAUSAL LOGIC GRAPH</span>
-              <strong>
-                ROOT {thesis.score_breakdown.root_state > 0 ? "+" : ""}
-                {thesis.score_breakdown.root_state.toFixed(2)}
-              </strong>
+              <strong>ROOT · {evidenceVerdictLabel[rootVerdict]}</strong>
             </div>
             <p>
-              근거 충족도 <strong>{thesis.score_breakdown.coverage_percent.toFixed(1)}%</strong>
+              근거 충족도{" "}
+              <strong>{finiteNumber(thesis.score_breakdown.coverage_percent).toFixed(1)}%</strong>
             </p>
           </div>
           <div className="score-breakdown-grid">
-            {thesis.score_breakdown.node_scores.map((node) => (
-              <article key={node.node_id}>
-                <div>
-                  <strong>{node.label}</strong>
-                  <span>
-                    {node.kind === "CLAIM" ? node.operator : "가정"}
-                    {node.required ? " · REQUIRED" : ""}
-                  </span>
-                </div>
-                <p className={node.state > 0 ? "positive" : node.state < 0 ? "negative" : ""}>
-                  {node.state > 0 ? "+" : ""}{node.state.toFixed(2)}
-                </p>
-              </article>
-            ))}
+            {thesis.score_breakdown.node_scores.map((node) => {
+              const axes = evidenceAxes(node);
+              const verdict = resolveEvidenceVerdict(
+                node.verdict,
+                axes.support,
+                axes.contradict,
+              );
+              return (
+                <article key={node.node_id}>
+                  <div>
+                    <strong>{node.label}</strong>
+                    <span>
+                      {node.kind === "CLAIM" ? node.operator : "가정"}
+                      {node.required ? " · REQUIRED" : ""}
+                    </span>
+                  </div>
+                  <p className={axes.state > 0 ? "positive" : axes.state < 0 ? "negative" : ""}>
+                    {evidenceVerdictLabel[verdict]}
+                    <small>
+                      S {axes.support.toFixed(2)} / R {axes.contradict.toFixed(2)}
+                    </small>
+                  </p>
+                </article>
+              );
+            })}
           </div>
           {thesis.score_breakdown.is_broken && (
             <div className="score-invalidation-alert" role="alert">
@@ -350,21 +414,22 @@ interface EvidenceRowProps {
 }
 
 function EvidenceRow({ evidence, isSaved, isSaving, onToggleSaved }: EvidenceRowProps) {
-  const directionalNodes = evidence.node_contributions.filter(
-    (contribution) => contribution.signed_strength !== 0,
+  const scoreDelta = finiteNumber(evidence.score_delta);
+  const directionalNodes = (evidence.node_contributions ?? []).filter(
+    (contribution) => finiteNumber(contribution.signed_strength) !== 0,
   );
   return (
     <article className="evidence-link evidence-link--static">
       <div className="evidence-meta">
         <span>{evidence.classification} · {evidence.impact}</span>
         <strong className={
-          evidence.score_delta > 0
+          scoreDelta > 0
             ? "evidence-score-impact positive"
-            : evidence.score_delta < 0
+            : scoreDelta < 0
               ? "evidence-score-impact negative"
               : "evidence-score-impact"
         }>
-          최종 점수 {evidence.score_delta > 0 ? "+" : ""}{evidence.score_delta.toFixed(2)}
+          최종 점수 {scoreDelta > 0 ? "+" : ""}{scoreDelta.toFixed(2)}
         </strong>
         {evidence.published_at ? (
           <time dateTime={evidence.published_at}>
@@ -382,9 +447,11 @@ function EvidenceRow({ evidence, isSaved, isSaving, onToggleSaved }: EvidenceRow
             {directionalNodes.map((contribution) => (
               <li key={contribution.node_id}>
                 <span>{contribution.assumption}</span>
-                <strong className={contribution.signed_strength > 0 ? "positive" : "negative"}>
-                  {contribution.signed_strength > 0 ? "+" : ""}
-                  {contribution.signed_strength.toFixed(2)}
+                <strong
+                  className={finiteNumber(contribution.signed_strength) > 0 ? "positive" : "negative"}
+                >
+                  {finiteNumber(contribution.signed_strength) > 0 ? "+" : ""}
+                  {finiteNumber(contribution.signed_strength).toFixed(2)}
                 </strong>
               </li>
             ))}
