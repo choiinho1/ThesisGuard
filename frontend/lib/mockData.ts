@@ -387,13 +387,6 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
   });
 }
 
-export function removeMockAlert(alertId: string) {
-  dashboardState = {
-    ...dashboardState,
-    recent_alerts: dashboardState.recent_alerts.filter((alert) => alert.id !== alertId),
-  };
-}
-
 export function getMockThesisHistory(thesisId: string): ThesisVersion[] {
   return structuredClone(mockThesisVersions[thesisId] ?? []);
 }
