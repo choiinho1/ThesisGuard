@@ -44,7 +44,10 @@ async def handle_alert_decision(
 
     settings = await db.get(orm.AlertSettings, user.id)
     immediate_enabled = settings is None or settings.immediate_alerts_enabled
-    if decision.delivery == "IMMEDIATE" and immediate_enabled:
+    # Email is scheduler-only: manual "재분석" still records an Alert (so the
+    # UI can show it on the analysis result) but never emails the user, since
+    # they're already watching the page live when they click it themselves.
+    if decision.delivery == "IMMEDIATE" and immediate_enabled and is_scheduled:
         await send_email(user.email, alert.title, alert.message)
         alert.is_sent = True
         alert.sent_at = datetime.now(UTC)
