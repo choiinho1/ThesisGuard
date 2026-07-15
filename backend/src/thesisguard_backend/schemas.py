@@ -241,9 +241,10 @@ class EvidenceResponse(ORMModel):
     created_at: datetime
 
 
-class EvidenceHistoryEntryResponse(EvidenceResponse):
+class EvidenceHistoryGroupResponse(BaseModel):
     holding_id: uuid.UUID
     ticker: str
+    entries: list[EvidenceResponse]
 
 
 # ------------------------------------------------- Analysis / Concentration

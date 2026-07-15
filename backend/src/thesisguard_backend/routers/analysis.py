@@ -38,7 +38,7 @@ from thesisguard_backend.routers.holdings import OwnedHolding
 from thesisguard_backend.schemas import (
     AlertResponse,
     AnalysisResultResponse,
-    EvidenceHistoryEntryResponse,
+    EvidenceHistoryGroupResponse,
     EvidenceResponse,
     HoldingAnalysisResponse,
     NaturalLanguageQueryRequest,
@@ -397,11 +397,17 @@ async def get_common_risk(portfolio: OwnedPortfolio, db: DbSession) -> list[orm.
 
 @router.get(
     "/api/portfolios/{portfolio_id}/evidence-history",
-    response_model=list[EvidenceHistoryEntryResponse],
+    response_model=list[EvidenceHistoryGroupResponse],
 )
 async def get_evidence_history(
     portfolio: OwnedPortfolio, db: DbSession
-) -> list[EvidenceHistoryEntryResponse]:
+) -> list[EvidenceHistoryGroupResponse]:
+    """One group per holding that has saved evidence, so the frontend can
+    render a per-ticker view (tabs, accordion, a dedicated page — routing
+    isn't decided yet) without needing a separate request per holding.
+    Groups are ordered by their most recent saved evidence; entries within a
+    group are newest first."""
+
     rows = (
         await db.execute(
             select(orm.Evidence, orm.Holding.id, orm.Holding.ticker)
@@ -414,14 +420,35 @@ async def get_evidence_history(
             .order_by(orm.Evidence.created_at.desc())
         )
     ).all()
-    return [
-        EvidenceHistoryEntryResponse(
-            **EvidenceResponse.model_validate(evidence).model_dump(),
-            holding_id=holding_id,
-            ticker=ticker,
-        )
-        for evidence, holding_id, ticker in rows
-    ]
+
+    groups: dict[uuid.UUID, EvidenceHistoryGroupResponse] = {}
+    for evidence, holding_id, ticker in rows:
+        group = groups.get(holding_id)
+        if group is None:
+            group = EvidenceHistoryGroupResponse(holding_id=holding_id, ticker=ticker, entries=[])
+            groups[holding_id] = group
+        group.entries.append(EvidenceResponse.model_validate(evidence))
+    return list(groups.values())
+
+
+@router.get(
+    "/api/holdings/{holding_id}/evidence-history",
+    response_model=list[EvidenceResponse],
+)
+async def get_holding_evidence_history(holding: OwnedHolding, db: DbSession) -> list[orm.Evidence]:
+    """Saved-history evidence scoped to a single holding, for whenever the
+    frontend lands on per-ticker routing instead of (or alongside) the
+    portfolio-wide grouped endpoint above."""
+
+    thesis_id = await db.scalar(select(orm.Thesis.id).where(orm.Thesis.holding_id == holding.id))
+    if thesis_id is None:
+        return []
+    result = await db.scalars(
+        select(orm.Evidence)
+        .where(orm.Evidence.thesis_id == thesis_id, orm.Evidence.saved_to_history.is_(True))
+        .order_by(orm.Evidence.created_at.desc())
+    )
+    return list(result)
 
 
 @router.post("/api/evidence/{evidence_id}/save", response_model=EvidenceResponse)
