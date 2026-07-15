@@ -29,9 +29,13 @@ export function ThesisDetail({
   const [savedEvidence, setSavedEvidence] = useState<Evidence[]>([]);
   const thesis = analysis?.thesis ?? holding.thesis;
   const thesisLength = rawInput.trim().length;
-  const visibleEvidence = analysis?.evidence.filter(
-    (evidence) => evidence.classification !== "NEUTRAL" || evidence.impact !== "LOW",
+  const pastEvidence = analysis?.evidence.filter(
+    (evidence) => evidence.evidence_scope === "PAST",
   ) ?? [];
+  const newEvidence = analysis?.evidence.filter(
+    (evidence) => evidence.evidence_scope === "NEW",
+  ) ?? [];
+  const emptyEvidenceMessage = "새로운 고유 근거가 없습니다. 과거 근거는 아래에서 확인하세요.";
 
   useEffect(() => {
     const stored = window.localStorage.getItem(`thesisguard_saved_evidence_${holding.id}`);
@@ -117,6 +121,45 @@ export function ThesisDetail({
         <DetailList title="주요 리스크" items={thesis.key_risks} tone="risk" />
       </div>
 
+      {thesis.score_breakdown && thesis.score_breakdown.slot_scores.length > 0 && (
+        <section className="score-breakdown-panel" aria-label="점수 산정 내역">
+          <div className="score-breakdown-header">
+            <div>
+              <span>SCORING TEMPLATE</span>
+              <strong>{thesis.score_breakdown.template_id}</strong>
+            </div>
+            <p>
+              근거 충족도 <strong>{thesis.score_breakdown.coverage_percent.toFixed(1)}%</strong>
+            </p>
+          </div>
+          <div className="score-breakdown-grid">
+            {thesis.score_breakdown.slot_scores.map((slot) => (
+              <article key={slot.slot_id}>
+                <div>
+                  <strong>{slot.label_ko}</strong>
+                  <span>
+                    가중치 {(slot.weight_bps / 100).toFixed(0)}%
+                    {slot.core ? " · CORE" : ""}
+                  </span>
+                </div>
+                <p className={slot.contribution_points > 0 ? "positive" : slot.contribution_points < 0 ? "negative" : ""}>
+                  {slot.contribution_points > 0 ? "+" : ""}{slot.contribution_points.toFixed(1)}점
+                </p>
+              </article>
+            ))}
+          </div>
+          {thesis.score_breakdown.is_broken && (
+            <div className="score-invalidation-alert" role="alert">
+              <strong>BROKEN · 핵심 가정 무효화</strong>
+              {thesis.score_breakdown.invalidated_assumptions.length > 0 && (
+                <p>{thesis.score_breakdown.invalidated_assumptions.join(" · ")}</p>
+              )}
+              <span>논리를 재설정하기 전까지 이 상태가 유지됩니다.</span>
+            </div>
+          )}
+        </section>
+      )}
+
       {editing && (
         <section className="thesis-editor">
           <label htmlFor={`edit-thesis-${holding.id}`}>투자 논리 수정</label>
@@ -175,51 +218,47 @@ export function ThesisDetail({
 
           <details className="analysis-evidence" open>
             <summary>
-              <span><span className="result-label">EVIDENCE</span> 주요 근거</span>
-              <span className="evidence-count">{visibleEvidence.length}</span>
+              <span><span className="result-label">NEW</span> 새 근거</span>
+              <span className="evidence-count">{newEvidence.length}</span>
             </summary>
             <div className="evidence-list scrollable-list" role="region" aria-label="분석 근거 목록" tabIndex={0}>
-              {visibleEvidence.map((evidence) => (
-                <article className="evidence-link evidence-link--static" key={evidence.id}>
-                  <div className="evidence-meta">
-                    <span>{evidence.classification} · {evidence.impact}</span>
-                    {evidence.published_at ? (
-                      <time dateTime={evidence.published_at}>
-                        {formatEvidenceDate(evidence.published_at)}
-                      </time>
-                    ) : (
-                      <span className="evidence-date">날짜 정보 없음</span>
-                    )}
-                  </div>
-                  <p>{evidence.content_snippet}</p>
-                  <div className="evidence-actions">
-                    {evidence.source_url && (
-                      <a
-                        className="evidence-source-link"
-                        href={evidence.source_url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        원문 보기 ↗
-                      </a>
-                    )}
-                    <button
-                      className={savedEvidence.some((item) => item.id === evidence.id)
-                        ? "evidence-save-button is-saved"
-                        : "evidence-save-button"}
-                      onClick={() => toggleSavedEvidence(evidence)}
-                      type="button"
-                    >
-                      {savedEvidence.some((item) => item.id === evidence.id)
-                        ? "저장됨"
-                        : "주요 근거로 저장"}
-                    </button>
-                  </div>
-                </article>
+              {newEvidence.map((evidence) => (
+                <EvidenceRow
+                  evidence={evidence}
+                  isSaved={savedEvidence.some((item) => item.id === evidence.id)}
+                  key={evidence.id}
+                  onToggleSaved={toggleSavedEvidence}
+                />
               ))}
-              {visibleEvidence.length === 0 && <p className="empty-copy">표시할 주요 근거가 없습니다.</p>}
+              {newEvidence.length === 0 && (
+                <p className="empty-copy">{emptyEvidenceMessage}</p>
+              )}
             </div>
           </details>
+
+          {pastEvidence.length > 0 && (
+            <details className="analysis-evidence past-evidence">
+              <summary>
+                <span><span className="result-label">PAST</span> 과거 근거</span>
+                <span className="evidence-count">{pastEvidence.length}</span>
+              </summary>
+              <div
+                aria-label="과거 분석 근거 목록"
+                className="evidence-list scrollable-list"
+                role="region"
+                tabIndex={0}
+              >
+                {pastEvidence.map((evidence) => (
+                  <EvidenceRow
+                    evidence={evidence}
+                    isSaved={savedEvidence.some((item) => item.id === evidence.id)}
+                    key={evidence.id}
+                    onToggleSaved={toggleSavedEvidence}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       )}
 
@@ -235,6 +274,49 @@ export function ThesisDetail({
         </div>
       </div>
     </section>
+  );
+}
+
+interface EvidenceRowProps {
+  evidence: Evidence;
+  isSaved: boolean;
+  onToggleSaved: (evidence: Evidence) => void;
+}
+
+function EvidenceRow({ evidence, isSaved, onToggleSaved }: EvidenceRowProps) {
+  return (
+    <article className="evidence-link evidence-link--static">
+      <div className="evidence-meta">
+        <span>{evidence.classification} · {evidence.impact}</span>
+        {evidence.published_at ? (
+          <time dateTime={evidence.published_at}>
+            {formatEvidenceDate(evidence.published_at)}
+          </time>
+        ) : (
+          <span className="evidence-date">날짜 정보 없음</span>
+        )}
+      </div>
+      <p>{evidence.content_snippet}</p>
+      <div className="evidence-actions">
+        {evidence.source_url && (
+          <a
+            className="evidence-source-link"
+            href={evidence.source_url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            원문 보기 ↗
+          </a>
+        )}
+        <button
+          className={isSaved ? "evidence-save-button is-saved" : "evidence-save-button"}
+          onClick={() => onToggleSaved(evidence)}
+          type="button"
+        >
+          {isSaved ? "저장됨" : "주요 근거로 저장"}
+        </button>
+      </div>
+    </article>
   );
 }
 

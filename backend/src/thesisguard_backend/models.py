@@ -21,6 +21,7 @@ from agents.models import (
     EvidenceSourceType,
     ThesisStatus,
 )
+from agents.thesis_templates import THESIS_TEMPLATE_CATALOG_VERSION, ThesisTemplateId
 from sqlalchemy import (
     JSON,
     DateTime,
@@ -240,6 +241,17 @@ class Thesis(Base):
     positive_signals: Mapped[list[str]] = mapped_column(_json_type(), default=list)
     negative_signals: Mapped[list[str]] = mapped_column(_json_type(), default=list)
     key_risks: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    template_id: Mapped[str] = mapped_column(
+        String(50), default=ThesisTemplateId.GENERAL_FUNDAMENTAL.value, nullable=False
+    )
+    template_catalog_version: Mapped[str] = mapped_column(
+        String(20), default=THESIS_TEMPLATE_CATALOG_VERSION, nullable=False
+    )
+    template_snapshot: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
+    assumption_bindings: Mapped[list[dict]] = mapped_column(
+        _json_type(), default=list, nullable=False
+    )
+    score_breakdown: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
     confidence_score: Mapped[int] = mapped_column(SmallInteger, default=50)
     status: Mapped[ThesisStatus] = mapped_column(
         SAEnum(ThesisStatus, name="thesis_status"), default=ThesisStatus.UNCHANGED, nullable=False

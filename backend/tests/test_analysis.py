@@ -51,12 +51,8 @@ async def test_get_latest_analysis_requires_a_completed_run(db_session) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_latest_analysis_returns_only_the_newest_version_evidence(db_session) -> None:
-    """Regression test: evidence must be scoped to the latest ThesisVersion,
-    not every evidence row ever collected for the thesis (which accumulate
-    across multiple /analyze runs). This also exercises thesis_version_id
-    being set correctly at insert time (it depends on the version row being
-    flushed first so its client-side UUID default is populated)."""
+async def test_get_latest_analysis_distinguishes_new_and_past_evidence(db_session) -> None:
+    """Past evidence keeps its assessment but is explicitly separated from new evidence."""
 
     portfolio = orm.Portfolio(user=orm.User(email="u@example.com", password_hash="h"), name="T")
     holding = orm.Holding(portfolio=portfolio, ticker="NVDA", quantity=1, avg_buy_price=1)
@@ -82,8 +78,8 @@ async def test_get_latest_analysis_returns_only_the_newest_version_evidence(db_s
             document_id="doc-1",
             source_type="NEWS",
             content_snippet="old evidence",
-            classification="NEUTRAL",
-            impact="LOW",
+            classification="CONTRADICT",
+            impact="MEDIUM",
             reason="r",
         )
     )
@@ -121,6 +117,20 @@ async def test_get_latest_analysis_returns_only_the_newest_version_evidence(db_s
         )
     )
     db_session.add(
+        orm.Evidence(
+            thesis_id=thesis.id,
+            thesis_version_id=version2.id,
+            document_id="doc-1",
+            source_type="NEWS",
+            content_snippet=(
+                "과거 분석에서 이미 반영된 동일 문서이므로 이번 판단에서 중복 제외했습니다."
+            ),
+            classification="NEUTRAL",
+            impact="LOW",
+            reason="동일 document_id의 과거 근거가 이미 현재 신뢰도에 반영되어 있습니다.",
+        )
+    )
+    db_session.add(
         orm.AnalysisResult(
             thesis_id=thesis.id,
             analysis_type="BULL_BEAR_JUDGE",
@@ -136,4 +146,11 @@ async def test_get_latest_analysis_returns_only_the_newest_version_evidence(db_s
 
     assert response.version.version_no == 2
     assert response.analysis_result.judge_summary == "j2"
-    assert [item.document_id for item in response.evidence] == ["doc-2"]
+    assert [item.document_id for item in response.evidence] == ["doc-2", "doc-1"]
+    new_evidence, past_evidence = response.evidence
+    assert new_evidence.evidence_scope == "NEW"
+    assert new_evidence.classification == "SUPPORT"
+    assert new_evidence.impact == "HIGH"
+    assert past_evidence.evidence_scope == "PAST"
+    assert past_evidence.classification == "CONTRADICT"
+    assert past_evidence.impact == "MEDIUM"

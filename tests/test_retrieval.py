@@ -33,6 +33,11 @@ def test_default_relevance_threshold_is_055() -> None:
     assert WorkflowConfig().min_relevance_score == 0.55
 
 
+def test_source_lookback_cannot_exceed_thirty_days() -> None:
+    with pytest.raises(ValueError, match="between 1 and 30"):
+        WorkflowConfig(news_lookback_days=31)
+
+
 def _document(
     document_id: str,
     title: str,
@@ -100,6 +105,62 @@ def test_preselection_removes_stale_duplicate_and_irrelevant_macro_documents() -
     assert all("selection_score" in item.metadata for item in selected)
 
 
+def test_preselection_strictly_limits_news_and_filings_to_thirty_days() -> None:
+    now = datetime(2026, 7, 14, 12, tzinfo=UTC)
+    research_data = {
+        "filings": [
+            _document(
+                "filing-boundary",
+                "NVDA AI CAPEX filing at boundary",
+                source_type=EvidenceSourceType.SEC_FILING,
+                published_at=now - timedelta(days=30),
+            ),
+            _document(
+                "filing-stale",
+                "NVDA stale filing",
+                source_type=EvidenceSourceType.SEC_FILING,
+                published_at=now - timedelta(days=30, seconds=1),
+            ),
+            _document(
+                "filing-undated",
+                "NVDA undated filing",
+                source_type=EvidenceSourceType.SEC_FILING,
+            ),
+        ],
+        "news": [
+            _document("news-recent", "NVDA recent AI CAPEX news", published_at=now),
+            _document(
+                "news-stale",
+                "NVDA stale AI CAPEX news",
+                published_at=now - timedelta(days=31),
+            ),
+            _document("news-undated", "NVDA undated AI CAPEX news"),
+            _document(
+                "news-future",
+                "NVDA future-dated AI CAPEX news",
+                published_at=now + timedelta(seconds=1),
+            ),
+        ],
+        "macro": [],
+    }
+
+    selected = preselect_documents(
+        research_data,
+        ticker="NVDA",
+        thesis=_thesis(),
+        focus_points=_thesis().key_assumptions,
+        lookback_days=30,
+        min_news_score=0,
+        source_limits={"filings": 10, "news": 10, "macro": 0},
+        now=now,
+    )
+
+    assert {item.document_id for item in selected} == {
+        "filing-boundary",
+        "news-recent",
+    }
+
+
 def test_preselection_rejects_news_about_a_different_hood() -> None:
     now = datetime(2026, 7, 14, tzinfo=UTC)
     company_name = "Robinhood Markets, Inc."
@@ -136,6 +197,34 @@ def test_preselection_rejects_news_about_a_different_hood() -> None:
     assert [item.document_id for item in selected] == ["robinhood-results"]
 
 
+def test_preselection_excludes_history_and_backfills_from_later_candidates() -> None:
+    now = datetime(2026, 7, 14, tzinfo=UTC)
+    topics = ["demand", "revenue", "capacity", "orders"]
+    documents = [
+        _document(f"news-{index}", f"NVDA AI CAPEX {topic} update", published_at=now)
+        for index, topic in enumerate(topics, start=1)
+    ]
+    documents[1] = documents[1].model_copy(
+        update={"source_url": "https://example.com/repeated?utm_source=feed&id=2"}
+    )
+
+    selected = preselect_documents(
+        {"filings": [], "news": documents, "macro": []},
+        ticker="NVDA",
+        thesis=_thesis(),
+        focus_points=_thesis().key_assumptions,
+        lookback_days=30,
+        min_news_score=0.30,
+        source_limits={"filings": 0, "news": 2, "macro": 0},
+        excluded_document_ids={"news-1"},
+        excluded_source_urls={"https://example.com/repeated?id=2&utm_campaign=old"},
+        now=now,
+    )
+
+    assert len(selected) == 2
+    assert {item.document_id for item in selected} == {"news-3", "news-4"}
+
+
 def test_extract_relevant_passages_keeps_matching_section_within_budget() -> None:
     content = "\n".join(
         [
@@ -156,10 +245,14 @@ def test_extract_relevant_passages_keeps_matching_section_within_budget() -> Non
 
 
 class _LowRelevanceModel:
+    def __init__(self) -> None:
+        self.calls = 0
+
     async def classify_evidence(  # type: ignore[no-untyped-def]
         self, thesis, document, evidence_history_summary=""
     ):
         del evidence_history_summary
+        self.calls += 1
         return EvidenceAssessment(
             classification=EvidenceClassification.SUPPORT,
             impact=EvidenceImpact.HIGH,
@@ -200,7 +293,7 @@ async def test_low_relevance_directional_result_is_neutralized_before_debate() -
 
 
 @pytest.mark.asyncio
-async def test_historical_document_is_neutralized_without_model_reclassification() -> None:
+async def test_historical_document_is_omitted_without_model_reclassification() -> None:
     document = _document(
         "already-scored-document",
         "The same fact collected in an earlier analysis.",
@@ -224,10 +317,42 @@ async def test_historical_document_is_neutralized_without_model_reclassification
         SimpleNamespace(context=dependencies),  # type: ignore[arg-type]
     )
 
-    evidence = result["evidence_list"][0]
-    assert evidence.classification == EvidenceClassification.NEUTRAL
-    assert evidence.impact == EvidenceImpact.LOW
-    assert "중복 제외" in evidence.content_snippet
+    assert result["evidence_list"] == []
+    assert result["needs_more_research"] is True
+    assert model.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_evidence_from_earlier_research_round_is_preserved() -> None:
+    first_document = _document("round-1", "NVDA AI CAPEX round one")
+    second_document = _document("round-2", "NVDA AI CAPEX round two")
+    model = _LowRelevanceModel()
+    dependencies = AgentDependencies(
+        context_provider=None,  # type: ignore[arg-type]
+        research_tools=None,  # type: ignore[arg-type]
+        model=model,  # type: ignore[arg-type]
+        config=WorkflowConfig(),
+    )
+    runtime = SimpleNamespace(context=dependencies)
+
+    first = await classify_evidence(
+        {
+            "selected_documents": [first_document],
+            "thesis_snapshot": _thesis(),
+        },
+        runtime,  # type: ignore[arg-type]
+    )
+    second = await classify_evidence(
+        {
+            "selected_documents": [second_document],
+            "evidence_list": first["evidence_list"],
+            "thesis_snapshot": _thesis(),
+        },
+        runtime,  # type: ignore[arg-type]
+    )
+
+    assert [item.document_id for item in second["evidence_list"]] == ["round-1", "round-2"]
+    assert model.calls == 2
 
 
 def test_low_impact_directional_evidence_is_not_meaningful() -> None:

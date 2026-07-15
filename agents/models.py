@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, model_validator
+
+from agents.thesis_templates import ThesisTemplateId
 
 
 class ContractModel(BaseModel):
@@ -63,6 +65,50 @@ class AnalysisType(StrEnum):
     COMMON_RISK = "COMMON_RISK"
 
 
+class AssumptionBinding(ContractModel):
+    """User assumptions mapped to one immutable template slot."""
+
+    slot_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    assumptions: list[str] = Field(default_factory=list)
+    mapping_reason: str = ""
+
+
+class AssumptionScoreState(ContractModel):
+    assumption: str = Field(min_length=1)
+    slot_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    support_strength: Literal[0.0, 0.5, 1.0] = 0.0
+    contradict_strength: Literal[0.0, 0.5, 1.0] = 0.0
+    state: Literal[-1.0, -0.5, 0.0, 0.5, 1.0] = 0.0
+    has_evidence: bool = False
+    evidence_document_ids: list[str] = Field(default_factory=list)
+    invalidation_streak: int = Field(default=0, ge=0)
+    invalidation_triggered: bool = False
+
+
+class SlotScore(ContractModel):
+    slot_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    label_ko: str = Field(min_length=1)
+    weight_bps: int = Field(gt=0, le=10_000)
+    core: bool = False
+    state: float = Field(ge=-1, le=1)
+    contribution_points: float = Field(ge=-50, le=50)
+    coverage_percent: float = Field(ge=0, le=100)
+
+
+class ThesisScoreBreakdown(ContractModel):
+    template_id: ThesisTemplateId
+    template_catalog_version: str = Field(min_length=1)
+    previous_score: int = Field(ge=0, le=100)
+    health_score: int = Field(ge=0, le=100)
+    score_delta: int = Field(ge=-100, le=100)
+    coverage_percent: float = Field(ge=0, le=100)
+    invalidation_policy_version: str = "1.0.0"
+    is_broken: bool = False
+    invalidated_assumptions: list[str] = Field(default_factory=list)
+    assumption_scores: list[AssumptionScoreState] = Field(default_factory=list)
+    slot_scores: list[SlotScore] = Field(default_factory=list)
+
+
 class StructuredThesis(ContractModel):
     raw_input: str = Field(min_length=10)
     main_thesis: str = Field(min_length=5)
@@ -70,6 +116,9 @@ class StructuredThesis(ContractModel):
     positive_signals: list[str] = Field(default_factory=list)
     negative_signals: list[str] = Field(default_factory=list)
     key_risks: list[str] = Field(default_factory=list)
+    template_id: ThesisTemplateId = ThesisTemplateId.GENERAL_FUNDAMENTAL
+    assumption_bindings: list[AssumptionBinding] = Field(default_factory=list)
+    score_breakdown: ThesisScoreBreakdown | None = None
     confidence_score: int = Field(default=50, ge=0, le=100)
     status: ThesisStatus = ThesisStatus.UNCHANGED
 
@@ -89,6 +138,7 @@ class AnalysisContext(ContractModel):
     portfolio_theses: list[PortfolioThesis] = Field(default_factory=list)
     evidence_history_summary: str = ""
     evidence_history_document_ids: list[str] = Field(default_factory=list)
+    evidence_history_source_urls: list[str] = Field(default_factory=list)
 
 
 class ResearchRequest(ContractModel):
@@ -176,9 +226,9 @@ class DebateReport(ContractModel):
     key_points: list[str] = Field(default_factory=list)
 
 
-class JudgeDecision(ContractModel):
-    updated_confidence: int = Field(ge=0, le=100)
-    updated_status: ThesisStatus
+class JudgeExplanation(ContractModel):
+    """Narrative-only judgment; deterministic code owns score and status."""
+
     change_reason: str = Field(min_length=1)
     judge_summary: str = Field(min_length=1)
     conflicting_assumptions: list[str] = Field(default_factory=list)
@@ -228,9 +278,11 @@ class ThesisAnalysisResult(ContractModel):
     judge_summary: str
     updated_confidence: int = Field(ge=0, le=100)
     updated_status: ThesisStatus
+    score_breakdown: ThesisScoreBreakdown
     change_reason: str
     conflicting_assumptions: list[str] = Field(default_factory=list)
     observation_points: list[str] = Field(default_factory=list)
     concentration: PortfolioAnalysis
     alert_decision: AlertDecision
     research_rounds: int = Field(ge=1)
+    source_errors: list[str] = Field(default_factory=list)

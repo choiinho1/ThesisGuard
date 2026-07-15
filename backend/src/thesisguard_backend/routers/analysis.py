@@ -13,11 +13,17 @@ from agents.graph import arun_analysis_workflow
 from agents.models import EvidenceItem
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.alert_engine import handle_alert_decision
+from thesisguard_backend.config import get_settings
 from thesisguard_backend.deps import Agent, CurrentUser, DbSession, get_owned_portfolio
-from thesisguard_backend.evidence_history import refresh_evidence_history_file
+from thesisguard_backend.evidence_history import (
+    is_duplicate_placeholder,
+    refresh_evidence_history_file,
+    select_substantive_evidence,
+)
 from thesisguard_backend.observability import observe_llm_operation
 from thesisguard_backend.portfolio_analysis import (
     load_portfolio_thesis_holding_ids,
@@ -40,6 +46,39 @@ from thesisguard_backend.schemas import (
 router = APIRouter(tags=["analysis"])
 
 OwnedPortfolio = Annotated[orm.Portfolio, Depends(get_owned_portfolio)]
+
+
+async def _load_scoped_evidence(
+    db: AsyncSession, *, thesis_id, current_version_id
+) -> list[EvidenceResponse]:
+    rows = list(
+        await db.scalars(
+            select(orm.Evidence)
+            .where(orm.Evidence.thesis_id == thesis_id)
+            .order_by(orm.Evidence.created_at.asc())
+        )
+    )
+    new_rows = [
+        row
+        for row in rows
+        if row.thesis_version_id == current_version_id and not is_duplicate_placeholder(row)
+    ]
+    new_document_ids = {row.document_id for row in new_rows}
+    past_rows = select_substantive_evidence(
+        [row for row in rows if row.thesis_version_id != current_version_id],
+        max_items=get_settings().evidence_history_max_items,
+    )
+    past_rows = [row for row in reversed(past_rows) if row.document_id not in new_document_ids]
+    return [
+        *(
+            EvidenceResponse.model_validate(row).model_copy(update={"evidence_scope": "NEW"})
+            for row in new_rows
+        ),
+        *(
+            EvidenceResponse.model_validate(row).model_copy(update={"evidence_scope": "PAST"})
+            for row in past_rows
+        ),
+    ]
 
 
 @router.post("/api/holdings/{holding_id}/analyze", response_model=HoldingAnalysisResponse)
@@ -101,6 +140,11 @@ async def analyze_holding(
         "positive_signals": thesis.positive_signals,
         "negative_signals": thesis.negative_signals,
         "key_risks": thesis.key_risks,
+        "template_id": thesis.template_id,
+        "template_catalog_version": thesis.template_catalog_version,
+        "template_snapshot": thesis.template_snapshot,
+        "assumption_bindings": thesis.assumption_bindings,
+        "score_breakdown": thesis.score_breakdown,
         "confidence_score": thesis.confidence_score,
         "status": thesis.status.value if hasattr(thesis.status, "value") else thesis.status,
         "created_at": thesis.created_at.isoformat(),
@@ -124,6 +168,7 @@ async def analyze_holding(
 
     thesis.confidence_score = result.updated_confidence
     thesis.status = result.updated_status
+    thesis.score_breakdown = result.score_breakdown.model_dump(mode="json")
 
     evidence_rows = [
         orm.Evidence(
@@ -181,7 +226,9 @@ async def analyze_holding(
     return HoldingAnalysisResponse(
         thesis=ThesisResponse.model_validate(thesis),
         version=ThesisVersionResponse.model_validate(thesis_version),
-        evidence=[EvidenceResponse.model_validate(row) for row in evidence_rows],
+        evidence=await _load_scoped_evidence(
+            db, thesis_id=thesis.id, current_version_id=thesis_version.id
+        ),
         analysis_result=AnalysisResultResponse.model_validate(analysis_result),
         alert=AlertResponse.model_validate(alert) if alert else None,
     )
@@ -215,11 +262,6 @@ async def get_latest_analysis(holding: OwnedHolding, db: DbSession) -> HoldingAn
         .order_by(orm.AnalysisResult.created_at.desc())
         .limit(1)
     )
-    evidence_rows = list(
-        await db.scalars(
-            select(orm.Evidence).where(orm.Evidence.thesis_version_id == thesis_version.id)
-        )
-    )
     alert = await db.scalar(
         select(orm.Alert)
         .where(orm.Alert.thesis_id == thesis.id)
@@ -230,7 +272,9 @@ async def get_latest_analysis(holding: OwnedHolding, db: DbSession) -> HoldingAn
     return HoldingAnalysisResponse(
         thesis=ThesisResponse.model_validate(thesis),
         version=ThesisVersionResponse.model_validate(thesis_version),
-        evidence=[EvidenceResponse.model_validate(row) for row in evidence_rows],
+        evidence=await _load_scoped_evidence(
+            db, thesis_id=thesis.id, current_version_id=thesis_version.id
+        ),
         analysis_result=AnalysisResultResponse.model_validate(analysis_result),
         alert=AlertResponse.model_validate(alert) if alert else None,
     )

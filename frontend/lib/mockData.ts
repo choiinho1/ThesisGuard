@@ -17,6 +17,34 @@ import type {
 const now = "2026-07-13T02:00:00Z";
 const userId = "00000000-0000-4000-8000-000000000001";
 const portfolioId = "10000000-0000-4000-8000-000000000001";
+const templateCatalogVersion = "1.0.0";
+
+function mockTemplateSnapshot(templateId: string): Record<string, unknown> {
+  return {
+    catalog_version: templateCatalogVersion,
+    template_id: templateId,
+    assumption_slots: [],
+  };
+}
+
+function mockScoreBreakdown(
+  templateId: Thesis["template_id"],
+  healthScore: number,
+): NonNullable<Thesis["score_breakdown"]> {
+  return {
+    template_id: templateId,
+    template_catalog_version: templateCatalogVersion,
+    previous_score: healthScore,
+    health_score: healthScore,
+    score_delta: 0,
+    coverage_percent: 0,
+    invalidation_policy_version: "1.0.0",
+    is_broken: false,
+    invalidated_assumptions: [],
+    assumption_scores: [],
+    slot_scores: [],
+  };
+}
 
 export const mockPortfolios: Portfolio[] = [
   {
@@ -40,6 +68,11 @@ const nvdaThesis: Thesis = {
   positive_signals: ["클라우드 사업자 가이던스 상향", "차세대 GPU 수요 증가"],
   negative_signals: ["고객사 자체 ASIC 확대", "데이터센터 투자 효율화"],
   key_risks: ["수출 규제 강화", "대형 고객 매출 집중"],
+  template_id: "SCALABLE_GROWTH",
+  template_catalog_version: templateCatalogVersion,
+  template_snapshot: mockTemplateSnapshot("SCALABLE_GROWTH"),
+  assumption_bindings: [],
+  score_breakdown: mockScoreBreakdown("SCALABLE_GROWTH", 82),
   confidence_score: 82,
   status: "STRENGTHENED",
   created_at: "2026-03-02T09:00:00Z",
@@ -55,6 +88,11 @@ const avgoThesis: Thesis = {
   positive_signals: ["AI 반도체 수주 확대"],
   negative_signals: ["고객사 발주 지연"],
   key_risks: ["소수 고객 의존도"],
+  template_id: "SCALABLE_GROWTH",
+  template_catalog_version: templateCatalogVersion,
+  template_snapshot: mockTemplateSnapshot("SCALABLE_GROWTH"),
+  assumption_bindings: [],
+  score_breakdown: mockScoreBreakdown("SCALABLE_GROWTH", 54),
   confidence_score: 54,
   status: "WEAKENED",
   created_at: "2026-02-10T09:00:00Z",
@@ -255,6 +293,11 @@ export function createMockThesis(holdingId: string, rawInput: string): Thesis {
     positive_signals: ["수요 가이던스 상향"],
     negative_signals: ["예상보다 느린 수요 회복"],
     key_risks: ["산업 사이클 변동성"],
+    template_id: "GENERAL_FUNDAMENTAL",
+    template_catalog_version: templateCatalogVersion,
+    template_snapshot: mockTemplateSnapshot("GENERAL_FUNDAMENTAL"),
+    assumption_bindings: [],
+    score_breakdown: mockScoreBreakdown("GENERAL_FUNDAMENTAL", 70),
     confidence_score: 70,
     status: "UNCHANGED",
     created_at: createdAt,
@@ -280,6 +323,13 @@ export function updateMockThesis(thesisId: string, rawInput: string): Thesis {
     positive_signals: ["핵심 전제를 뒷받침하는 신규 근거"],
     negative_signals: ["핵심 전제를 약화하는 반대 근거"],
     key_risks: ["수정된 핵심 전제가 성립하지 않을 가능성"],
+    template_id: "GENERAL_FUNDAMENTAL",
+    template_catalog_version: templateCatalogVersion,
+    template_snapshot: mockTemplateSnapshot("GENERAL_FUNDAMENTAL"),
+    assumption_bindings: [],
+    score_breakdown: mockScoreBreakdown("GENERAL_FUNDAMENTAL", 50),
+    confidence_score: 50,
+    status: "UNCHANGED",
     updated_at: new Date().toISOString(),
   };
   dashboardState = {
@@ -298,6 +348,14 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
   const updatedThesis: Thesis = {
     ...holding.thesis,
     confidence_score: Math.min(100, holding.thesis.confidence_score + 6),
+    score_breakdown: holding.thesis.score_breakdown
+      ? {
+          ...holding.thesis.score_breakdown,
+          previous_score: holding.thesis.confidence_score,
+          health_score: Math.min(100, holding.thesis.confidence_score + 6),
+          score_delta: 6,
+        }
+      : null,
     status: "STRENGTHENED",
     updated_at: new Date().toISOString(),
   };
@@ -329,6 +387,7 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
       classification: "SUPPORT",
       impact: "HIGH",
       reason: "AI CAPEX 성장 전제를 직접 지지합니다.",
+      evidence_scope: "NEW",
       published_at: updatedThesis.updated_at,
       created_at: updatedThesis.updated_at,
     },

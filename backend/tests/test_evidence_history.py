@@ -57,6 +57,7 @@ async def test_history_file_summarizes_db_and_deduplicates_documents(tmp_path) -
                     reason="이전 판단",
                     related_assumptions=["클라우드 CAPEX 증가"],
                     published_at=datetime(2026, 7, 1, tzinfo=UTC),
+                    created_at=datetime(2026, 7, 1, tzinfo=UTC),
                 ),
                 orm.Evidence(
                     thesis_id=thesis.id,
@@ -70,8 +71,27 @@ async def test_history_file_summarizes_db_and_deduplicates_documents(tmp_path) -
                     reason="최신 판단",
                     related_assumptions=["클라우드 CAPEX 증가"],
                     published_at=datetime(2026, 7, 2, tzinfo=UTC),
+                    created_at=datetime(2026, 7, 2, tzinfo=UTC),
                 ),
             ]
+        )
+        session.add(
+            orm.Evidence(
+                thesis_id=thesis.id,
+                thesis_version_id=version.id,
+                document_id="doc-repeated",
+                source_type=orm.EvidenceSourceType.NEWS,
+                source_url="https://example.com/new?utm_source=repeat",
+                content_snippet=(
+                    "과거 분석에서 이미 반영된 동일 문서이므로 " "이번 판단에서 중복 제외했습니다."
+                ),
+                classification=orm.EvidenceClassification.NEUTRAL,
+                impact=orm.EvidenceImpact.LOW,
+                reason="동일 document_id의 과거 근거가 이미 현재 신뢰도에 반영되어 있습니다.",
+                related_assumptions=[],
+                published_at=datetime(2026, 7, 3, tzinfo=UTC),
+                created_at=datetime(2026, 7, 3, tzinfo=UTC),
+            )
         )
         session.add(
             orm.AnalysisResult(
@@ -93,7 +113,13 @@ async def test_history_file_summarizes_db_and_deduplicates_documents(tmp_path) -
     assert snapshot.path.exists()
     assert snapshot.path.read_text(encoding="utf-8") == snapshot.summary
     assert snapshot.document_ids == ["doc-repeated"]
+    assert snapshot.source_urls == [
+        "https://example.com/old",
+        "https://example.com/new",
+        "https://example.com/new?utm_source=repeat",
+    ]
     assert snapshot.summary.count("document_id=doc-repeated") == 1
+    assert "이번 판단에서 중복 제외" not in snapshot.summary
     assert "최신 중복 제거 요약" in snapshot.summary
     assert "이전 요약" not in snapshot.summary
     assert "서사 문맥 전용" in snapshot.summary
@@ -103,5 +129,6 @@ async def test_history_file_summarizes_db_and_deduplicates_documents(tmp_path) -
     context = await provider.load_analysis_context(str(portfolio.id), str(holding.id))
     assert context.evidence_history_summary == snapshot.path.read_text(encoding="utf-8")
     assert context.evidence_history_document_ids == ["doc-repeated"]
+    assert context.evidence_history_source_urls == snapshot.source_urls
 
     await engine.dispose()

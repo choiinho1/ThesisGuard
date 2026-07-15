@@ -5,6 +5,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
+from agents.scoring import prepare_structured_thesis
+from agents.thesis_templates import (
+    THESIS_TEMPLATE_CATALOG_VERSION,
+    build_thesis_template_snapshot,
+)
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
@@ -69,6 +74,7 @@ async def create_thesis(
         structured = await agent.astructure_thesis(
             payload.raw_input, runnable_config=trace.runnable_config
         )
+        structured = prepare_structured_thesis(structured)
         trace.set_output(structured.model_dump(mode="json"))
     thesis = orm.Thesis(
         holding_id=holding.id,
@@ -78,6 +84,15 @@ async def create_thesis(
         positive_signals=structured.positive_signals,
         negative_signals=structured.negative_signals,
         key_risks=structured.key_risks,
+        template_id=structured.template_id.value,
+        template_catalog_version=THESIS_TEMPLATE_CATALOG_VERSION,
+        template_snapshot=build_thesis_template_snapshot(structured.template_id),
+        assumption_bindings=[
+            binding.model_dump(mode="json") for binding in structured.assumption_bindings
+        ],
+        score_breakdown=(
+            structured.score_breakdown.model_dump(mode="json") if structured.score_breakdown else {}
+        ),
         confidence_score=structured.confidence_score,
         status=structured.status,
     )
@@ -127,6 +142,7 @@ async def update_thesis(
             structured = await agent.astructure_thesis(
                 raw_input, runnable_config=trace.runnable_config
             )
+            structured = prepare_structured_thesis(structured)
             trace.set_output(structured.model_dump(mode="json"))
         thesis.raw_input = structured.raw_input
         thesis.main_thesis = structured.main_thesis
@@ -134,6 +150,17 @@ async def update_thesis(
         thesis.positive_signals = structured.positive_signals
         thesis.negative_signals = structured.negative_signals
         thesis.key_risks = structured.key_risks
+        thesis.template_id = structured.template_id.value
+        thesis.template_catalog_version = THESIS_TEMPLATE_CATALOG_VERSION
+        thesis.template_snapshot = build_thesis_template_snapshot(structured.template_id)
+        thesis.assumption_bindings = [
+            binding.model_dump(mode="json") for binding in structured.assumption_bindings
+        ]
+        thesis.score_breakdown = (
+            structured.score_breakdown.model_dump(mode="json") if structured.score_breakdown else {}
+        )
+        thesis.confidence_score = structured.confidence_score
+        thesis.status = structured.status
     for field, value in values.items():
         setattr(thesis, field, value)
     await db.commit()

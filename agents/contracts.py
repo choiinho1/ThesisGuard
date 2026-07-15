@@ -10,13 +10,14 @@ from agents.models import (
     DebateReport,
     EvidenceAssessment,
     EvidenceItem,
-    JudgeDecision,
+    JudgeExplanation,
     PortfolioAnalysis,
     PortfolioQueryAnswer,
     PortfolioThesis,
     ResearchRequest,
     SourceDocument,
     StructuredThesis,
+    ThesisScoreBreakdown,
 )
 
 
@@ -86,8 +87,9 @@ class AnalysisModel(Protocol):
         evidence: list[EvidenceItem],
         bull_report: DebateReport,
         bear_report: DebateReport,
+        score_breakdown: ThesisScoreBreakdown,
         evidence_history_summary: str = "",
-    ) -> JudgeDecision: ...
+    ) -> JudgeExplanation: ...
 
     async def analyze_portfolio(
         self, portfolio_theses: list[PortfolioThesis]

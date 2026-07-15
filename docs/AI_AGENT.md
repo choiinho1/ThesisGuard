@@ -16,6 +16,7 @@ agents/
 ├── retrieval.py          # 규칙 기반 후보 선별과 공시 문단 축약
 ├── rag.py                # Multi-query Hybrid RAG, RRF, MMR, 인접 청크 확장
 ├── evidence_policy.py    # 판정에 사용할 유효 근거 기준
+├── scoring.py            # 템플릿 가정별 결정론적 점수 계산
 ├── policy.py             # 규칙 기반 Alert 등급
 ├── nodes/
 │   ├── filing_agent.py
@@ -37,8 +38,8 @@ Request Router
   -> Source Selector (규칙 후보 선별 -> Hybrid RAG -> 소스 균형)
   -> Evidence Classification
      -> 근거 부족: Additional Research 1회
-  -> Bull / Bear Agent (병렬)
-  -> Judge Agent
+  -> Bull / Bear Agent + Deterministic Scoring + BROKEN Hard Gate (병렬)
+  -> Judge Agent (계산 결과 설명만 생성)
   -> Portfolio Concentration + Common Risk
   -> Alert Decision
   -> ThesisAnalysisResult
@@ -52,8 +53,10 @@ News Agent는 SEC의 정식 회사명과 티커를 사용한 기본 검색과 �
 우선 사용하고 결과가 없을 때 Google News로 대체한다. 공개 접근 가능한 발행사 페이지는
 본문을 정제·축약해 사용하고, 동적 페이지·차단·유료벽이면 RSS 설명으로 대체한다. Source Selector는 회사명 일치, 뉴스
 최신성, URL/제목 중복, Thesis 키워드 일치를 모델 호출 없이 계산하며 기본 점수
-0.30 미만인 뉴스는 분류기에 보내지 않는다. 공시는 최신 10-Q·10-K·8-K를 우선 고르게
-선택한 뒤 관련도가 높은 문단만 최대 6,000자로 축약해 분류기에 전달한다.
+0.30 미만인 뉴스는 분류기에 보내지 않는다. 뉴스와 공시는 발행일이 확인되고 분석 시점
+기준 30일 이내인 자료만 허용하며, 날짜가 없거나 30일을 넘거나 미래로 표시된 자료는
+본문 다운로드와 분류 전에 제외한다. 허용 범위 안의 공시는 최신 10-Q·10-K·8-K를 우선
+고른 뒤 관련도가 높은 문단만 최대 6,000자로 축약해 분류기에 전달한다.
 재검색 라운드에서 이미 분류한 `document_id`는 기존 결과를 재사용한다.
 
 RAG가 활성화되면 규칙 기반 선별 결과를 최종 개수의 3배까지 후보로 유지한 뒤 다음 순서로
@@ -119,8 +122,12 @@ FastAPI의 async 라우트에서는 이벤트 루프를 막지 않도록 `arun_a
   표시용 설명은 핵심 사실·수치/기간·투자 논리와의 관계를 담은 한국어 2~3문장, 500자 이내로 제한한다.
 - 표시용 한국어 요약 생성 실패는 유효한 분류·영향도 판정을 폐기하지 않는다.
 - 관련도가 0.55 미만인 방향성 판정은 NEUTRAL/LOW로 강등한다.
-- SUPPORT/CONTRADICT이면서 Impact가 MEDIUM/HIGH인 근거만 Bull/Bear/Judge에 전달한다.
-- 유효한 방향성 근거가 없거나 Judge가 재시도 후 실패하면 기존 Thesis를 유지한다.
+- SUPPORT/CONTRADICT이면서 Impact가 MEDIUM/HIGH인 근거만 Bull/Bear와 점수 엔진에 전달한다.
+- 점수 엔진은 가정별 가장 강한 SUPPORT와 CONTRADICT 영향도를 상쇄한 뒤 템플릿 가중치로
+  합산한다. 같은 방향의 문서 수는 점수를 누적하지 않는다.
+- 새 방향성 근거가 없는 가정은 저장된 이전 상태를 유지한다.
+- Judge는 계산된 점수·상태를 수정할 수 없고 설명만 생성한다. Judge가 실패해도 결정론적
+  점수는 유지한다.
 - 집중도 퍼센트는 LLM 값 대신 실제 보유 비중 합계로 다시 계산한다.
 - Alert는 LLM이 아니라 `policy.py` 규칙으로 결정한다.
 - 매수·매도 및 자동매매 추천을 생성하지 않는다.

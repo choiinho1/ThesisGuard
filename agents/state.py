@@ -9,12 +9,13 @@ from agents.models import (
     AlertDecision,
     DebateReport,
     EvidenceItem,
-    JudgeDecision,
+    JudgeExplanation,
     PortfolioAnalysis,
     PortfolioThesis,
     SourceDocument,
     StructuredThesis,
     ThesisAnalysisResult,
+    ThesisScoreBreakdown,
     ThesisStatus,
 )
 
@@ -44,6 +45,7 @@ class AnalysisState(TypedDict, total=False):
     thesis_snapshot: StructuredThesis
     evidence_history_summary: str
     evidence_history_document_ids: list[str]
+    evidence_history_source_urls: list[str]
     research_data: Annotated[ResearchData, merge_research_data]
     selected_documents: list[SourceDocument]
     evidence_list: list[EvidenceItem]
@@ -53,6 +55,9 @@ class AnalysisState(TypedDict, total=False):
     judge_report: str
     updated_confidence: int
     updated_status: ThesisStatus
+    score_breakdown: ThesisScoreBreakdown
+    deterministic_change_reason: str
+    deterministic_conflicting_assumptions: list[str]
     change_reason: str
     conflicting_assumptions: list[str]
     observation_points: list[str]
@@ -66,6 +71,6 @@ class AnalysisState(TypedDict, total=False):
     bear_evidence_document_ids: list[str]
     bull_report_data: DebateReport
     bear_report_data: DebateReport
-    judge_decision: JudgeDecision
+    judge_decision: JudgeExplanation
     portfolio_analysis: PortfolioAnalysis
     result: ThesisAnalysisResult
