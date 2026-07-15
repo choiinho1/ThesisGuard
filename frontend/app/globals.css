@@ -113,7 +113,7 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 .ticker-examples > span { color: var(--muted); font-size: 10px; margin-right: 3px; }
 .ticker-examples button { background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 10px; font-weight: 800; padding: 5px 8px; }
 .ticker-examples button:hover { border-color: var(--mint); color: var(--mint); }
-.holding-fields { display: grid; gap: 12px; grid-template-columns: 1.4fr repeat(3, 1fr); margin: 20px 0; }
+.holding-fields { display: grid; gap: 12px; grid-template-columns: 1.4fr 1fr; margin: 20px 0; }
 .holding-fields label input, .add-holding-panel textarea { background: #07120f; border: 1px solid var(--line); border-radius: 9px; color: var(--text); outline: none; padding: 11px 12px; width: 100%; }
 .holding-fields label input:focus, .add-holding-panel textarea:focus { border-color: var(--mint); }
 .thesis-input-label { display: flex; justify-content: space-between; }
@@ -158,12 +158,15 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 .holding-weight-edit { background: transparent; border: 1px solid transparent; border-radius: 7px; color: #71837d; cursor: pointer; font-size: 10px; padding: 7px 8px; white-space: nowrap; }
 .holding-weight-edit:hover { background: rgba(91,230,176,.07); border-color: rgba(91,230,176,.22); color: var(--mint); }
 .holding-weight-edit:disabled { cursor: wait; opacity: .5; }
-.holding-position-editor { align-items: end; background: rgba(91,230,176,.035); border-top: 1px solid var(--line); display: grid; gap: 10px; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(110px, 1fr)) auto; padding: 13px 16px; }
+.holding-position-editor { align-items: end; background: rgba(91,230,176,.035); border-top: 1px solid var(--line); display: grid; gap: 16px; grid-column: 1 / -1; grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.2fr) auto; padding: 13px 16px; }
 .holding-position-editor label { display: grid; gap: 6px; }
 .holding-position-editor label > span:first-child { color: var(--muted); font-size: 9px; font-weight: 800; }
 .holding-position-editor input { background: #06110e; border: 1px solid var(--line); border-radius: 7px; color: var(--text); min-width: 0; padding: 8px 9px; width: 100%; }
 .holding-position-editor input:focus { border-color: var(--mint); outline: none; }
-.position-input-suffix { align-items: center; color: var(--muted); display: flex; font-size: 10px; gap: 5px; }
+.position-weight-preview { display: grid; gap: 4px; }
+.position-weight-preview > span { color: var(--muted); font-size: 9px; font-weight: 800; }
+.position-weight-preview strong { color: var(--mint); font-size: 17px; }
+.position-weight-preview small { color: var(--muted); font-size: 9px; }
 .position-editor-actions { align-items: center; display: flex; gap: 5px; }
 .position-editor-actions button { background: transparent; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); cursor: pointer; font-size: 10px; font-weight: 800; padding: 8px 10px; }
 .position-editor-actions button:last-child { background: var(--mint); border-color: var(--mint); color: #03100c; }
@@ -321,13 +324,6 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 .automation-message { color: var(--mint); }
 .evidence-history-panel { margin-top: 10px; }
 .history-sections { display: grid; gap: 8px; }
-.history-holding-filter { align-items: center; background: rgba(7,18,15,.78); border: 1px solid var(--line); border-radius: 12px; display: flex; gap: 20px; justify-content: space-between; margin-top: 10px; padding: 14px 16px; }
-.history-holding-filter > div:first-child { display: grid; gap: 5px; }
-.history-holding-filter > div:first-child strong { font-size: 14px; }
-.history-holding-tabs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-.history-holding-tabs button { background: transparent; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); cursor: pointer; font-size: 10px; font-weight: 900; padding: 7px 10px; }
-.history-holding-tabs button:hover { border-color: var(--mint); color: var(--text); }
-.history-holding-tabs button.is-active { background: var(--mint); border-color: var(--mint); color: #03100c; }
 .evidence-history-heading { align-items: flex-start; display: flex; justify-content: space-between; }
 .evidence-history-heading h2 { font-size: 24px; margin: 8px 0 6px; }
 .evidence-history-heading > div > p:last-child { color: var(--muted); font-size: 12px; }

@@ -16,8 +16,6 @@ export function AddHoldingForm({
   const [ticker, setTicker] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [avgBuyPrice, setAvgBuyPrice] = useState("");
-  const [targetWeight, setTargetWeight] = useState("0");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -31,19 +29,12 @@ export function AddHoldingForm({
   const canSubmit = normalizedTicker.length > 0
     && !isDuplicateTicker
     && Number.isFinite(Number(quantity || 0))
-    && Number(quantity || 0) >= 0
-    && Number.isFinite(Number(avgBuyPrice || 0))
-    && Number(avgBuyPrice || 0) >= 0
-    && Number.isFinite(Number(targetWeight || 0))
-    && Number(targetWeight || 0) >= 0
-    && Number(targetWeight || 0) <= 100;
+    && Number(quantity || 0) >= 0;
 
   const reset = () => {
     setTicker("");
     setCompanyName("");
     setQuantity("");
-    setAvgBuyPrice("");
-    setTargetWeight("0");
     setFormError(null);
   };
 
@@ -56,8 +47,6 @@ export function AddHoldingForm({
         ticker: normalizedTicker,
         company_name: companyName.trim() || normalizedTicker,
         quantity: Number(quantity) || 0,
-        avg_buy_price: Number(avgBuyPrice) || 0,
-        target_weight: Number(targetWeight) || 0,
       });
       reset();
       setOpen(false);
@@ -116,8 +105,6 @@ export function AddHoldingForm({
       <div className="holding-fields">
         <Field label="회사명" placeholder="Apple Inc. (선택)" value={companyName} onChange={setCompanyName} />
         <Field label="보유 수량" min="0" placeholder="0" type="number" value={quantity} onChange={setQuantity} />
-        <Field label="평균 매수가 ($)" min="0" placeholder="0.00" step="0.01" type="number" value={avgBuyPrice} onChange={setAvgBuyPrice} />
-        <Field label="목표 비중 (%)" max="100" min="0" placeholder="10" step="0.1" type="number" value={targetWeight} onChange={setTargetWeight} />
       </div>
 
       {(duplicateError || formError) && (

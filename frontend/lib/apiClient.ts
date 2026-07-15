@@ -241,7 +241,13 @@ export async function addPortfolioHolding(
   }
   const holding = await request<DashboardHolding>(`/api/portfolios/${portfolioId}/holdings`, {
     method: "POST",
-    body: JSON.stringify(normalized),
+    body: JSON.stringify({
+      ...normalized,
+      // Kept only for compatibility with the current backend schema. These
+      // fields are no longer user inputs and are not used by the frontend.
+      avg_buy_price: 0,
+      target_weight: 0,
+    }),
   });
   return { ...holding, thesis: null, latest_change: null };
 }

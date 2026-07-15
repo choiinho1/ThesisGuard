@@ -38,23 +38,14 @@ export function SavedEvidenceHistory({
   const [loadingConfidence, setLoadingConfidence] = useState(true);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [removingEvidenceIds, setRemovingEvidenceIds] = useState<Set<string>>(new Set());
-  const [historyHoldingId, setHistoryHoldingId] = useState(
-    () => selectedHoldingId ?? holdings[0]?.id ?? "",
-  );
-  const activeHoldingId = holdings.some((holding) => holding.id === historyHoldingId)
-    ? historyHoldingId
+  const activeHoldingId = holdings.some((holding) => holding.id === selectedHoldingId)
+    ? selectedHoldingId ?? ""
     : holdings[0]?.id ?? "";
   const activeHolding = holdings.find((holding) => holding.id === activeHoldingId) ?? null;
   const visibleEntries = entries.filter((entry) => entry.holdingId === activeHoldingId);
   const visibleConfidenceEntries = confidenceEntries.filter(
     (entry) => entry.holdingId === activeHoldingId,
   );
-
-  useEffect(() => {
-    if (!selectedHoldingId) return;
-    const timer = window.setTimeout(() => setHistoryHoldingId(selectedHoldingId), 0);
-    return () => window.clearTimeout(timer);
-  }, [selectedHoldingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,26 +169,6 @@ export function SavedEvidenceHistory({
 
   return (
     <div className="history-sections">
-    <section className="history-holding-filter" aria-label="History 종목 선택">
-      <div>
-        <span className="kicker">SELECT HOLDING</span>
-        <strong>{activeHolding ? `${activeHolding.ticker} History` : "종목을 선택하세요"}</strong>
-      </div>
-      <div className="history-holding-tabs">
-        {holdings.map((holding) => (
-          <button
-            aria-pressed={holding.id === activeHoldingId}
-            className={holding.id === activeHoldingId ? "is-active" : ""}
-            key={holding.id}
-            onClick={() => setHistoryHoldingId(holding.id)}
-            type="button"
-          >
-            {holding.ticker}
-          </button>
-        ))}
-      </div>
-    </section>
-
     <section className="panel evidence-history-panel">
       <div className="evidence-history-heading">
         <div>

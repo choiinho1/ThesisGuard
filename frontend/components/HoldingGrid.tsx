@@ -39,7 +39,7 @@ export function HoldingGrid({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [updatingPositionId, setUpdatingPositionId] = useState<string | null>(null);
   const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
-  const [positionDraft, setPositionDraft] = useState({ quantity: "", current: "", target: "" });
+  const [positionDraft, setPositionDraft] = useState({ quantity: "" });
   const [marketSnapshots, setMarketSnapshots] = useState<Record<string, MarketSnapshot>>({});
   const [loadingMarketId, setLoadingMarketId] = useState<string | null>(null);
   const [floatingMarket, setFloatingMarket] = useState<FloatingMarket | null>(null);
@@ -71,24 +71,16 @@ export function HoldingGrid({
     setEditingPositionId(holding.id);
     setPositionDraft({
       quantity: String(holding.quantity),
-      current: String(holding.current_weight),
-      target: String(holding.target_weight),
     });
   };
 
   const savePosition = async (holding: DashboardHolding) => {
     const input = {
       quantity: Number(positionDraft.quantity),
-      current_weight: Number(positionDraft.current),
-      target_weight: Number(positionDraft.target),
     };
-    const valid = Number.isFinite(input.quantity) && input.quantity >= 0
-      && Number.isFinite(input.current_weight) && input.current_weight >= 0
-      && input.current_weight <= 100
-      && Number.isFinite(input.target_weight) && input.target_weight >= 0
-      && input.target_weight <= 100;
+    const valid = Number.isFinite(input.quantity) && input.quantity >= 0;
     if (!valid) {
-      window.alert("수량은 0 이상, 비중은 0에서 100 사이로 입력해 주세요.");
+      window.alert("수량은 0 이상으로 입력해 주세요.");
       return;
     }
     setUpdatingPositionId(holding.id);
@@ -160,8 +152,8 @@ export function HoldingGrid({
                 <small>{holding.company_name}</small>
               </span>
               <span className="weight-cell">
-                <small>현재 / 목표</small>
-                <strong>{holding.current_weight}% / {holding.target_weight}%</strong>
+                <small>현재 비중</small>
+                <strong>{holding.current_weight}%</strong>
               </span>
               <span className="confidence-cell">
                 <small>Confidence</small>
@@ -173,13 +165,13 @@ export function HoldingGrid({
             </button>
             <div className="holding-row-actions">
               <button
-                aria-label={`${holding.ticker} 현재 비중 수정`}
+                aria-label={`${holding.ticker} 보유 수량 수정`}
                 className="holding-weight-edit"
                 disabled={updatingPositionId === holding.id}
                 onClick={() => openPositionEditor(holding)}
                 type="button"
               >
-                수량·비중
+                수량 수정
               </button>
               <button
                 aria-label={`${holding.ticker} 삭제`}
@@ -198,14 +190,11 @@ export function HoldingGrid({
                   <span>보유 수량</span>
                   <input min="0" onChange={(event) => setPositionDraft((current) => ({ ...current, quantity: event.target.value }))} step="0.0001" type="number" value={positionDraft.quantity} />
                 </label>
-                <label>
+                <div className="position-weight-preview">
                   <span>현재 비중</span>
-                  <span className="position-input-suffix"><input max="100" min="0" onChange={(event) => setPositionDraft((current) => ({ ...current, current: event.target.value }))} step="0.1" type="number" value={positionDraft.current} />%</span>
-                </label>
-                <label>
-                  <span>목표 비중</span>
-                  <span className="position-input-suffix"><input max="100" min="0" onChange={(event) => setPositionDraft((current) => ({ ...current, target: event.target.value }))} step="0.1" type="number" value={positionDraft.target} />%</span>
-                </label>
+                  <strong>{holding.current_weight}%</strong>
+                  <small>수량과 최신 시세를 기준으로 자동 계산됩니다.</small>
+                </div>
                 <div className="position-editor-actions">
                   <button onClick={() => setEditingPositionId(null)} type="button">취소</button>
                   <button disabled={updatingPositionId === holding.id} onClick={() => { void savePosition(holding); }} type="button">

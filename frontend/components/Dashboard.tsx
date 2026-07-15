@@ -190,20 +190,17 @@ export function Dashboard() {
       setSelected(created);
       setAnalysis(null);
 
-      if (mode === "live") {
-        void getPortfolioDashboard(portfolioId, mode)
-          .then((refreshed) => {
-            const refreshedHolding = refreshed.holdings.find((item) => item.id === holding.id)
-              ?? created;
-            setDashboard(refreshed);
-            setSelected((current) => current?.id === holding.id ? refreshedHolding : current);
-          })
-          .catch(() => {
-            // Keep the successfully created holding visible. A later dashboard
-            // load will reconcile aggregate data.
-          });
-        return;
-      }
+      void getPortfolioDashboard(portfolioId, mode)
+        .then((refreshed) => {
+          const refreshedHolding = refreshed.holdings.find((item) => item.id === holding.id)
+            ?? created;
+          setDashboard(refreshed);
+          setSelected((current) => current?.id === holding.id ? refreshedHolding : current);
+        })
+        .catch(() => {
+          // Keep the successfully created holding visible. A later dashboard
+          // load will reconcile aggregate data.
+        });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "종목을 추가하지 못했습니다.";
       setError(message);
@@ -254,18 +251,11 @@ export function Dashboard() {
     setError(null);
     try {
       await deletePortfolioHolding(holding.id, mode);
-      if (mode === "live") {
-        const refreshed = await getPortfolioDashboard(holding.portfolio_id, mode);
-        setDashboard(refreshed);
-        setSelected(refreshed.holdings[0] ?? null);
-        setAnalysis(null);
-        return;
-      }
-      const remaining = dashboard?.holdings.filter((item) => item.id !== holding.id) ?? [];
-      setDashboard((current) => current ? { ...current, holdings: remaining } : current);
-      setSelected((selectedHolding) => selectedHolding?.id === holding.id
-        ? remaining[0] ?? null
-        : selectedHolding);
+      const refreshed = await getPortfolioDashboard(holding.portfolio_id, mode);
+      setDashboard(refreshed);
+      setSelected((selectedHolding) => refreshed.holdings.find(
+        (item) => item.id === selectedHolding?.id,
+      ) ?? refreshed.holdings[0] ?? null);
       setAnalysis(null);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "보유 종목을 삭제하지 못했습니다.";
@@ -293,30 +283,16 @@ export function Dashboard() {
   ) => {
     setError(null);
     try {
-      const updated = await updateHoldingPosition(holding.id, input, mode);
-      setDashboard((current) => current ? {
-        ...current,
-        holdings: current.holdings.map((item) => item.id === holding.id
-          ? {
-              ...item,
-              quantity: updated.quantity,
-              current_weight: updated.current_weight,
-              target_weight: updated.target_weight,
-              updated_at: updated.updated_at,
-            }
-          : item),
-      } : current);
-      setSelected((current) => current?.id === holding.id
-        ? {
-            ...current,
-            quantity: updated.quantity,
-            current_weight: updated.current_weight,
-            target_weight: updated.target_weight,
-            updated_at: updated.updated_at,
-          }
-        : current);
+      await updateHoldingPosition(holding.id, input, mode);
+      // Dashboard reload recalculates every holding's current_weight from
+      // quantity × latest quote, so users never edit allocation percentages.
+      const refreshed = await getPortfolioDashboard(holding.portfolio_id, mode);
+      setDashboard(refreshed);
+      setSelected((current) => refreshed.holdings.find((item) => item.id === current?.id)
+        ?? refreshed.holdings[0]
+        ?? null);
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "수량과 비중을 수정하지 못했습니다.";
+      const message = caught instanceof Error ? caught.message : "보유 수량을 수정하지 못했습니다.";
       setError(message);
       throw new Error(message);
     }

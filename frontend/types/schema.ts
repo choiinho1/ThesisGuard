@@ -121,14 +121,10 @@ export interface CreateHoldingInput {
   ticker: string;
   company_name: string;
   quantity: number;
-  avg_buy_price: number;
-  target_weight: number;
 }
 
 export interface UpdateHoldingPositionInput {
   quantity: number;
-  current_weight: number;
-  target_weight: number;
 }
 
 export interface MarketSnapshot {

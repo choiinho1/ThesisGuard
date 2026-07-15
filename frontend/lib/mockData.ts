@@ -176,6 +176,8 @@ const alerts: Alert[] = [
 
 const mockThesisVersions: Record<string, ThesisVersion[]> = {};
 
+const mockPrices: Record<string, number> = { NVDA: 171.32, AVGO: 291.48, TSM: 246.15 };
+
 let dashboardState: PortfolioDashboard = {
   portfolio: mockPortfolios[0],
   holdings,
@@ -184,7 +186,28 @@ let dashboardState: PortfolioDashboard = {
   recent_alerts: alerts,
 };
 
+function refreshMockWeights() {
+  const marketValues = dashboardState.holdings.map((holding) => ({
+    id: holding.id,
+    value: Math.max(0, holding.quantity) * (mockPrices[holding.ticker] ?? 100),
+  }));
+  const total = marketValues.reduce((sum, item) => sum + item.value, 0);
+  const investableRatio = Math.max(0, 100 - dashboardState.portfolio.cash_ratio);
+  const weights = new Map(marketValues.map((item) => [
+    item.id,
+    total > 0 ? Math.round((item.value / total * investableRatio) * 100) / 100 : 0,
+  ]));
+  dashboardState = {
+    ...dashboardState,
+    holdings: dashboardState.holdings.map((holding) => ({
+      ...holding,
+      current_weight: weights.get(holding.id) ?? 0,
+    })),
+  };
+}
+
 export function getMockDashboard(): PortfolioDashboard {
+  refreshMockWeights();
   return structuredClone(dashboardState);
 }
 
@@ -199,9 +222,9 @@ export function addMockHolding(portfolioId: string, input: CreateHoldingInput): 
     ticker: input.ticker,
     company_name: input.company_name || input.ticker,
     quantity: input.quantity,
-    avg_buy_price: input.avg_buy_price,
-    target_weight: input.target_weight,
-    current_weight: input.target_weight,
+    avg_buy_price: 0,
+    target_weight: 0,
+    current_weight: 0,
     created_at: createdAt,
     updated_at: createdAt,
     thesis: null,
@@ -211,7 +234,10 @@ export function addMockHolding(portfolioId: string, input: CreateHoldingInput): 
     ...dashboardState,
     holdings: [holding, ...dashboardState.holdings],
   };
-  return structuredClone(holding);
+  refreshMockWeights();
+  return structuredClone(
+    dashboardState.holdings.find((item) => item.id === holding.id) ?? holding,
+  );
 }
 
 export function removeMockHolding(holdingId: string): void {
@@ -271,10 +297,11 @@ export function updateMockHoldingPosition(
     ...dashboardState,
     holdings: dashboardState.holdings.map((item) => item.id === holdingId ? updated : item),
   };
-  return structuredClone(updated);
+  refreshMockWeights();
+  return structuredClone(
+    dashboardState.holdings.find((item) => item.id === holdingId) ?? updated,
+  );
 }
-
-const mockPrices: Record<string, number> = { NVDA: 171.32, AVGO: 291.48, TSM: 246.15 };
 
 export function getMockMarketSnapshot(ticker: string): MarketSnapshot {
   const currentPrice = mockPrices[ticker] ?? 100;
