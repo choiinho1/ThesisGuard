@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import type { Alert, AnalysisResult, DashboardHolding } from "@/types/schema";
 
 function resolveAffectedTickers(
@@ -31,6 +34,7 @@ export function InsightPanel({
   onDeleteAlert: (alert: Alert) => Promise<void>;
   holdings: DashboardHolding[];
 }) {
+  const [alertsExpanded, setAlertsExpanded] = useState(false);
   const affectedTickers = resolveAffectedTickers(concentration?.affected_holdings, holdings);
   const visibleCommonRisks = commonRisks.flatMap((risk) => {
     const tickers = resolveAffectedTickers(risk.affected_holdings, holdings);
@@ -74,20 +78,34 @@ export function InsightPanel({
         {alerts.length === 0 ? (
           <p className="empty-copy">새 알림이 없습니다.</p>
         ) : (
-          <div className="alert-list" role="region" aria-label="최근 알림 목록" tabIndex={0}>
-          {alerts.map((alert) => (
-            <article className="alert-item" key={alert.id}>
-              <div className="alert-item-heading"><span className={`severity severity--${alert.severity.toLowerCase()}`}>{alert.severity}</span><time>{new Date(alert.created_at).toLocaleDateString("ko-KR")}</time><button className="alert-delete" onClick={() => void onDeleteAlert(alert)} type="button" aria-label={`${alert.title} 삭제`}>삭제</button></div>
-              <h3>{alert.title}</h3>
-              <p>{alert.message}</p>
-              {alert.is_sent && (
-                <p className="email-delivery-status">
-                  Gmail 발송 완료 · {alert.sent_at ? new Date(alert.sent_at).toLocaleString("ko-KR") : "방금"}
-                </p>
-              )}
-            </article>
-          ))}
-          </div>
+          <>
+            <button
+              aria-expanded={alertsExpanded}
+              className="alert-toggle"
+              onClick={() => setAlertsExpanded((current) => !current)}
+              type="button"
+            >
+              <span className={`severity severity--${alerts[0].severity.toLowerCase()}`}>{alerts[0].severity}</span>
+              <span className="alert-toggle-title">{alerts[0].title}</span>
+              <span className="alert-toggle-chevron">{alertsExpanded ? "접기 ▲" : `전체보기 ${alerts.length} ▾`}</span>
+            </button>
+            {alertsExpanded && (
+              <div className="alert-list" role="region" aria-label="최근 알림 목록" tabIndex={0}>
+              {alerts.map((alert) => (
+                <article className="alert-item" key={alert.id}>
+                  <div className="alert-item-heading"><span className={`severity severity--${alert.severity.toLowerCase()}`}>{alert.severity}</span><time>{new Date(alert.created_at).toLocaleDateString("ko-KR")}</time><button className="alert-delete" onClick={() => void onDeleteAlert(alert)} type="button" aria-label={`${alert.title} 삭제`}>삭제</button></div>
+                  <h3>{alert.title}</h3>
+                  <p>{alert.message}</p>
+                  {alert.is_sent && (
+                    <p className="email-delivery-status">
+                      Gmail 발송 완료 · {alert.sent_at ? new Date(alert.sent_at).toLocaleString("ko-KR") : "방금"}
+                    </p>
+                  )}
+                </article>
+              ))}
+              </div>
+            )}
+          </>
         )}
       </section>
     </aside>

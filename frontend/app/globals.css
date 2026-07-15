@@ -125,7 +125,7 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 .add-form-actions > div { display: flex; gap: 8px; }
 .secondary-button { background: transparent; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 800; padding: 10px 15px; }
 
-.dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, .7fr); gap: 18px; }
+.dashboard-grid { align-items: start; display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, .7fr); gap: 18px; }
 .main-column, .insight-column { display: grid; gap: 18px; }
 .panel { background: linear-gradient(145deg, rgba(16, 32, 29, .96), rgba(10, 23, 20, .96)); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 18px 50px rgba(0, 0, 0, .18); padding: 24px; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
@@ -209,8 +209,12 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 .common-risk-list strong { font-size: 11px; line-height: 1.45; }
 .common-risk-list span { color: var(--muted); font-size: 9px; font-weight: 700; }
 .alert-count { align-items: center; background: var(--red); border-radius: 50%; color: #1b0806; display: flex; font-size: 10px; font-weight: 900; height: 22px; justify-content: center; width: 22px; }
+.alert-toggle { align-items: center; background: rgba(255,255,255,.02); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; display: flex; gap: 10px; padding: 12px 13px; text-align: left; width: 100%; }
+.alert-toggle:hover { border-color: rgba(91,230,176,.3); }
+.alert-toggle-title { color: var(--text); flex: 1; font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert-toggle-chevron { color: var(--muted); font-size: 10px; font-weight: 800; white-space: nowrap; }
 .alert-item { border-top: 1px solid var(--line); padding-top: 16px; }
-.alert-list { display: grid; gap: 16px; height: 560px; max-height: 65vh; overflow-y: scroll; overscroll-behavior: contain; padding-right: 9px; scrollbar-color: var(--mint) #132720; scrollbar-gutter: stable; scrollbar-width: auto; }
+.alert-list { display: grid; gap: 16px; margin-top: 16px; max-height: 420px; overflow-y: auto; overscroll-behavior: contain; padding-right: 9px; scrollbar-color: var(--mint) #132720; scrollbar-gutter: stable; scrollbar-width: auto; }
 .alert-list:focus { outline: 1px solid rgba(91,230,176,.35); outline-offset: 5px; }
 .alert-list::-webkit-scrollbar { width: 10px; }
 .alert-list::-webkit-scrollbar-track { background: #132720; border-radius: 999px; }
