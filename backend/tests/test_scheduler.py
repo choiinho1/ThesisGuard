@@ -49,6 +49,42 @@ def test_score_delta_includes_change_reason_and_sourced_evidence() -> None:
     assert "NVDA reported strong Q2 earnings" not in decision.reason
 
 
+def test_score_delta_excludes_failed_classification_evidence() -> None:
+    """UNCERTAIN evidence is C's fallback when its Gemini classification call
+    fails (e.g. a 429 quota error), carrying an error string in `reason`. Those
+    must never reach the email — only SUPPORT/CONTRADICT items are included."""
+
+    failed = EvidenceItem(
+        document_id="doc-x",
+        source_type="SEC_FILING",
+        source_url="https://sec.gov/x",
+        content_snippet="raw filing text",
+        classification="UNCERTAIN",
+        impact="LOW",
+        reason="분류 모델 오류(ChatGoogleGenerativeAIError)로 불확실 처리했습니다.",
+    )
+    decision = score_delta_alert_decision(
+        50, 60, "NVDA", "실적 호조", [failed, *_SOURCED_EVIDENCE]
+    )
+    assert "ChatGoogleGenerativeAIError" not in decision.reason
+    assert "positive earnings signal" in decision.reason
+
+
+def test_score_delta_omits_evidence_section_when_all_failed() -> None:
+    failed = EvidenceItem(
+        document_id="doc-x",
+        source_type="SEC_FILING",
+        source_url="https://sec.gov/x",
+        content_snippet="raw filing text",
+        classification="UNCERTAIN",
+        impact="LOW",
+        reason="분류 모델 오류로 불확실 처리했습니다.",
+    )
+    decision = score_delta_alert_decision(50, 60, "NVDA", "실적 호조", [failed])
+    assert decision.should_send is True
+    assert "주요 근거" not in decision.reason
+
+
 def test_score_delta_negative_direction_alerts() -> None:
     decision = score_delta_alert_decision(
         60, 60 - MIN_CONFIDENCE_DELTA_FOR_ALERT, "NVDA", "reason", []

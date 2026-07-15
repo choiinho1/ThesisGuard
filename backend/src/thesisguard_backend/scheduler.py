@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from agents.models import AlertDecision, EvidenceItem
+from agents.models import AlertDecision, EvidenceClassification, EvidenceItem
 from sqlalchemy import select
 
 from thesisguard_backend import models as orm
@@ -61,13 +61,22 @@ def score_delta_alert_decision(
         "변화 근거:",
         change_reason,
     ]
-    sourced_evidence = [item for item in evidence if item.source_url]
-    if sourced_evidence:
+    # Only SUPPORT/CONTRADICT evidence — those are the directional items that
+    # actually explain a score move. This also drops UNCERTAIN items, which is
+    # what C falls back to when its Gemini classification call fails (e.g. a
+    # 429 quota error), so a degraded run never emails raw error-fallback text.
+    directional_evidence = [
+        item
+        for item in evidence
+        if item.source_url
+        and item.classification in (EvidenceClassification.SUPPORT, EvidenceClassification.CONTRADICT)
+    ]
+    if directional_evidence:
         lines += ["", "주요 근거:"]
         # item.reason, not content_snippet: reason is C's own natural-language
         # explanation of why this evidence matters, not the raw filing/article
         # text (which reads like unformatted legal boilerplate in an email).
-        lines += [f"- {item.reason} ({item.source_url})" for item in sourced_evidence[:5]]
+        lines += [f"- {item.reason} ({item.source_url})" for item in directional_evidence[:5]]
     lines += ["", "※ 본 메일은 정보 제공 목적이며 투자 권유가 아닙니다."]
     return AlertDecision(
         severity="MAJOR",
