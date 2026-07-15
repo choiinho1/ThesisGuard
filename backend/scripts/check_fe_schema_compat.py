@@ -189,6 +189,8 @@ async def check_live_serialization() -> None:
             "reason": item.reason,
             "related_assumptions": item.related_assumptions,
             "published_at": item.published_at,
+            "saved_to_history": False,
+            "created_at": "2026-01-01T00:00:00Z",
         }
         for item in result.evidence
     ]

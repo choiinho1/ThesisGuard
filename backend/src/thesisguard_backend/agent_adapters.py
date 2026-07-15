@@ -342,18 +342,36 @@ async def get_market_snapshot(ticker: str) -> market.MarketData:
 
 
 def create_chat_model():
-    """Builds the LangChain chat model selected via LLM_PROVIDER/LLM_MODEL."""
+    """Builds the LangChain chat model selected via LLM_PROVIDER/LLM_MODEL.
+
+    timeout + max_retries are set explicitly on every provider: without them,
+    a rate-limited/quota-exhausted call (e.g. Gemini free-tier 429) doesn't
+    fail fast — the client library's own backoff retries it for minutes,
+    which the frontend just sees as a hung "Failed to fetch" with no error
+    message. Better to fail in ~30-60s with a real exception the caller can
+    surface.
+    """
 
     settings = get_settings()
     if settings.llm_provider == "openai":
         from langchain_openai import ChatOpenAI
 
-        return ChatOpenAI(model=settings.llm_model, api_key=settings.openai_api_key, temperature=0)
+        return ChatOpenAI(
+            model=settings.llm_model,
+            api_key=settings.openai_api_key,
+            temperature=0,
+            timeout=30,
+            max_retries=1,
+        )
     if settings.llm_provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         return ChatGoogleGenerativeAI(
-            model=settings.llm_model, google_api_key=settings.google_api_key, temperature=0
+            model=settings.llm_model,
+            google_api_key=settings.google_api_key,
+            temperature=0,
+            timeout=30,
+            max_retries=1,
         )
     if settings.llm_provider == "upstage":
         from langchain_upstage import ChatUpstage
@@ -362,6 +380,8 @@ def create_chat_model():
             model=settings.llm_model,
             upstage_api_key=settings.upstage_api_key,
             temperature=0,
+            timeout=30,
+            max_retries=1,
         )
     raise ValueError(
         f"Unsupported LLM_PROVIDER={settings.llm_provider!r}. "

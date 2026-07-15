@@ -8,7 +8,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.db import Base
-from thesisguard_backend.routers.analysis import get_latest_analysis
+from thesisguard_backend.routers.analysis import (
+    get_evidence_history,
+    get_latest_analysis,
+    get_owned_evidence,
+    save_evidence,
+    unsave_evidence,
+)
 
 
 @pytest.fixture
@@ -154,3 +160,116 @@ async def test_get_latest_analysis_distinguishes_new_and_past_evidence(db_sessio
     assert past_evidence.evidence_scope == "PAST"
     assert past_evidence.classification == "CONTRADICT"
     assert past_evidence.impact == "MEDIUM"
+
+
+async def _make_owned_holding(db_session, *, ticker: str = "NVDA") -> orm.Holding:
+    portfolio = orm.Portfolio(user=orm.User(email="u@example.com", password_hash="h"), name="T")
+    holding = orm.Holding(portfolio=portfolio, ticker=ticker, quantity=1, avg_buy_price=1)
+    db_session.add(holding)
+    await db_session.flush()
+    return holding
+
+
+@pytest.mark.asyncio
+async def test_evidence_history_only_returns_saved_entries(db_session) -> None:
+    """Regression test for auto-saving HIGH/MEDIUM impact evidence to history:
+    the history endpoint must only surface rows flagged saved_to_history=True
+    (set automatically by run_analysis_and_save for HIGH/MEDIUM impact, or
+    manually via save_evidence), never LOW-impact rows that were never saved."""
+
+    holding = await _make_owned_holding(db_session)
+    portfolio = await db_session.get(orm.Portfolio, holding.portfolio_id)
+    thesis = orm.Thesis(holding_id=holding.id, raw_input="x" * 20, main_thesis="m")
+    db_session.add(thesis)
+    await db_session.flush()
+
+    db_session.add(
+        orm.Evidence(
+            thesis_id=thesis.id,
+            document_id="doc-high",
+            source_type="NEWS",
+            content_snippet="high impact",
+            classification="SUPPORT",
+            impact="HIGH",
+            reason="r",
+            saved_to_history=True,
+        )
+    )
+    db_session.add(
+        orm.Evidence(
+            thesis_id=thesis.id,
+            document_id="doc-low",
+            source_type="NEWS",
+            content_snippet="low impact",
+            classification="NEUTRAL",
+            impact="LOW",
+            reason="r",
+            saved_to_history=False,
+        )
+    )
+    await db_session.commit()
+
+    history = await get_evidence_history(portfolio, db_session)
+
+    assert [entry.document_id for entry in history] == ["doc-high"]
+    assert history[0].ticker == "NVDA"
+    assert history[0].holding_id == holding.id
+    assert history[0].saved_to_history is True
+
+
+@pytest.mark.asyncio
+async def test_save_and_unsave_evidence_toggles_history_flag(db_session) -> None:
+    """Backs the manual "주요 근거로 저장" / "History에서 삭제" actions for
+    evidence that wasn't auto-saved (e.g. LOW impact)."""
+
+    holding = await _make_owned_holding(db_session)
+    user = await db_session.get(orm.User, holding.portfolio.user_id)
+    thesis = orm.Thesis(holding_id=holding.id, raw_input="x" * 20, main_thesis="m")
+    db_session.add(thesis)
+    await db_session.flush()
+    evidence = orm.Evidence(
+        thesis_id=thesis.id,
+        document_id="doc-low",
+        source_type="NEWS",
+        content_snippet="low impact",
+        classification="NEUTRAL",
+        impact="LOW",
+        reason="r",
+    )
+    db_session.add(evidence)
+    await db_session.commit()
+    assert evidence.saved_to_history is False
+
+    owned = await get_owned_evidence(evidence.id, db_session, user)
+    saved = await save_evidence(owned, db_session)
+    assert saved.saved_to_history is True
+
+    owned_again = await get_owned_evidence(evidence.id, db_session, user)
+    await unsave_evidence(owned_again, db_session)
+    await db_session.refresh(evidence)
+    assert evidence.saved_to_history is False
+
+
+@pytest.mark.asyncio
+async def test_get_owned_evidence_rejects_other_users_evidence(db_session) -> None:
+    holding = await _make_owned_holding(db_session)
+    thesis = orm.Thesis(holding_id=holding.id, raw_input="x" * 20, main_thesis="m")
+    db_session.add(thesis)
+    await db_session.flush()
+    evidence = orm.Evidence(
+        thesis_id=thesis.id,
+        document_id="doc-1",
+        source_type="NEWS",
+        content_snippet="s",
+        classification="NEUTRAL",
+        impact="LOW",
+        reason="r",
+    )
+    db_session.add(evidence)
+    other_user = orm.User(email="other@example.com", password_hash="h")
+    db_session.add(other_user)
+    await db_session.commit()
+
+    with pytest.raises(HTTPException) as caught:
+        await get_owned_evidence(evidence.id, db_session, other_user)
+    assert caught.value.status_code == 404

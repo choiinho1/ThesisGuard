@@ -232,6 +232,16 @@ export function removeMockHolding(holdingId: string): void {
   };
 }
 
+export function removeMockAlert(alertId: string): void {
+  const alert = dashboardState.recent_alerts.find((item) => item.id === alertId);
+  if (!alert) throw new Error("삭제할 알림을 찾을 수 없습니다.");
+
+  dashboardState = {
+    ...dashboardState,
+    recent_alerts: dashboardState.recent_alerts.filter((item) => item.id !== alertId),
+  };
+}
+
 export function updateMockHoldingWeight(
   holdingId: string,
   currentWeight: number,
@@ -419,12 +429,13 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
     created_at: updatedThesis.updated_at,
   };
 
+  // 수동 재분석(mock)이므로 alert는 응답에만 담아 반환하고, 자동 재분석 알림만
+  // 노출되는 recent_alerts 목록에는 추가하지 않는다.
   dashboardState = {
     ...dashboardState,
     holdings: dashboardState.holdings.map((item) =>
       item.id === holdingId ? { ...item, thesis: updatedThesis, latest_change: version } : item,
     ),
-    recent_alerts: [alert, ...dashboardState.recent_alerts],
   };
   return structuredClone({
     thesis: updatedThesis,
@@ -433,13 +444,6 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
     analysis_result: analysisResult,
     alert,
   });
-}
-
-export function removeMockAlert(alertId: string) {
-  dashboardState = {
-    ...dashboardState,
-    recent_alerts: dashboardState.recent_alerts.filter((alert) => alert.id !== alertId),
-  };
 }
 
 export function getMockThesisHistory(thesisId: string): ThesisVersion[] {

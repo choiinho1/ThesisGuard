@@ -1,7 +1,7 @@
 """Persist the selected scoring template and its immutable snapshot on theses.
 
-Revision ID: 0006_thesis_templates
-Revises: 2550db18e1ad
+Revision ID: 0008_thesis_templates
+Revises: 0007_evidence_saved_to_history
 Create Date: 2026-07-15
 """
 
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0006_thesis_templates"
-down_revision: str | None = "2550db18e1ad"
+revision: str = "0008_thesis_templates"
+down_revision: str | None = "0007_evidence_saved_to_history"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 

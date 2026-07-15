@@ -23,7 +23,6 @@ from thesisguard_backend.routers import (
     analysis_schedules,
     auth,
     holdings,
-    market,
     portfolios,
     theses,
 )
@@ -76,7 +75,6 @@ app.include_router(theses.router)
 app.include_router(analysis.router)
 app.include_router(alerts.router)
 app.include_router(analysis_schedules.router)
-app.include_router(market.router)
 
 
 @app.get("/health", tags=["health"])

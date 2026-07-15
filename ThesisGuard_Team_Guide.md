@@ -336,6 +336,7 @@ def run_analysis_workflow(portfolio_id: str, holding_id: str) -> ThesisAnalysisR
 | message | TEXT | 알림 본문 |
 | is_sent | BOOLEAN default false | 발송 여부 |
 | sent_at | TIMESTAMPTZ (nullable) | 발송 시각 |
+| is_scheduled | **BOOLEAN default false — 신규 추가(2026-07-14)** | 자동(스케줄) 재분석에서 발생한 알림인지 여부. `GET /api/alerts`와 대시보드 `recent_alerts`는 이 값이 true인 알림만 반환한다 — 수동 재분석(`POST /api/holdings/{id}/analyze`)은 사용자가 직접 실행하고 결과를 바로 확인하므로 alert UI에는 노출하지 않는다(레코드 생성·이메일 발송은 그대로 수행). |
 | created_at | TIMESTAMPTZ | 생성 시각 |
 
 ### `alert_settings` — 사용자별 알림 수신 설정 (2026-07-13 신규 추가)
@@ -447,6 +448,7 @@ A↔B 계약. Request/Response body는 모두 snake_case.
 |---|---|
 | `GET /api/alerts` | 알림 목록 |
 | `PATCH /api/alerts/{id}/read` | 읽음 처리 |
+| `DELETE /api/alerts/{id}` | 알림 삭제 (본인 소유만, 204 No Content) |
 | `GET/PUT /api/users/me/alert-settings` | 즉시 알림 / 주간 요약 설정 |
 
 ---
