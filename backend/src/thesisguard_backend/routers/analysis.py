@@ -140,6 +140,31 @@ async def run_analysis_and_save(
             main_thesis=thesis.main_thesis,
             key_assumptions=thesis.key_assumptions,
         ).model_dump(mode="json")
+
+    # Snapshot the thesis as it was BEFORE this analysis, shaped like the
+    # frontend's Thesis interface (frontend/types/schema.ts) since
+    # ThesisVersion.snapshot is typed as a full Thesis there. Built here —
+    # before the weight-refresh commit and the agent workflow — because reading
+    # thesis.updated_at after a flush triggers a lazy reload of that expired
+    # onupdate column, which raises MissingGreenlet in this async session.
+    pre_analysis_snapshot = {
+        "id": str(thesis.id),
+        "holding_id": str(thesis.holding_id),
+        "raw_input": thesis.raw_input,
+        "main_thesis": thesis.main_thesis,
+        "key_assumptions": thesis.key_assumptions,
+        "positive_signals": thesis.positive_signals,
+        "negative_signals": thesis.negative_signals,
+        "key_risks": thesis.key_risks,
+        "logic_graph": thesis.logic_graph,
+        "score_breakdown": thesis.score_breakdown,
+        "confidence_score": thesis.confidence_score,
+        "status": thesis.status.value if hasattr(thesis.status, "value") else thesis.status,
+        "created_at": thesis.created_at.isoformat(),
+        "updated_at": thesis.updated_at.isoformat(),
+    }
+    previous_confidence = thesis.confidence_score
+
     portfolio = await db.get(orm.Portfolio, holding.portfolio_id)
     portfolio_holdings = list(
         await db.scalars(select(orm.Holding).where(orm.Holding.portfolio_id == portfolio.id))
@@ -177,27 +202,6 @@ async def run_analysis_and_save(
             )
         )
     ) + 1
-
-    # Snapshot the thesis as it was BEFORE this analysis, shaped like the
-    # frontend's Thesis interface (frontend/types/schema.ts) since
-    # ThesisVersion.snapshot is typed as a full Thesis there.
-    pre_analysis_snapshot = {
-        "id": str(thesis.id),
-        "holding_id": str(thesis.holding_id),
-        "raw_input": thesis.raw_input,
-        "main_thesis": thesis.main_thesis,
-        "key_assumptions": thesis.key_assumptions,
-        "positive_signals": thesis.positive_signals,
-        "negative_signals": thesis.negative_signals,
-        "key_risks": thesis.key_risks,
-        "logic_graph": thesis.logic_graph,
-        "score_breakdown": thesis.score_breakdown,
-        "confidence_score": thesis.confidence_score,
-        "status": thesis.status.value if hasattr(thesis.status, "value") else thesis.status,
-        "created_at": thesis.created_at.isoformat(),
-        "updated_at": thesis.updated_at.isoformat(),
-    }
-    previous_confidence = thesis.confidence_score
 
     thesis_version = orm.ThesisVersion(
         thesis_id=thesis.id,
