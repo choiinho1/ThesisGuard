@@ -12,6 +12,9 @@ export function PortfolioHeader({ portfolio, mode, onModeChange }: PortfolioHead
       <div>
         <div className="eyebrow">THESISGUARD / PORTFOLIO INTELLIGENCE</div>
         <h1>{portfolio.name}</h1>
+        <p className="responsibility-notice">
+          이 화면은 투자 권고가 아니며, <strong>최종 투자 판단과 그 결과에 대한 책임은 투자자 본인에게 있습니다.</strong>
+        </p>
         <p className="subtitle">
           {portfolio.investment_purpose} · {portfolio.investment_horizon}
         </p>
