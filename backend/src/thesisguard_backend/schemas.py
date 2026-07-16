@@ -139,6 +139,13 @@ class MarketSnapshotResponse(BaseModel):
     volume: int | None
 
 
+class TickerQuoteResponse(BaseModel):
+    symbol: str
+    price: float | None
+    change_pct: float | None
+    as_of: str | None
+
+
 # ------------------------------------------------------- Rebalancing ----
 class RebalanceHoldingInput(BaseModel):
     holding_id: uuid.UUID

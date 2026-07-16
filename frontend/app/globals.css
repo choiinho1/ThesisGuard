@@ -27,6 +27,18 @@ button, input, textarea { font: inherit; }
 button { color: inherit; }
 a { color: inherit; }
 
+.market-ticker-wrap { background: var(--surface); border-bottom: 1px solid var(--line); height: 38px; overflow: hidden; position: sticky; top: 0; width: 100%; z-index: 50; }
+.market-ticker-track { animation: market-ticker-scroll 32s linear infinite; align-items: center; display: flex; height: 100%; width: max-content; }
+.market-ticker-wrap:hover .market-ticker-track { animation-play-state: paused; }
+@keyframes market-ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.market-ticker-item { align-items: baseline; border-right: 1px solid var(--line); display: flex; gap: 8px; padding: 0 20px; white-space: nowrap; }
+.market-ticker-symbol { color: var(--muted); font-size: 11px; letter-spacing: .04em; }
+.market-ticker-price { color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 700; }
+.market-ticker-change { font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 700; }
+.market-ticker-change.is-positive { color: var(--mint); }
+.market-ticker-change.is-negative { color: var(--red); }
+.market-ticker-change.is-flat { color: var(--muted); }
+
 .auth-shell { display: grid; grid-template-columns: minmax(0, .95fr) minmax(420px, 1.05fr); min-height: 100vh; }
 .auth-story { background: radial-gradient(circle at 18% 12%, rgba(91, 230, 176, .075), transparent 24rem), linear-gradient(145deg, #0a1513 0%, #07100f 72%); border-right: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; padding: 42px clamp(38px, 5vw, 72px); position: relative; }
 .auth-story::after { border: 1px solid rgba(91, 230, 176, .08); border-radius: 50%; bottom: -36vw; content: ""; height: 62vw; position: absolute; right: -30vw; width: 62vw; }
@@ -77,7 +89,7 @@ a { color: inherit; }
 .auth-switch-copy { color: var(--muted); font-size: 11px; margin: 22px 0 0; text-align: center; }
 .auth-switch-copy button { background: transparent; border: 0; color: var(--mint); cursor: pointer; font-size: inherit; font-weight: 900; margin-left: 6px; padding: 0; }
 .auth-disclaimer { color: #53645f; font-size: 9px; letter-spacing: .04em; margin: 34px 0 0; text-align: center; }
-.auth-session-bar { align-items: center; background: rgba(7, 16, 15, .92); border: 1px solid var(--line); border-radius: 999px; display: flex; font-size: 10px; gap: 10px; padding: 5px 6px 5px 12px; position: fixed; right: 22px; top: 18px; z-index: 20; }
+.auth-session-bar { align-items: center; background: rgba(7, 16, 15, .92); border: 1px solid var(--line); border-radius: 999px; display: flex; font-size: 10px; gap: 10px; padding: 5px 6px 5px 12px; position: fixed; right: 22px; top: 56px; z-index: 20; }
 .auth-session-bar span { color: var(--muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .auth-session-bar button { background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; font-size: 9px; font-weight: 800; padding: 6px 9px; }
 
@@ -489,7 +501,7 @@ footer span:first-child { color: var(--mint); font-weight: 900; }
   .auth-proof div:nth-child(3) { display: none; }
   .auth-proof { grid-template-columns: 1fr 1fr; }
   .auth-panel { padding: 48px 22px; }
-  .auth-session-bar { right: 12px; top: 10px; }
+  .auth-session-bar { right: 12px; top: 48px; }
   .app-shell { width: min(100% - 24px, 1320px); padding-top: 24px; }
   .topbar, .thesis-actions { align-items: flex-start; flex-direction: column; }
   .add-holding-trigger { grid-template-columns: auto 1fr; }

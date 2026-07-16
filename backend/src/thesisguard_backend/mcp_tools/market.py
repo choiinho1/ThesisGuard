@@ -35,6 +35,14 @@ class MarketData:
     change_pct_30d: float | None
 
 
+@dataclass(slots=True)
+class Quote:
+    ticker: str
+    price: float | None
+    change_pct: float | None
+    as_of: str | None
+
+
 async def _fetch_chart_result(ticker: str, range_: str, interval: str) -> dict | None:
     try:
         async with httpx.AsyncClient(timeout=10, follow_redirects=True, headers=_HEADERS) as client:
@@ -120,6 +128,31 @@ async def get_price_history(ticker: str, days: int = 90) -> list[PricePoint]:
     if result is None:
         return []
     return _parse_points(result)[-days:]
+
+
+async def get_quote(ticker: str) -> Quote:
+    """Latest price plus day-over-day change, for tickers (indices, FX, crypto
+    included) that don't need the full 30d history `get_market_data` builds.
+    """
+    result = await _fetch_chart_result(ticker, range_="5d", interval="1d")
+    if result is None:
+        return Quote(ticker=ticker.upper(), price=None, change_pct=None, as_of=None)
+
+    points = _parse_points(result)
+    latest = _latest_point(result, points)
+    if latest is None:
+        return Quote(ticker=ticker.upper(), price=None, change_pct=None, as_of=None)
+
+    prior = next((p for p in reversed(points) if p.date < latest.date), None)
+    change_pct = None
+    if prior and prior.close:
+        change_pct = round((latest.close - prior.close) / prior.close * 100, 2)
+    return Quote(
+        ticker=ticker.upper(),
+        price=latest.close,
+        change_pct=change_pct,
+        as_of=latest.date.isoformat(),
+    )
 
 
 async def get_market_data(ticker: str) -> MarketData:
