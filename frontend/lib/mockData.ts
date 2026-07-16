@@ -9,6 +9,9 @@ import type {
   MarketSnapshot,
   Portfolio,
   PortfolioDashboard,
+  PortfolioQueryEvidence,
+  PortfolioQueryResponse,
+  PortfolioQueryScope,
   Thesis,
   ThesisVersion,
   UpdateHoldingPositionInput,
@@ -543,4 +546,105 @@ export function getMockHoldingHistory(holdingId: string): HoldingHistoryResponse
     entries: [],
     total_count: 0,
   };
+}
+
+export function getMockPortfolioQuery(question: string): PortfolioQueryResponse {
+  const trimmed = question.trim();
+  const holdingsWithThesis = dashboardState.holdings.filter((item) => item.thesis);
+  const nvda = dashboardState.holdings.find((item) => item.ticker === "NVDA");
+  const avgo = dashboardState.holdings.find((item) => item.ticker === "AVGO");
+  const tsm = dashboardState.holdings.find((item) => item.ticker === "TSM");
+
+  const baseScope: PortfolioQueryScope = {
+    holding_count: dashboardState.holdings.length,
+    thesis_count: holdingsWithThesis.length,
+    candidate_evidence_count: 12,
+    selected_evidence_count: 0,
+    latest_evidence_at: now,
+  };
+
+  const respond = (
+    answer: string,
+    evidence: PortfolioQueryEvidence[],
+    limitations: string[],
+  ): PortfolioQueryResponse => structuredClone({
+    answer,
+    evidence_document_ids: evidence.map((item) => item.document_id),
+    evidence,
+    limitations,
+    scope: { ...baseScope, selected_evidence_count: evidence.length },
+  });
+
+  if (/공통|의존|가정/.test(trimmed) && nvda?.thesis && avgo?.thesis) {
+    return respond(
+      "NVDA와 AVGO 모두 '하이퍼스케일러 AI CAPEX 성장'이라는 공통 가정에 크게 의존하고 있습니다. 이 가정이 꺾이면 두 종목의 투자 논리가 동시에 흔들릴 수 있습니다.",
+      [
+        {
+          document_id: "macro-mock-capex-01",
+          holding_id: nvda.id,
+          ticker: nvda.ticker,
+          content_snippet: "하이퍼스케일러 4사의 2026년 AI 데이터센터 CAPEX 가이던스가 전년 대비 상향 조정되었습니다.",
+          source_url: "https://example.com/macro/capex-guidance",
+          published_at: now,
+          classification: "SUPPORT",
+          impact: "HIGH",
+          related_assumptions: [nvda.thesis.key_assumptions[0]],
+        },
+        {
+          document_id: "earnings-mock-avgo-01",
+          holding_id: avgo.id,
+          ticker: avgo.ticker,
+          content_snippet: "Broadcom의 Custom AI ASIC 수주 잔고가 하이퍼스케일러 CAPEX 확대와 함께 증가했습니다.",
+          source_url: "https://example.com/earnings/avgo-q2",
+          published_at: now,
+          classification: "SUPPORT",
+          impact: "MEDIUM",
+          related_assumptions: avgo.thesis.key_assumptions,
+        },
+      ],
+      ["근거는 질문과의 의미적 관련성이 아니라 최신순으로만 선택했습니다."],
+    );
+  }
+
+  if (/위험|리스크/.test(trimmed) && avgo?.thesis) {
+    return respond(
+      "가장 최근 근거 기준으로는 AVGO의 고객사 발주 지연 이슈가 여러 종목에 영향을 줄 수 있는 공통 리스크로 보입니다. NVDA·TSM에서는 아직 동일한 신호가 확인되지 않았습니다.",
+      [
+        {
+          document_id: "news-mock-avgo-risk-01",
+          holding_id: avgo.id,
+          ticker: avgo.ticker,
+          content_snippet: "주요 고객사가 일부 발주를 다음 분기로 연기했다는 보도가 나왔습니다.",
+          source_url: "https://example.com/news/avgo-delay",
+          published_at: now,
+          classification: "CONTRADICT",
+          impact: "MEDIUM",
+          related_assumptions: avgo.thesis.key_assumptions,
+        },
+      ],
+      [
+        "근거는 질문과의 의미적 관련성이 아니라 최신순으로만 선택했습니다.",
+        "일부 종목은 근거가 없어 이번 답변에 반영되지 않았을 수 있습니다.",
+      ],
+    );
+  }
+
+  if (/부족|약한|약해/.test(trimmed)) {
+    return respond(
+      tsm
+        ? `${tsm.ticker}는 아직 투자 논리(Thesis)가 등록되지 않아 평가할 근거 자체가 없습니다. 등록된 Thesis 중에서는 AVGO의 근거가 가장 얇습니다.`
+        : "등록된 Thesis 중 근거가 가장 부족한 종목을 찾지 못했습니다.",
+      [],
+      [
+        "포트폴리오에 저장된 근거가 아직 없습니다.",
+        "아직 투자 논리(Thesis)가 등록되지 않은 종목은 이번 답변에 반영되지 않았습니다.",
+      ],
+    );
+  }
+
+  return respond(
+    "질문과 직접 관련된 근거를 찾지 못했습니다. 질문을 더 구체적으로 입력하시거나, 추천 질문을 사용해 보세요.",
+    [],
+    ["질문과 직접 관련된 저장 근거를 찾지 못했습니다."],
+  );
 }

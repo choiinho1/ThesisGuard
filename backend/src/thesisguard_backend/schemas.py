@@ -267,10 +267,35 @@ class NaturalLanguageQueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+class NaturalLanguageQueryEvidenceResponse(BaseModel):
+    document_id: str
+    holding_id: uuid.UUID
+    ticker: str
+    content_snippet: str
+    source_url: str | None
+    published_at: datetime | None
+    classification: EvidenceClassification
+    impact: EvidenceImpact
+    related_assumptions: list[str]
+
+
+class NaturalLanguageQueryScopeResponse(BaseModel):
+    holding_count: int
+    thesis_count: int
+    candidate_evidence_count: int
+    selected_evidence_count: int
+    latest_evidence_at: datetime | None
+
+
 class NaturalLanguageQueryResponse(BaseModel):
     answer: str
+    # Kept for callers still on the raw-ID shape; the frontend should prefer
+    # `evidence` (PORTFOLIO_QA_BACKEND_TASKS.md #3.2) since a bare document_id
+    # isn't renderable on its own (no ticker/snippet/source to show).
     evidence_document_ids: list[str]
+    evidence: list[NaturalLanguageQueryEvidenceResponse]
     limitations: list[str]
+    scope: NaturalLanguageQueryScopeResponse
 
 
 # ------------------------------------------------------------- Alert ----
