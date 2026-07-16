@@ -317,3 +317,37 @@ export interface HoldingHistoryResponse {
   entries: HistoryEntry[];
   total_count: number;
 }
+
+export interface PortfolioQueryRequest {
+  question: string;
+}
+
+export interface PortfolioQueryEvidence {
+  document_id: string;
+  holding_id: string;
+  ticker: string;
+  content_snippet: string;
+  source_url: string | null;
+  published_at: string | null;
+  classification: EvidenceClassification;
+  impact: EvidenceImpact;
+  related_assumptions: string[];
+}
+
+export interface PortfolioQueryScope {
+  holding_count: number;
+  thesis_count: number;
+  candidate_evidence_count: number;
+  selected_evidence_count: number;
+  latest_evidence_at: string | null;
+}
+
+export interface PortfolioQueryResponse {
+  answer: string;
+  // Kept for backward compat with older backends; prefer `evidence` — a raw
+  // document_id alone has no ticker/snippet/source to render.
+  evidence_document_ids: string[];
+  evidence: PortfolioQueryEvidence[];
+  limitations: string[];
+  scope: PortfolioQueryScope;
+}

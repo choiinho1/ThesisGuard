@@ -41,8 +41,10 @@ from thesisguard_backend.schemas import (
     EvidenceHistoryGroupResponse,
     EvidenceResponse,
     HoldingAnalysisResponse,
+    NaturalLanguageQueryEvidenceResponse,
     NaturalLanguageQueryRequest,
     NaturalLanguageQueryResponse,
+    NaturalLanguageQueryScopeResponse,
     ThesisResponse,
     ThesisVersionResponse,
 )
@@ -481,13 +483,21 @@ async def query_portfolio(
     exists, replace this with a similarity search over `question`.
     """
 
-    thesis_ids = list(
-        await db.scalars(
-            select(orm.Thesis.id)
+    holding_count = len(
+        list(await db.scalars(select(orm.Holding.id).where(orm.Holding.portfolio_id == portfolio.id)))
+    )
+    thesis_rows = list(
+        await db.execute(
+            select(orm.Thesis.id, orm.Holding.id, orm.Holding.ticker)
             .join(orm.Holding, orm.Holding.id == orm.Thesis.holding_id)
             .where(orm.Holding.portfolio_id == portfolio.id)
         )
     )
+    thesis_ids = [row[0] for row in thesis_rows]
+    # thesis_id -> (holding_id, ticker), so evidence rows (which only carry a
+    # thesis_id) can be traced back to the holding they belong to.
+    holding_by_thesis = {row[0]: (row[1], row[2]) for row in thesis_rows}
+
     evidence_rows = list(
         await db.scalars(
             select(orm.Evidence)
@@ -518,7 +528,14 @@ async def query_portfolio(
         user_id=str(portfolio.user_id),
         session_id=f"portfolio:{portfolio.id}",
         input={"portfolio_id": str(portfolio.id), "question": payload.question},
-        metadata={"portfolio_id": portfolio.id, "evidence_count": len(evidence)},
+        metadata={
+            "portfolio_id": portfolio.id,
+            "holding_count": holding_count,
+            "thesis_count": len(thesis_ids),
+            "candidate_evidence_count": len(evidence),
+            "question_length": len(payload.question),
+            "search_method": "RECENCY",
+        },
         tags=["portfolio-query"],
     ) as trace:
         answer = await agent.aanswer_portfolio_query(
@@ -528,8 +545,67 @@ async def query_portfolio(
             runnable_config=trace.runnable_config,
         )
         trace.set_output(answer.model_dump(mode="json"))
+
+    # The agent already filters evidence_document_ids down to IDs it was
+    # actually shown (agents/model.py), but dedupe defensively here too so a
+    # repeated ID can't produce two evidence cards on the frontend.
+    evidence_by_document_id = {row.document_id: row for row in evidence_rows}
+    seen_document_ids: set[str] = set()
+    detailed_evidence: list[NaturalLanguageQueryEvidenceResponse] = []
+    for document_id in answer.evidence_document_ids:
+        if document_id in seen_document_ids:
+            continue
+        row = evidence_by_document_id.get(document_id)
+        if row is None:
+            continue
+        holding_id, ticker = holding_by_thesis.get(row.thesis_id, (None, None))
+        if holding_id is None:
+            continue
+        seen_document_ids.add(document_id)
+        detailed_evidence.append(
+            NaturalLanguageQueryEvidenceResponse(
+                document_id=row.document_id,
+                holding_id=holding_id,
+                ticker=ticker,
+                content_snippet=row.content_snippet,
+                source_url=row.source_url,
+                published_at=row.published_at,
+                classification=row.classification,
+                impact=row.impact,
+                related_assumptions=row.related_assumptions,
+            )
+        )
+
+    limitations = list(answer.limitations)
+    if holding_count > len(thesis_ids):
+        limitations.append("아직 투자 논리(Thesis)가 등록되지 않은 종목은 이번 답변에 반영되지 않았습니다.")
+    if not evidence_rows:
+        limitations.append("포트폴리오에 저장된 근거가 아직 없습니다.")
+    else:
+        theses_with_evidence = {row.thesis_id for row in evidence_rows}
+        if len(theses_with_evidence) < len(thesis_ids):
+            limitations.append("일부 종목은 근거가 없어 이번 답변에 반영되지 않았을 수 있습니다.")
+        if len(evidence_rows) >= 50:
+            limitations.append("최근 저장된 근거 중 최신 50건만 검토했습니다.")
+        limitations.append("근거는 질문과의 의미적 관련성이 아니라 최신순으로만 선택했습니다.")
+        if any(item.source_url is None for item in detailed_evidence):
+            limitations.append("일부 근거는 원문 링크가 없습니다.")
+
+    latest_evidence_at = max(
+        (row.published_at for row in evidence_rows if row.published_at is not None),
+        default=None,
+    )
+
     return NaturalLanguageQueryResponse(
         answer=answer.answer,
         evidence_document_ids=answer.evidence_document_ids,
-        limitations=answer.limitations,
+        evidence=detailed_evidence,
+        limitations=limitations,
+        scope=NaturalLanguageQueryScopeResponse(
+            holding_count=holding_count,
+            thesis_count=len(thesis_ids),
+            candidate_evidence_count=len(evidence_rows),
+            selected_evidence_count=len(detailed_evidence),
+            latest_evidence_at=latest_evidence_at,
+        ),
     )
