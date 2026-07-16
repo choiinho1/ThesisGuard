@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def _default_portfolio(user_id: uuid.UUID) -> orm.Portfolio:
     return orm.Portfolio(
         user_id=user_id,
-        name="내 포트폴리오",
+        name="MY THESIS",
         investment_purpose="장기 자산 성장",
         investment_horizon="장기",
         cash_ratio=0,
