@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
+import httpx
 from langchain_core.runnables import RunnableConfig
 from langfuse import Langfuse, propagate_attributes
 from langfuse.langchain import CallbackHandler
@@ -123,6 +124,63 @@ def observe_llm_operation(
                 "metadata": propagated_metadata,
             }
             yield LLMTrace(runnable_config=runnable_config, _observation=observation)
+
+
+@dataclass(slots=True)
+class LangfuseTraceSummary:
+    """One row of Langfuse's ``GET /api/public/traces`` response, trimmed to
+    what the admin console table shows — full trace detail (span tree,
+    prompts) still requires clicking through to Langfuse itself."""
+
+    id: str
+    name: str | None
+    timestamp: str | None
+    user_id: str | None
+    latency_seconds: float | None
+    total_cost: float | None
+    tags: list[str]
+
+
+async def alist_recent_traces(*, limit: int = 20) -> list[LangfuseTraceSummary]:
+    """Fetch the most recent traces via Langfuse's Public API.
+
+    Returns an empty list when tracing isn't configured — mirrors
+    ``langfuse_status()`` rather than raising, so a disabled/unconfigured
+    project just shows an empty table instead of an error banner.
+    """
+
+    settings = get_settings()
+    if (
+        not settings.langfuse_enabled
+        or not settings.langfuse_public_key
+        or not settings.langfuse_secret_key
+    ):
+        return []
+
+    async with httpx.AsyncClient(
+        base_url=settings.langfuse_base_url,
+        auth=(settings.langfuse_public_key, settings.langfuse_secret_key),
+        timeout=10,
+    ) as client:
+        response = await client.get(
+            "/api/public/traces",
+            params={"limit": limit, "orderBy": "timestamp.desc"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+    return [
+        LangfuseTraceSummary(
+            id=item["id"],
+            name=item.get("name"),
+            timestamp=item.get("timestamp"),
+            user_id=item.get("userId"),
+            latency_seconds=item.get("latency"),
+            total_cost=item.get("totalCost"),
+            tags=item.get("tags") or [],
+        )
+        for item in payload.get("data", [])
+    ]
 
 
 def shutdown_langfuse() -> None:

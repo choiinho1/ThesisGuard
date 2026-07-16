@@ -35,7 +35,7 @@ from agents.retrieval import (
 from agents.sanitization import sanitize_source_text
 from bs4 import BeautifulSoup
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from thesisguard_backend import models as orm
@@ -356,7 +356,12 @@ async def get_market_snapshot(ticker: str) -> market.MarketData:
     return await market.get_market_data(ticker)
 
 
-def create_chat_model():
+def create_chat_model(
+    *,
+    temperature: float | None = None,
+    timeout: float | None = None,
+    max_retries: int | None = None,
+):
     """Builds the LangChain chat model selected via LLM_PROVIDER/LLM_MODEL.
 
     timeout + max_retries are set explicitly on every provider: without them,
@@ -368,15 +373,18 @@ def create_chat_model():
     """
 
     settings = get_settings()
+    temperature = 0 if temperature is None else temperature
+    timeout = 30 if timeout is None else timeout
+    max_retries = 1 if max_retries is None else max_retries
     if settings.llm_provider == "openai":
         from langchain_openai import ChatOpenAI
 
         return ChatOpenAI(
             model=settings.llm_model,
             api_key=settings.openai_api_key,
-            temperature=0,
-            timeout=30,
-            max_retries=1,
+            temperature=temperature,
+            timeout=timeout,
+            max_retries=max_retries,
         )
     if settings.llm_provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
@@ -384,9 +392,9 @@ def create_chat_model():
         return ChatGoogleGenerativeAI(
             model=settings.llm_model,
             google_api_key=settings.google_api_key,
-            temperature=0,
-            timeout=30,
-            max_retries=1,
+            temperature=temperature,
+            timeout=timeout,
+            max_retries=max_retries,
         )
     if settings.llm_provider == "upstage":
         from langchain_upstage import ChatUpstage
@@ -394,9 +402,9 @@ def create_chat_model():
         return ChatUpstage(
             model=settings.llm_model,
             upstage_api_key=settings.upstage_api_key,
-            temperature=0,
-            timeout=30,
-            max_retries=1,
+            temperature=temperature,
+            timeout=timeout,
+            max_retries=max_retries,
         )
     raise ValueError(
         f"Unsupported LLM_PROVIDER={settings.llm_provider!r}. "
@@ -444,13 +452,17 @@ def create_embedding_model() -> EmbeddingModel | None:
     )
 
 
-def create_rag_retriever() -> HybridRAGRetriever | None:
+def create_rag_retriever(
+    *, dense_candidate_ratio: float | None = None
+) -> HybridRAGRetriever | None:
     """Build provider-backed hybrid RAG, or retain deterministic retrieval."""
 
     embeddings = create_embedding_model()
     if embeddings is None:
         return None
-    return HybridRAGRetriever(embeddings)
+    if dense_candidate_ratio is None:
+        return HybridRAGRetriever(embeddings)
+    return HybridRAGRetriever(embeddings, dense_candidate_ratio=dense_candidate_ratio)
 
 
 def build_default_agent(session_factory: async_sessionmaker) -> ThesisGuardAgent:
@@ -459,4 +471,41 @@ def build_default_agent(session_factory: async_sessionmaker) -> ThesisGuardAgent
         research_tools=BackendResearchTools(),
         model=LangChainAnalysisModel(create_chat_model()),
         retriever=create_rag_retriever(),
+    )
+
+
+async def build_agent_from_settings(
+    session_factory: async_sessionmaker, db: AsyncSession
+) -> ThesisGuardAgent:
+    """Like build_default_agent, but LLM/scoring/policy params come from AppSettings.
+
+    Call this (and agents.graph.configure_agent(...) with the result) right
+    before triggering an analysis run so admin-tuned parameters (see
+    settings_service.py) take effect on the next run without a redeploy —
+    the graph itself is otherwise compiled once at app startup.
+    """
+
+    from agents.runtime import WorkflowConfig
+
+    from thesisguard_backend import settings_service
+
+    snapshot = await settings_service.aget_settings_snapshot(db)
+    config = WorkflowConfig(
+        impact_weight_low=snapshot["scoring.impact_weight_low"],
+        impact_weight_medium=snapshot["scoring.impact_weight_medium"],
+        impact_weight_high=snapshot["scoring.impact_weight_high"],
+        invalidation_streak_required=snapshot["scoring.invalidation_streak_required"],
+        alert_major_movement_threshold=snapshot["policy.major_movement_threshold"],
+    )
+    model = create_chat_model(
+        temperature=snapshot["llm.temperature"],
+        timeout=snapshot["llm.timeout_seconds"],
+        max_retries=snapshot["llm.max_retries"],
+    )
+    return ThesisGuardAgent(
+        context_provider=BackendContextProvider(session_factory),
+        research_tools=BackendResearchTools(),
+        model=LangChainAnalysisModel(model),
+        retriever=create_rag_retriever(dense_candidate_ratio=snapshot["rag.dense_candidate_ratio"]),
+        config=config,
     )

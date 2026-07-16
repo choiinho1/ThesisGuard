@@ -18,10 +18,16 @@ _STATUS_SCORE = {
 }
 
 
-def decide_alert(previous: ThesisStatus, current: ThesisStatus) -> AlertDecision:
+def decide_alert(
+    previous: ThesisStatus,
+    current: ThesisStatus,
+    *,
+    major_movement_threshold: int | None = None,
+) -> AlertDecision:
     """Map a six-step thesis change to the four alert severities."""
 
     movement = _STATUS_SCORE[current] - _STATUS_SCORE[previous]
+    major_threshold = -2 if major_movement_threshold is None else major_movement_threshold
 
     if current == ThesisStatus.BROKEN:
         return AlertDecision(
@@ -30,7 +36,7 @@ def decide_alert(previous: ThesisStatus, current: ThesisStatus) -> AlertDecision
             delivery="IMMEDIATE",
             reason="투자 논리가 BROKEN 상태로 판정되었습니다.",
         )
-    if current == ThesisStatus.STRONGLY_WEAKENED or movement <= -2:
+    if current == ThesisStatus.STRONGLY_WEAKENED or movement <= major_threshold:
         return AlertDecision(
             severity=AlertSeverity.MAJOR,
             should_send=True,

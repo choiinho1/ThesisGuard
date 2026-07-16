@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Callable
 from typing import Annotated
 
-from agents.graph import arun_analysis_workflow
+from agents.graph import arun_analysis_workflow, configure_agent
 from agents.logic_graph import normalize_logic_graph
 from agents.models import AlertDecision, EvidenceImpact, EvidenceItem
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -19,8 +19,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from thesisguard_backend import models as orm
+from thesisguard_backend import settings_service
+from thesisguard_backend.agent_adapters import build_agent_from_settings
 from thesisguard_backend.alert_engine import handle_alert_decision
 from thesisguard_backend.config import get_settings
+from thesisguard_backend.db import session_factory
 from thesisguard_backend.deps import Agent, CurrentUser, DbSession, get_owned_portfolio
 from thesisguard_backend.evidence_history import (
     is_duplicate_placeholder,
@@ -190,6 +193,11 @@ async def run_analysis_and_save(
         },
         tags=["holding-analysis", holding.ticker.lower()],
     ) as trace:
+        # Rebuild the agent's WorkflowConfig from current AppSettings right
+        # before running so an admin's scoring/policy/LLM parameter change
+        # takes effect on this run without a redeploy (the graph is otherwise
+        # compiled once at app startup — see agent_adapters.build_agent_from_settings).
+        configure_agent(await build_agent_from_settings(session_factory, db))
         result = await arun_analysis_workflow(
             str(portfolio.id),
             str(holding.id),
@@ -484,7 +492,9 @@ async def query_portfolio(
     """
 
     holding_count = len(
-        list(await db.scalars(select(orm.Holding.id).where(orm.Holding.portfolio_id == portfolio.id)))
+        list(
+            await db.scalars(select(orm.Holding.id).where(orm.Holding.portfolio_id == portfolio.id))
+        )
     )
     thesis_rows = list(
         await db.execute(
@@ -498,12 +508,13 @@ async def query_portfolio(
     # thesis_id) can be traced back to the holding they belong to.
     holding_by_thesis = {row[0]: (row[1], row[2]) for row in thesis_rows}
 
+    evidence_limit = await settings_service.aget_setting(db, "qa.evidence_limit")
     evidence_rows = list(
         await db.scalars(
             select(orm.Evidence)
             .where(orm.Evidence.thesis_id.in_(thesis_ids))
             .order_by(orm.Evidence.created_at.desc())
-            .limit(50)
+            .limit(evidence_limit)
         )
     )
     evidence = [
@@ -578,15 +589,17 @@ async def query_portfolio(
 
     limitations = list(answer.limitations)
     if holding_count > len(thesis_ids):
-        limitations.append("아직 투자 논리(Thesis)가 등록되지 않은 종목은 이번 답변에 반영되지 않았습니다.")
+        limitations.append(
+            "아직 투자 논리(Thesis)가 등록되지 않은 종목은 이번 답변에 반영되지 않았습니다."
+        )
     if not evidence_rows:
         limitations.append("포트폴리오에 저장된 근거가 아직 없습니다.")
     else:
         theses_with_evidence = {row.thesis_id for row in evidence_rows}
         if len(theses_with_evidence) < len(thesis_ids):
             limitations.append("일부 종목은 근거가 없어 이번 답변에 반영되지 않았을 수 있습니다.")
-        if len(evidence_rows) >= 50:
-            limitations.append("최근 저장된 근거 중 최신 50건만 검토했습니다.")
+        if len(evidence_rows) >= evidence_limit:
+            limitations.append(f"최근 저장된 근거 중 최신 {evidence_limit}건만 검토했습니다.")
         limitations.append("근거는 질문과의 의미적 관련성이 아니라 최신순으로만 선택했습니다.")
         if any(item.source_url is None for item in detailed_evidence):
             limitations.append("일부 근거는 원문 링크가 없습니다.")
@@ -596,7 +609,7 @@ async def query_portfolio(
         default=None,
     )
 
-    return NaturalLanguageQueryResponse(
+    response = NaturalLanguageQueryResponse(
         answer=answer.answer,
         evidence_document_ids=answer.evidence_document_ids,
         evidence=detailed_evidence,
@@ -609,3 +622,18 @@ async def query_portfolio(
             latest_evidence_at=latest_evidence_at,
         ),
     )
+
+    # Every Q&A pair is logged for the admin console (training-data export),
+    # per PBL mentoring feedback — see docs/PORTFOLIO_QA_BACKEND_TASKS.md.
+    db.add(
+        orm.QaLog(
+            user_id=portfolio.user_id,
+            portfolio_id=portfolio.id,
+            question=payload.question,
+            answer=answer.answer,
+            evidence_document_ids=list(answer.evidence_document_ids),
+        )
+    )
+    await db.commit()
+
+    return response

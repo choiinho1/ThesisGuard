@@ -1,9 +1,12 @@
 export type ApiMode = "mock" | "live";
 
+export type UserRole = "user" | "admin";
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string | null;
+  role: UserRole;
   created_at: string;
 }
 
@@ -357,4 +360,92 @@ export interface PortfolioQueryResponse {
   evidence: PortfolioQueryEvidence[];
   limitations: string[];
   scope: PortfolioQueryScope;
+}
+
+// ------------------------------------------------------------------ Admin
+export interface AppSetting {
+  key: string;
+  category: string;
+  value: number | string | boolean;
+  description: string | null;
+  updated_by_id: string | null;
+  updated_at: string;
+}
+
+export interface AdminScheduleOverview {
+  schedule_id: string;
+  holding_id: string;
+  ticker: string;
+  user_email: string;
+  enabled: boolean;
+  next_run_at: string;
+  last_run_at: string | null;
+  latest_run_status: string | null;
+  latest_run_error: string | null;
+}
+
+export interface AdminHealth {
+  database: string;
+  llm_provider: string;
+  rag_enabled: boolean;
+  langfuse: string;
+  langfuse_base_url: string;
+  scheduler_enabled: boolean;
+  scheduler_poll_seconds: number;
+}
+
+export interface LangfuseTrace {
+  id: string;
+  name: string | null;
+  timestamp: string | null;
+  user_id: string | null;
+  latency_seconds: number | null;
+  total_cost: number | null;
+  tags: string[];
+}
+
+export interface QaLogEntry {
+  id: string;
+  user_id: string;
+  user_email: string;
+  portfolio_id: string;
+  question: string;
+  answer: string;
+  evidence_document_ids: string[];
+  created_at: string;
+}
+
+export interface EvalScenarioInput {
+  name: string;
+  category: string;
+  question: string;
+  context_snapshot: Record<string, unknown>;
+  expected_document_ids: string[];
+  required_keywords: string[];
+  forbidden_terms: string[];
+  is_active: boolean;
+}
+
+export interface EvalScenario {
+  id: string;
+  name: string;
+  category: string;
+  question: string;
+  context_snapshot: Record<string, unknown>;
+  expected_document_ids: string[];
+  required_keywords: string[];
+  forbidden_terms: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvalRun {
+  id: string;
+  scenario_id: string | null;
+  settings_snapshot: Record<string, unknown>;
+  metrics: Record<string, unknown>;
+  status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  error_message: string | null;
+  created_at: string;
 }

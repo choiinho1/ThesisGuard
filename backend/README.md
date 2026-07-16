@@ -275,3 +275,9 @@ LANGFUSE_SAMPLE_RATE=1.0
 묶는다. 모델 프롬프트에는 사용자가 작성한 투자 논리와 수집된 근거가 포함되므로 적절한 데이터
 보존 정책을 사용해야 한다. 트래픽이 많아지면 `LANGFUSE_SAMPLE_RATE`를 `1.0`보다 낮춘다.
 `GET /health`에는 키 대신 Langfuse 상태와 RAG의 `enabled`/`disabled` 상태만 표시된다.
+
+관리자 콘솔(`/admin` → 운영 탭)에서 `GET /api/admin/langfuse/traces`를 통해 Langfuse Public
+API(`GET /api/public/traces`)로 최근 트레이스 요약(이름/사용자/시각/지연시간/비용)을 확인할 수
+있다. 스팬 트리·프롬프트 등 상세 정보는 여전히 Langfuse 콘솔에서 봐야 한다 — 요약 테이블 옆
+"Langfuse에서 열기" 링크로 바로 이동 가능. Langfuse가 비활성화됐거나 키가 없으면 빈 목록을
+반환하고, Langfuse API 호출 자체가 실패하면 502를 반환한다.
