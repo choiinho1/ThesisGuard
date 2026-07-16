@@ -1,0 +1,191 @@
+{
+  "dataset_id": "agent-metrics-v1",
+  "labeling_method": "사람이 투자 논리와 문서 내용을 대조해 문서별 방향 및 알림 필요 여부를 사전 라벨링",
+  "classification_labels": {
+    "hood-competition-and-growth": {
+      "hood-price": "NEUTRAL",
+      "hood-earnings": "SUPPORT",
+      "hood-meta-competitor": "CONTRADICT",
+      "hood-office": "NEUTRAL"
+    },
+    "nvda-capex-and-asic-risk": {
+      "nvda-split": "NEUTRAL",
+      "nvda-capex-filing": "SUPPORT",
+      "nvda-asic-news": "CONTRADICT",
+      "nvda-gaming": "NEUTRAL"
+    },
+    "tsla-margin-and-regulation": {
+      "tsla-delivery-price": "NEUTRAL",
+      "tsla-margin": "CONTRADICT",
+      "tsla-permit": "CONTRADICT",
+      "tsla-storage": "NEUTRAL"
+    },
+    "lly-demand-supply-and-competition": {
+      "lly-dividend": "NEUTRAL",
+      "lly-capacity": "SUPPORT",
+      "lly-rival-trial": "CONTRADICT",
+      "lly-office": "NEUTRAL"
+    },
+    "aapl-korean-cross-language": {
+      "aapl-headset": "NEUTRAL",
+      "aapl-services": "SUPPORT",
+      "aapl-china-share": "CONTRADICT",
+      "aapl-campus": "NEUTRAL"
+    },
+    "jpm-margin-and-credit-cycle": {
+      "jpm-branch": "NEUTRAL",
+      "jpm-credit": "CONTRADICT",
+      "jpm-fed-rate": "CONTRADICT",
+      "jpm-cpi": "NEUTRAL"
+    },
+    "amzn-title-and-hard-negatives": {
+      "amzn-keyword-noise": "NEUTRAL",
+      "amzn-aws-margin": "SUPPORT",
+      "amzn-ai-capex": "SUPPORT",
+      "amzn-delivery": "NEUTRAL"
+    },
+    "coin-query-coverage-noise": {
+      "coin-topic-index": "NEUTRAL",
+      "coin-subscription": "SUPPORT",
+      "coin-regulation": "SUPPORT",
+      "coin-price": "NEUTRAL",
+      "coin-office": "NEUTRAL"
+    },
+    "nflx-abstain-from-noise": {
+      "nflx-ad-metrics": "SUPPORT",
+      "nflx-topic-page": "NEUTRAL",
+      "nflx-actor": "NEUTRAL",
+      "nflx-price": "NEUTRAL"
+    }
+  },
+  "alert_cases": [
+    {
+      "case_id": "unchanged-to-unchanged",
+      "previous_status": "UNCHANGED",
+      "current_status": "UNCHANGED",
+      "expected_should_send": false,
+      "expected_severity": "NONE",
+      "expected_delivery": "NONE"
+    },
+    {
+      "case_id": "unchanged-to-strengthened",
+      "previous_status": "UNCHANGED",
+      "current_status": "STRENGTHENED",
+      "expected_should_send": false,
+      "expected_severity": "NONE",
+      "expected_delivery": "NONE"
+    },
+    {
+      "case_id": "unchanged-to-strongly-strengthened",
+      "previous_status": "UNCHANGED",
+      "current_status": "STRONGLY_STRENGTHENED",
+      "expected_should_send": false,
+      "expected_severity": "NONE",
+      "expected_delivery": "NONE"
+    },
+    {
+      "case_id": "weakened-to-unchanged",
+      "previous_status": "WEAKENED",
+      "current_status": "UNCHANGED",
+      "expected_should_send": false,
+      "expected_severity": "NONE",
+      "expected_delivery": "NONE"
+    },
+    {
+      "case_id": "weakened-to-strengthened",
+      "previous_status": "WEAKENED",
+      "current_status": "STRENGTHENED",
+      "expected_should_send": false,
+      "expected_severity": "NONE",
+      "expected_delivery": "NONE"
+    },
+    {
+      "case_id": "strongly-weakened-to-unchanged",
+      "previous_status": "STRONGLY_WEAKENED",
+      "current_status": "UNCHANGED",
+      "expected_should_send": false,
+      "expected_severity": "NONE",
+      "expected_delivery": "NONE"
+    },
+    {
+      "case_id": "strengthened-to-strongly-strengthened",
+      "previous_status": "STRENGTHENED",
+      "current_status": "STRONGLY_STRENGTHENED",
+      "expected_should_send": false,
+      "expected_severity": "NONE",
+      "expected_delivery": "NONE"
+    },
+    {
+      "case_id": "strongly-strengthened-stable",
+      "previous_status": "STRONGLY_STRENGTHENED",
+      "current_status": "STRONGLY_STRENGTHENED",
+      "expected_should_send": false,
+      "expected_severity": "NONE",
+      "expected_delivery": "NONE"
+    },
+    {
+      "case_id": "unchanged-to-weakened",
+      "previous_status": "UNCHANGED",
+      "current_status": "WEAKENED",
+      "expected_should_send": true,
+      "expected_severity": "MINOR",
+      "expected_delivery": "WEEKLY"
+    },
+    {
+      "case_id": "unchanged-to-strongly-weakened",
+      "previous_status": "UNCHANGED",
+      "current_status": "STRONGLY_WEAKENED",
+      "expected_should_send": true,
+      "expected_severity": "MAJOR",
+      "expected_delivery": "IMMEDIATE"
+    },
+    {
+      "case_id": "unchanged-to-broken",
+      "previous_status": "UNCHANGED",
+      "current_status": "BROKEN",
+      "expected_should_send": true,
+      "expected_severity": "CRITICAL",
+      "expected_delivery": "IMMEDIATE"
+    },
+    {
+      "case_id": "strengthened-to-unchanged",
+      "previous_status": "STRENGTHENED",
+      "current_status": "UNCHANGED",
+      "expected_should_send": true,
+      "expected_severity": "MINOR",
+      "expected_delivery": "WEEKLY"
+    },
+    {
+      "case_id": "strongly-strengthened-to-strengthened",
+      "previous_status": "STRONGLY_STRENGTHENED",
+      "current_status": "STRENGTHENED",
+      "expected_should_send": true,
+      "expected_severity": "MINOR",
+      "expected_delivery": "WEEKLY"
+    },
+    {
+      "case_id": "strengthened-to-weakened",
+      "previous_status": "STRENGTHENED",
+      "current_status": "WEAKENED",
+      "expected_should_send": true,
+      "expected_severity": "MAJOR",
+      "expected_delivery": "IMMEDIATE"
+    },
+    {
+      "case_id": "weakened-to-strongly-weakened",
+      "previous_status": "WEAKENED",
+      "current_status": "STRONGLY_WEAKENED",
+      "expected_should_send": true,
+      "expected_severity": "MAJOR",
+      "expected_delivery": "IMMEDIATE"
+    },
+    {
+      "case_id": "strongly-weakened-to-broken",
+      "previous_status": "STRONGLY_WEAKENED",
+      "current_status": "BROKEN",
+      "expected_should_send": true,
+      "expected_severity": "CRITICAL",
+      "expected_delivery": "IMMEDIATE"
+    }
+  ]
+}

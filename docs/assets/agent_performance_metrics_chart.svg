@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+<rect width="1200" height="675" fill="#F8FAFC"/>
+<text x="70" y="72" font-family="Pretendard, Noto Sans KR, Arial" font-size="34" font-weight="700" fill="#0F172A">AI 판단·운영 성과 지표</text>
+<text x="70" y="108" font-family="Pretendard, Noto Sans KR, Arial" font-size="17" fill="#475569">RAG 검색 지표와 분리한 실측 결과 · 2026-07-16</text>
+<rect x="70" y="145" width="340" height="195" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+<rect x="70" y="145" width="8" height="195" rx="4" fill="#2563EB"/>
+<text x="104" y="192" font-family="Pretendard, Noto Sans KR, Arial" font-size="18" font-weight="600" fill="#475569">증거 분류 정확도</text>
+<text x="104" y="261" font-family="Arial" font-size="46" font-weight="700" fill="#2563EB">100%</text>
+<text x="104" y="303" font-family="Pretendard, Noto Sans KR, Arial" font-size="15" fill="#64748B">37개 사람 라벨 문서</text>
+<rect x="445" y="145" width="340" height="195" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+<rect x="445" y="145" width="8" height="195" rx="4" fill="#0891B2"/>
+<text x="479" y="192" font-family="Pretendard, Noto Sans KR, Arial" font-size="18" font-weight="600" fill="#475569">인용 원문 추적률</text>
+<text x="479" y="261" font-family="Arial" font-size="46" font-weight="700" fill="#0891B2">100%</text>
+<text x="479" y="303" font-family="Pretendard, Noto Sans KR, Arial" font-size="15" fill="#64748B">source_excerpt exact match</text>
+<rect x="820" y="145" width="340" height="195" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+<rect x="820" y="145" width="8" height="195" rx="4" fill="#059669"/>
+<text x="854" y="192" font-family="Pretendard, Noto Sans KR, Arial" font-size="18" font-weight="600" fill="#475569">알림 오탐률</text>
+<text x="854" y="261" font-family="Arial" font-size="46" font-weight="700" fill="#059669">0%</text>
+<text x="854" y="303" font-family="Pretendard, Noto Sans KR, Arial" font-size="15" fill="#64748B">0/8 no-alert 사례</text>
+<rect x="70" y="380" width="340" height="195" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+<rect x="70" y="380" width="8" height="195" rx="4" fill="#7C3AED"/>
+<text x="104" y="427" font-family="Pretendard, Noto Sans KR, Arial" font-size="18" font-weight="600" fill="#475569">문서 분류 P95</text>
+<text x="104" y="496" font-family="Arial" font-size="46" font-weight="700" fill="#7C3AED">4.31s</text>
+<text x="104" y="538" font-family="Pretendard, Noto Sans KR, Arial" font-size="15" fill="#64748B">실제 gpt-5.4-mini 호출</text>
+<rect x="445" y="380" width="340" height="195" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+<rect x="445" y="380" width="8" height="195" rx="4" fill="#EA580C"/>
+<text x="479" y="427" font-family="Pretendard, Noto Sans KR, Arial" font-size="18" font-weight="600" fill="#475569">전체 분석 P95</text>
+<text x="479" y="496" font-family="Arial" font-size="46" font-weight="700" fill="#EA580C">43.51s</text>
+<text x="479" y="538" font-family="Pretendard, Noto Sans KR, Arial" font-size="15" fill="#64748B">development trace 9건</text>
+<rect x="820" y="380" width="340" height="195" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+<rect x="820" y="380" width="8" height="195" rx="4" fill="#0F766E"/>
+<text x="854" y="427" font-family="Pretendard, Noto Sans KR, Arial" font-size="18" font-weight="600" fill="#475569">분석 1건 평균 비용</text>
+<text x="854" y="496" font-family="Arial" font-size="46" font-weight="700" fill="#0F766E">$0.0495</text>
+<text x="854" y="538" font-family="Pretendard, Noto Sans KR, Arial" font-size="15" fill="#64748B">LLM generation 비용</text>
+<text x="70" y="646" font-family="Pretendard, Noto Sans KR, Arial" font-size="14" fill="#64748B">※ 합성 골든셋 및 development 관측 표본 결과이며 운영 성능 보증이 아님</text>
+</svg>

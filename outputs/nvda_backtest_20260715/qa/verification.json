@@ -1,0 +1,36 @@
+{
+  "source": "https://query1.finance.yahoo.com/v8/finance/chart/NVDA?range=1y&interval=1d&events=div%2Csplits&includeAdjustedClose=true",
+  "rows": 250,
+  "firstDate": "2025-07-15",
+  "lastDate": "2026-07-13",
+  "firstAdjClose": 170.4729461669922,
+  "lastAdjClose": 203.52999877929688,
+  "expectedBuyHold": {
+    "totalReturn": 0.19271986172716837,
+    "cagr": 0.19387855383359365,
+    "volatility": 0.35655158793659697,
+    "sharpe": 0.6805140664326284,
+    "maxDrawdown": -0.20214385493927078,
+    "trades": 1,
+    "exposure": 1,
+    "winRate": 0.5100401606425703
+  },
+  "expectedStrategy": {
+    "totalReturn": -0.04310016415050322,
+    "cagr": -0.04333240986229481,
+    "volatility": 0.2865431069404719,
+    "sharpe": -0.013125867933129169,
+    "maxDrawdown": -0.19624574123131566,
+    "trades": 4,
+    "exposure": 0.464,
+    "winRate": 0.49137931034482757
+  },
+  "lastSignal": 0,
+  "lastPosition": 0,
+  "inspect": {
+    "summary": "{\"kind\":\"table\",\"sheet\":\"Summary\",\"address\":\"A1:I10\",\"rows\":10,\"cols\":9,\"values\":[[\"NVDA 최근 1년 백테스트\",null,null,null,null,null,null,null,null],[\"매수 후 보유 vs. SMA 20/50 · 조정종가 · 신호 다음 거래일 적용 · 편도 거래비용 0.10%\",null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null],[\"티커\",\"NVDA\",\"시작일\",45853.5625,\"종료일\",46216.5625,\"거래일 수\",250,null],[null,null,null,null,null,null,null,null,null],[\"전략\",\"총수익률\",\"CAGR\",\"연환산 변동성\",\"샤프지수\",\"최대낙폭\",\"진입 횟수\",\"시장 노출\",\"승률\"],[\"매수 후 보유\",0.19271986172716837,0.19387855383359365,0.35655158793659697,0.6805140664326284,-0.20214385493927078,1,1,0.5100401606425703],[\"SMA 20/50\",-0.04310016415050322,-0.04333240986229481,0.2865431069404719,-0.013125867933129169,-0.19624574123131566,4,0.464,0.49137931034482757],[null,null,null,null,null,null,null,null,null],[\"주의: 과거 성과는 미래 수익을 보장하지 않습니다. 세금·환율·호가 스프레드는 제외했고, 마지막 보유 포지션의 청산 비용은 반영하지 않았습니다.\",null,null,null,null,null,null,null,null]]}",
+    "checks": "{\"kind\":\"table\",\"sheet\":\"Checks\",\"address\":\"A3:G13\",\"rows\":11,\"cols\":7,\"values\":[[\"검증 항목\",\"실제\",\"기대값\",\"차이\",\"허용오차\",\"상태\",\"메모\"],[\"매수 후 보유 총수익률\",0.19271986172716837,0.19271986172716837,0,0.000001,\"OK\",\"JS 독립 계산과 Excel 수식 비교\"],[\"SMA 총수익률\",-0.04310016415050322,-0.04310016415050322,0,0.000001,\"OK\",\"JS 독립 계산과 Excel 수식 비교\"],[\"매수 후 보유 최대낙폭\",-0.20214385493927078,-0.20214385493927078,0,0.000001,\"OK\",\"JS 독립 계산과 Excel 수식 비교\"],[\"SMA 최대낙폭\",-0.19624574123131566,-0.19624574123131566,0,0.000001,\"OK\",\"JS 독립 계산과 Excel 수식 비교\"],[\"거래일 수\",250,250,0,0,\"OK\",\"원천 데이터 행 수\"],[\"첫 날짜\",45853.5625,\"2025-07-15T13:30:00.000Z\",0,0,\"OK\",\"조회 구간 첫 거래일\"],[\"마지막 날짜\",46216.5625,\"2026-07-13T13:30:00.000Z\",0,0,\"OK\",\"가장 최근 완료 거래일\"],[\"신호 익일 적용 불일치\",0,0,0,0,\"OK\",\"Position(t) = Signal(t-1) 확인\"],[null,null,null,null,null,null,null],[\"전체 모델 상태\",null,null,null,null,\"OK\",null]]}",
+    "errors": "{\"kind\":\"notice\",\"message\":\"Cell search matched 0 entries.\"}",
+    "drawings": "{\"kind\":\"drawing\",\"sheet\":\"Summary\",\"drawingType\":\"chart\",\"id\":\"ch/zq1knal4\",\"anchor\":{\"from\":{\"row\":11,\"col\":0,\"rowOffsetEmu\":0,\"colOffsetEmu\":0,\"rowOffsetPx\":0,\"colOffsetPx\":0},\"to\":{\"row\":29,\"col\":9,\"rowOffsetEmu\":0,\"colOffsetEmu\":0,\"rowOffsetPx\":0,\"colOffsetPx\":0}}}"
+  }
+}

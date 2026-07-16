@@ -1,0 +1,13 @@
+﻿category,metric,value,unit,sample,scope
+AI judgment,Evidence Classification Accuracy,100.0,%,37,합성 사람 라벨 문서
+AI judgment,Evidence Classification Macro F1,100.0,%,37,SUPPORT/CONTRADICT/NEUTRAL
+Grounding,Source Excerpt Groundedness,100.0,%,37,선택 구간의 원문 exact match
+Alert,Alert False Positive Rate,0.0,%,8,합성 no-alert 상태 전이
+Alert,Alert Recall,100.0,%,8,합성 alert 상태 전이
+Reliability,Classification Success Rate,100.0,%,37,실제 모델 호출
+Latency,Classification P95,4.311859999999999,seconds,37,문서 1건
+Latency,Holding Analysis P50,23.134,seconds,9,보유종목 전체 분석
+Latency,Holding Analysis P95,43.514,seconds,9,보유종목 전체 분석
+Cost,Classification Mean Cost,0.00271658,USD,37,문서 1건
+Cost,Holding Analysis Mean Cost,0.04945635,USD,9,보유종목 전체 분석
+Cost,Holding Analysis P95 Cost,0.09298947,USD,9,보유종목 전체 분석

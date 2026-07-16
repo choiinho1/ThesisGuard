@@ -1,0 +1,41 @@
+{
+  "measured_at": "2026-07-16",
+  "environment": "local Windows development environment",
+  "test_suites": [
+    {
+      "name": "Agent unit/integration tests",
+      "command": ".venv/Scripts/python.exe -m pytest -q",
+      "passed": 76,
+      "total": 76,
+      "duration_seconds": 6.8,
+      "exit_code": 0
+    },
+    {
+      "name": "Backend unit/integration tests",
+      "command": "PYTHONPATH=..;src ../.venv/Scripts/python.exe -m pytest -q",
+      "passed": 69,
+      "total": 69,
+      "duration_seconds": 13.2,
+      "exit_code": 0
+    }
+  ],
+  "static_checks": [
+    {
+      "name": "Frontend ESLint",
+      "command": "eslint .",
+      "passed": true,
+      "exit_code": 0
+    },
+    {
+      "name": "Frontend TypeScript typecheck",
+      "command": "tsc --noEmit",
+      "passed": true,
+      "exit_code": 0
+    }
+  ],
+  "frontend_check_duration_seconds": 9.3,
+  "notes": [
+    "테스트 시간은 제품 응답속도가 아니라 로컬 검증 실행시간이다.",
+    "테스트 통과율은 테스트 범위 안의 회귀 안정성을 의미하며 운영 무결성을 보증하지 않는다."
+  ]
+}

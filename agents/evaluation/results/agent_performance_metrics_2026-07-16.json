@@ -1,0 +1,473 @@
+{
+  "measurement_date": "2026-07-16",
+  "metrics": [
+    {
+      "category": "AI judgment",
+      "metric": "Evidence Classification Accuracy",
+      "value": 100.0,
+      "unit": "%",
+      "sample": 37,
+      "scope": "합성 사람 라벨 문서"
+    },
+    {
+      "category": "AI judgment",
+      "metric": "Evidence Classification Macro F1",
+      "value": 100.0,
+      "unit": "%",
+      "sample": 37,
+      "scope": "SUPPORT/CONTRADICT/NEUTRAL"
+    },
+    {
+      "category": "Grounding",
+      "metric": "Source Excerpt Groundedness",
+      "value": 100.0,
+      "unit": "%",
+      "sample": 37,
+      "scope": "선택 구간의 원문 exact match"
+    },
+    {
+      "category": "Alert",
+      "metric": "Alert False Positive Rate",
+      "value": 0.0,
+      "unit": "%",
+      "sample": 8,
+      "scope": "합성 no-alert 상태 전이"
+    },
+    {
+      "category": "Alert",
+      "metric": "Alert Recall",
+      "value": 100.0,
+      "unit": "%",
+      "sample": 8,
+      "scope": "합성 alert 상태 전이"
+    },
+    {
+      "category": "Reliability",
+      "metric": "Classification Success Rate",
+      "value": 100.0,
+      "unit": "%",
+      "sample": 37,
+      "scope": "실제 모델 호출"
+    },
+    {
+      "category": "Latency",
+      "metric": "Classification P95",
+      "value": 4.311859999999999,
+      "unit": "seconds",
+      "sample": 37,
+      "scope": "문서 1건"
+    },
+    {
+      "category": "Latency",
+      "metric": "Holding Analysis P50",
+      "value": 23.134,
+      "unit": "seconds",
+      "sample": 9,
+      "scope": "보유종목 전체 분석"
+    },
+    {
+      "category": "Latency",
+      "metric": "Holding Analysis P95",
+      "value": 43.514,
+      "unit": "seconds",
+      "sample": 9,
+      "scope": "보유종목 전체 분석"
+    },
+    {
+      "category": "Cost",
+      "metric": "Classification Mean Cost",
+      "value": 0.00271658,
+      "unit": "USD",
+      "sample": 37,
+      "scope": "문서 1건"
+    },
+    {
+      "category": "Cost",
+      "metric": "Holding Analysis Mean Cost",
+      "value": 0.04945635,
+      "unit": "USD",
+      "sample": 9,
+      "scope": "보유종목 전체 분석"
+    },
+    {
+      "category": "Cost",
+      "metric": "Holding Analysis P95 Cost",
+      "value": 0.09298947,
+      "unit": "USD",
+      "sample": 9,
+      "scope": "보유종목 전체 분석"
+    }
+  ],
+  "evidence_classification": {
+    "samples": 37,
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "per_class": {
+      "SUPPORT": {
+        "support": 9,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "CONTRADICT": {
+        "support": 8,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "NEUTRAL": {
+        "support": 20,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    "confusion_matrix": {
+      "SUPPORT": {
+        "SUPPORT": 9,
+        "CONTRADICT": 0,
+        "NEUTRAL": 0,
+        "UNCERTAIN": 0,
+        "ERROR": 0
+      },
+      "CONTRADICT": {
+        "SUPPORT": 0,
+        "CONTRADICT": 8,
+        "NEUTRAL": 0,
+        "UNCERTAIN": 0,
+        "ERROR": 0
+      },
+      "NEUTRAL": {
+        "SUPPORT": 0,
+        "CONTRADICT": 0,
+        "NEUTRAL": 20,
+        "UNCERTAIN": 0,
+        "ERROR": 0
+      }
+    }
+  },
+  "citation_groundedness": {
+    "definition": "선택된 source_excerpt의 모든 구간이 원문에 그대로 존재하는 비율",
+    "grounded": 37,
+    "samples": 37,
+    "rate": 1.0
+  },
+  "alert_policy": {
+    "samples": 16,
+    "confusion": {
+      "true_positive": 8,
+      "false_positive": 0,
+      "false_negative": 0,
+      "true_negative": 8
+    },
+    "false_positive_rate": 0.0,
+    "recall": 1.0,
+    "policy_exact_match": 1.0,
+    "cases": [
+      {
+        "case_id": "unchanged-to-unchanged",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "unchanged-to-strengthened",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "unchanged-to-strongly-strengthened",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "weakened-to-unchanged",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "weakened-to-strengthened",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "strongly-weakened-to-unchanged",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "strengthened-to-strongly-strengthened",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "strongly-strengthened-stable",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "unchanged-to-weakened",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MINOR",
+        "predicted_severity": "MINOR",
+        "expected_delivery": "WEEKLY",
+        "predicted_delivery": "WEEKLY",
+        "exact_match": true
+      },
+      {
+        "case_id": "unchanged-to-strongly-weakened",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MAJOR",
+        "predicted_severity": "MAJOR",
+        "expected_delivery": "IMMEDIATE",
+        "predicted_delivery": "IMMEDIATE",
+        "exact_match": true
+      },
+      {
+        "case_id": "unchanged-to-broken",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "CRITICAL",
+        "predicted_severity": "CRITICAL",
+        "expected_delivery": "IMMEDIATE",
+        "predicted_delivery": "IMMEDIATE",
+        "exact_match": true
+      },
+      {
+        "case_id": "strengthened-to-unchanged",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MINOR",
+        "predicted_severity": "MINOR",
+        "expected_delivery": "WEEKLY",
+        "predicted_delivery": "WEEKLY",
+        "exact_match": true
+      },
+      {
+        "case_id": "strongly-strengthened-to-strengthened",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MINOR",
+        "predicted_severity": "MINOR",
+        "expected_delivery": "WEEKLY",
+        "predicted_delivery": "WEEKLY",
+        "exact_match": true
+      },
+      {
+        "case_id": "strengthened-to-weakened",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MAJOR",
+        "predicted_severity": "MAJOR",
+        "expected_delivery": "IMMEDIATE",
+        "predicted_delivery": "IMMEDIATE",
+        "exact_match": true
+      },
+      {
+        "case_id": "weakened-to-strongly-weakened",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MAJOR",
+        "predicted_severity": "MAJOR",
+        "expected_delivery": "IMMEDIATE",
+        "predicted_delivery": "IMMEDIATE",
+        "exact_match": true
+      },
+      {
+        "case_id": "strongly-weakened-to-broken",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "CRITICAL",
+        "predicted_severity": "CRITICAL",
+        "expected_delivery": "IMMEDIATE",
+        "predicted_delivery": "IMMEDIATE",
+        "exact_match": true
+      }
+    ]
+  },
+  "classification_latency": {
+    "samples": 37,
+    "mean_ms": 3350.38,
+    "p50_ms": 3200.99,
+    "p95_ms": 4311.86
+  },
+  "cost_and_end_to_end": {
+    "measurement_date": "2026-07-16",
+    "source": "Langfuse Observations API queried with langfuse-cli",
+    "environment": "development",
+    "currency": "USD",
+    "evidence_classification_evaluation": {
+      "trace_name": "thesisguard.evidence-classification-eval-v1-20260716-full",
+      "model": "gpt-5.4-mini-2026-03-17",
+      "traces": 37,
+      "generation_observations": 37,
+      "costs_usd": [
+        0.00243525,
+        0.00243975,
+        0.0024405,
+        0.0024555,
+        0.00248175,
+        0.00249525,
+        0.0025035,
+        0.00252225,
+        0.002541,
+        0.00255,
+        0.00259275,
+        0.00259725,
+        0.00260775,
+        0.00263625,
+        0.00265875,
+        0.0026655,
+        0.00266625,
+        0.00268425,
+        0.00270225,
+        0.00272325,
+        0.00276,
+        0.0027675,
+        0.00276825,
+        0.00280575,
+        0.002823,
+        0.0028395,
+        0.0028545,
+        0.00285675,
+        0.00288825,
+        0.002889,
+        0.0028905,
+        0.00292725,
+        0.00293025,
+        0.00295575,
+        0.0029655,
+        0.003051,
+        0.00314175
+      ],
+      "tokens": [
+        1602,
+        1613,
+        1604,
+        1609,
+        1624,
+        1627,
+        1633,
+        1633,
+        1633,
+        1645,
+        1652,
+        1653,
+        1677,
+        1660,
+        1690,
+        1674,
+        1680,
+        1669,
+        1688,
+        1696,
+        1690,
+        1705,
+        1691,
+        1701,
+        1719,
+        1726,
+        1721,
+        1724,
+        1746,
+        1732,
+        1734,
+        1758,
+        1732,
+        1751,
+        1754,
+        1783,
+        1789
+      ],
+      "total_cost_usd": 0.1005135,
+      "mean_cost_usd": 0.00271658,
+      "p50_cost_usd": 0.00270225,
+      "p95_cost_usd": 0.0029826,
+      "total_tokens": 62418,
+      "mean_tokens": 1687.0
+    },
+    "holding_analysis_observations": {
+      "trace_name": "thesisguard.analyze-holding",
+      "model": "gpt-5.4-mini-2026-03-17",
+      "query_start_utc": "2026-07-16T00:00:00Z",
+      "traces": 9,
+      "generation_observations": 36,
+      "latencies_seconds": [
+        13.311,
+        13.338,
+        20.441,
+        20.671,
+        23.134,
+        31.516,
+        33.616,
+        34.969,
+        49.211
+      ],
+      "costs_usd": [
+        0.01533225,
+        0.02592405,
+        0.02849775,
+        0.03121785,
+        0.0459684,
+        0.05710995,
+        0.0638391,
+        0.06670605,
+        0.11051175
+      ],
+      "total_cost_usd": 0.44510715,
+      "total_tokens": 608998,
+      "mean_latency_seconds": 26.69,
+      "p50_latency_seconds": 23.134,
+      "p95_latency_seconds": 43.514,
+      "mean_cost_usd": 0.04945635,
+      "p50_cost_usd": 0.0459684,
+      "p95_cost_usd": 0.09298947
+    },
+    "limitations": [
+      "비용은 Langfuse GENERATION observation의 totalCost 합계이며 데이터 공급자와 인프라 비용은 제외한다.",
+      "전체 분석 9건은 development 환경의 실제 관측 표본이며 동일 입력 반복 부하시험은 아니다.",
+      "환율 변동을 피하기 위해 비용은 USD로 보고한다."
+    ]
+  }
+}

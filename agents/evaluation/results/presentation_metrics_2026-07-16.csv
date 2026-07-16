@@ -1,0 +1,11 @@
+﻿category,metric,unit,baseline,improved,delta,relative_change_percent,status
+retrieval_quality,Context Precision,percent,83.33,100.0,16.67,20.0,measured
+retrieval_quality,Context Recall,percent,88.89,100.0,11.11,12.5,measured
+retrieval_quality,MRR,percent,94.44,100.0,5.56,5.89,measured
+retrieval_quality,nDCG,percent,88.89,100.0,11.11,12.5,measured
+retrieval_quality,Hit Rate,percent,100.0,100.0,0.0,0.0,measured
+retrieval_quality,Perfect Case Rate,percent,66.67,100.0,33.33,50.0,measured
+retrieval_latency,Mean,ms,373.01,363.8,-9.21,-2.47,measured_small_sample
+retrieval_latency,P50,ms,322.12,324.89,2.77,0.86,measured_small_sample
+retrieval_latency,P95,ms,551.72,582.0,30.28,5.49,measured_small_sample
+verification,Automated Test Pass Rate,percent,,100.0,,,measured
