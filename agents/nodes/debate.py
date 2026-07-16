@@ -58,7 +58,10 @@ async def judge_agent(state: AnalysisState, runtime: Runtime[AgentDependencies])
     if not directional:
         decision = JudgeExplanation(
             change_reason=state["deterministic_change_reason"],
-            judge_summary="점수에 반영할 새로운 방향성 근거가 없어 기존 가정 상태를 유지했습니다.",
+            judge_summary=(
+                "이번에 확인된 자료에는 기존 판단을 바꿀 만큼 분명한 새 내용이 없었습니다. "
+                "기존에 기대했던 상황이 달라졌다고 보기 어려워 현재 판단을 유지했습니다."
+            ),
             observation_points=state.get("focus_points", []),
         )
     else:
@@ -76,9 +79,7 @@ async def judge_agent(state: AnalysisState, runtime: Runtime[AgentDependencies])
         except Exception:
             decision = JudgeExplanation(
                 change_reason=state["deterministic_change_reason"],
-                judge_summary=(
-                    "Judge 설명 생성에 실패했지만 점수는 결정론적 계산 결과를 유지했습니다."
-                ),
+                judge_summary=state["deterministic_change_reason"],
                 observation_points=state.get("focus_points", []),
             )
     return {

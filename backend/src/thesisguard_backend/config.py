@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     google_api_key: str | None = None
     upstage_api_key: str | None = None
     rag_enabled: bool = True
+    rag_embedding_provider: str = "openai"
+    openai_embedding_model: str = "text-embedding-3-small"
     upstage_embedding_model: str = "solar-embedding-1-large"
     rag_embedding_timeout_seconds: float = 20
 

@@ -74,7 +74,8 @@ def score_delta_alert_decision(
         item
         for item in evidence
         if item.source_url
-        and item.classification in (EvidenceClassification.SUPPORT, EvidenceClassification.CONTRADICT)
+        and item.classification
+        in (EvidenceClassification.SUPPORT, EvidenceClassification.CONTRADICT)
     ]
     if not directional_evidence:
         directional_evidence = [
@@ -99,13 +100,26 @@ def score_delta_alert_decision(
     )
 
 
-def compute_next_run_at(daily_time: time, timezone: str, *, after: datetime) -> datetime:
-    """Next occurrence of ``daily_time`` (local to ``timezone``) strictly after ``after``."""
+def compute_next_run_at(
+    daily_time: time,
+    timezone: str,
+    *,
+    after: datetime,
+    allow_current_minute: bool = False,
+) -> datetime:
+    """Return the next local occurrence of ``daily_time`` in UTC.
+
+    A time input has minute precision. When a user saves during the selected
+    minute, ``allow_current_minute`` makes the schedule immediately due instead
+    of silently postponing it until the next day.
+    """
 
     tz = ZoneInfo(timezone)
     local_after = after.astimezone(tz)
     candidate = datetime.combine(local_after.date(), daily_time, tzinfo=tz)
     if candidate <= local_after:
+        if allow_current_minute and local_after < candidate + timedelta(minutes=1):
+            return after.astimezone(UTC)
         candidate += timedelta(days=1)
     return candidate.astimezone(UTC)
 

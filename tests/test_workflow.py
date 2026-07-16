@@ -352,7 +352,7 @@ async def test_full_workflow_researches_again_and_returns_db_ready_result() -> N
         "uncertain-news",
         "contradict-news",
     }
-    assert result.updated_confidence == 44
+    assert result.updated_confidence == -6
     assert result.updated_status == ThesisStatus.WEAKENED
     assert result.alert_decision.severity == "MINOR"
     assert result.alert_decision.delivery == "WEEKLY"
@@ -398,7 +398,7 @@ async def test_portfolio_model_failure_keeps_holding_result_and_reports_error() 
 
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
-    assert result.updated_confidence == 56
+    assert result.updated_confidence == 6
     assert result.updated_status == ThesisStatus.STRENGTHENED
     assert result.concentration.has_concentration_risk is False
     assert "개별 종목의 근거·점수·상태 계산 결과는 정상적으로 유지됩니다" in (
@@ -423,7 +423,7 @@ async def test_no_directional_evidence_keeps_thesis_unchanged_without_llm_judgme
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert result.updated_status == ThesisStatus.UNCHANGED
-    assert result.updated_confidence == 50
+    assert result.updated_confidence == 0
     assert result.alert_decision.should_send is False
     assert model.judge_calls == 0
 
@@ -440,7 +440,7 @@ async def test_one_source_failure_does_not_abort_the_analysis() -> None:
     result = await agent.arun_analysis_workflow("portfolio-1", "holding-1")
 
     assert result.updated_status == ThesisStatus.WEAKENED
-    assert result.updated_confidence == 44
+    assert result.updated_confidence == -6
     assert any(item.source_type == EvidenceSourceType.SEC_FILING for item in result.evidence)
     assert any(error.startswith("macro: RuntimeError:") for error in result.source_errors)
 
@@ -463,7 +463,7 @@ async def test_judge_failure_retries_but_keeps_deterministic_score() -> None:
 
     assert model.judge_calls == 2
     assert result.updated_status == ThesisStatus.WEAKENED
-    assert result.updated_confidence == 44
+    assert result.updated_confidence == -6
     assert result.alert_decision.should_send is True
 
 

@@ -38,19 +38,21 @@ LLM provider는 `openai`, `gemini`, `upstage`를 지원한다. Upstage는
 `python -m pip install -e ".[dev,llm-upstage]"` 후 `LLM_PROVIDER=upstage`,
 `LLM_MODEL=solar-pro3`, `UPSTAGE_API_KEY=...`로 설정한다.
 
-Hybrid RAG 임베딩도 같은 `UPSTAGE_API_KEY`를 사용한다. 채팅 모델은 다른 provider를 사용해도
-RAG만 Upstage로 실행할 수 있다.
+Hybrid RAG 임베딩 provider는 채팅 모델과 독립적으로 OpenAI 또는 Upstage를 선택할 수 있다.
+OpenAI는 `llm-openai`, Upstage는 `llm-upstage` extra가 설치되어 있어야 한다.
 
 ```dotenv
-# backend/.env
-UPSTAGE_API_KEY=up_발급받은_키
 RAG_ENABLED=true
-UPSTAGE_EMBEDDING_MODEL=solar-embedding-1-large
+RAG_EMBEDDING_PROVIDER=openai
+OPENAI_API_KEY=sk-발급받은_키
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 RAG_EMBEDDING_TIMEOUT_SECONDS=20
 ```
 
-키는 저장소 루트가 아니라 `backend/.env`에 넣고 커밋하지 않는다. 키가 없거나 임베딩 요청이
-실패하면 규칙 기반 문서 선별로 자동 대체되어 분석 자체는 계속된다.
+Upstage 임베딩을 유지하려면 `RAG_EMBEDDING_PROVIDER=upstage`, `UPSTAGE_API_KEY`,
+`UPSTAGE_EMBEDDING_MODEL=solar-embedding-1-large`를 사용한다. 키는 저장소 루트가 아니라
+`backend/.env`에 넣고 커밋하지 않는다. 키가 없거나 임베딩 클라이언트를 만들 수 없으면 규칙
+기반 문서 선별로 자동 대체되어 분석 자체는 계속된다.
 
 ## 환경 설정
 

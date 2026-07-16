@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -211,8 +211,8 @@ class EvidenceScoreImpact(ContractModel):
 class ThesisScoreBreakdown(ContractModel):
     scoring_method: Literal["EVIDENCE_NODE_MATRIX_V2"] = "EVIDENCE_NODE_MATRIX_V2"
     logic_graph_version: str = "1.0.0"
-    previous_score: int = Field(ge=0, le=100)
-    health_score: int = Field(ge=0, le=100)
+    previous_score: int = Field(ge=-50, le=50)
+    health_score: int = Field(ge=-50, le=50)
     score_delta: int = Field(ge=-100, le=100)
     root_support_strength: float = Field(default=0, ge=0, le=1)
     root_contradict_strength: float = Field(default=0, ge=0, le=1)
@@ -254,7 +254,7 @@ class StructuredThesis(ContractModel):
     key_risks: list[str] = Field(default_factory=list)
     logic_graph: ThesisLogicGraph | None = None
     score_breakdown: ThesisScoreBreakdown | None = None
-    confidence_score: int = Field(default=50, ge=0, le=100)
+    confidence_score: int = Field(default=0, ge=-50, le=50)
     status: ThesisStatus = ThesisStatus.UNCHANGED
 
 
@@ -358,8 +358,20 @@ class DebateReport(ContractModel):
 class JudgeExplanation(ContractModel):
     """Narrative-only judgment; deterministic code owns score and status."""
 
-    change_reason: str = Field(min_length=1)
-    judge_summary: str = Field(min_length=1)
+    change_reason: str = Field(
+        min_length=1,
+        description=(
+            "사용자에게 보이는 이전과 현재의 상황 비교. 내부 계산 방식이나 구조를 언급하지 "
+            "않고, 새로 확인된 사실 때문에 무엇이 달라졌거나 유지됐는지 설명한다."
+        ),
+    )
+    judge_summary: str = Field(
+        min_length=1,
+        description=(
+            "사용자에게 보이는 종합 설명. 결정적인 사실이 기존 기대를 어떻게 뒷받침하거나 "
+            "약화했는지 쉬운 한국어로 설명하고 내부 구현 용어는 사용하지 않는다."
+        ),
+    )
     conflicting_assumptions: list[str] = Field(default_factory=list)
     observation_points: list[str] = Field(default_factory=list)
 
@@ -384,10 +396,25 @@ class PortfolioAnalysis(ContractModel):
     summary: str = "집중 테마 없음"
 
 
+PortfolioQueryDocumentId = Annotated[str, Field(min_length=1, max_length=500)]
+PortfolioQueryLimitation = Annotated[str, Field(min_length=1, max_length=500)]
+
+
+class PortfolioQueryEvidence(ContractModel):
+    """One evidence item with the portfolio identity required for cross-holding Q&A."""
+
+    holding_id: str = Field(min_length=1)
+    ticker: str = Field(min_length=1, max_length=10)
+    thesis_id: str | None = Field(default=None, min_length=1)
+    evidence: EvidenceItem
+
+
 class PortfolioQueryAnswer(ContractModel):
-    answer: str = Field(min_length=1)
-    evidence_document_ids: list[str] = Field(default_factory=list)
-    limitations: list[str] = Field(default_factory=list)
+    answer: str = Field(min_length=1, max_length=4000)
+    evidence_document_ids: list[PortfolioQueryDocumentId] = Field(
+        default_factory=list, max_length=20
+    )
+    limitations: list[PortfolioQueryLimitation] = Field(default_factory=list, max_length=8)
 
 
 class AlertDecision(ContractModel):
@@ -405,7 +432,7 @@ class ThesisAnalysisResult(ContractModel):
     bull_summary: str
     bear_summary: str
     judge_summary: str
-    updated_confidence: int = Field(ge=0, le=100)
+    updated_confidence: int = Field(ge=-50, le=50)
     updated_status: ThesisStatus
     score_breakdown: ThesisScoreBreakdown
     change_reason: str

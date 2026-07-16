@@ -52,7 +52,10 @@ export function HoldingGrid({
       );
     }
     if (sortKey === "score") {
-      return (right.thesis?.confidence_score ?? -1) - (left.thesis?.confidence_score ?? -1);
+      return (
+        (right.thesis?.confidence_score ?? Number.NEGATIVE_INFINITY)
+        - (left.thesis?.confidence_score ?? Number.NEGATIVE_INFINITY)
+      );
     }
     return right.current_weight - left.current_weight;
   }), [holdings, sortKey]);

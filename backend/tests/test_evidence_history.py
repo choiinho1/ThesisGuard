@@ -27,7 +27,7 @@ async def test_history_file_summarizes_db_and_deduplicates_documents(tmp_path) -
             raw_input="AI 데이터센터 투자가 장기적으로 반도체 수요를 확대한다.",
             main_thesis="AI 데이터센터 수요 성장",
             key_assumptions=["클라우드 CAPEX 증가"],
-            confidence_score=55,
+            confidence_score=5,
             status=orm.ThesisStatus.STRENGTHENED,
         )
         session.add(thesis)
@@ -36,7 +36,7 @@ async def test_history_file_summarizes_db_and_deduplicates_documents(tmp_path) -
         version = orm.ThesisVersion(
             thesis_id=thesis.id,
             version_no=1,
-            confidence_score=55,
+            confidence_score=5,
             status=orm.ThesisStatus.STRENGTHENED,
             change_reason="데이터센터 매출 성장 확인",
             observation_points=["다음 분기 CAPEX"],

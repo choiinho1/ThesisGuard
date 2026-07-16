@@ -9,8 +9,8 @@ from pathlib import Path
 
 from agents.evaluation.rag_benchmark import evaluate_retriever, load_retrieval_benchmark
 from agents.rag import HybridRAGRetriever
-from langchain_upstage import UpstageEmbeddings
 
+from thesisguard_backend.agent_adapters import create_embedding_model
 from thesisguard_backend.config import get_settings
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,18 +27,22 @@ def _arguments() -> argparse.Namespace:
 
 async def _run(arguments: argparse.Namespace) -> int:
     settings = get_settings()
-    if not settings.upstage_api_key:
-        raise RuntimeError("UPSTAGE_API_KEY is required in backend/.env")
-    embeddings = UpstageEmbeddings(
-        model=settings.upstage_embedding_model,
-        api_key=settings.upstage_api_key,
-        timeout=settings.rag_embedding_timeout_seconds,
-        embed_batch_size=10,
-    )
+    embeddings = create_embedding_model()
+    if embeddings is None:
+        raise RuntimeError(
+            "RAG embedding client is unavailable. Check RAG_ENABLED, "
+            "RAG_EMBEDDING_PROVIDER, the provider API key, and its installed dependency."
+        )
     retriever = HybridRAGRetriever(embeddings)
     report = await evaluate_retriever(retriever, load_retrieval_benchmark(arguments.dataset))
     payload = report.to_dict()
-    payload["embedding_model"] = settings.upstage_embedding_model
+    provider = settings.rag_embedding_provider.strip().casefold()
+    payload["embedding_provider"] = provider
+    payload["embedding_model"] = (
+        settings.openai_embedding_model
+        if provider == "openai"
+        else settings.upstage_embedding_model
+    )
     rendered = json.dumps(payload, ensure_ascii=False, indent=2)
     print(rendered)
     if arguments.output:

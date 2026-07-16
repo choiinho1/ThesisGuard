@@ -130,7 +130,7 @@ def upgrade() -> None:
         sa.Column("positive_signals", postgresql.JSONB(), nullable=False, server_default="[]"),
         sa.Column("negative_signals", postgresql.JSONB(), nullable=False, server_default="[]"),
         sa.Column("key_risks", postgresql.JSONB(), nullable=False, server_default="[]"),
-        sa.Column("confidence_score", sa.SmallInteger(), nullable=False, server_default="50"),
+        sa.Column("confidence_score", sa.SmallInteger(), nullable=False, server_default="0"),
         sa.Column("status", thesis_status, nullable=False, server_default="UNCHANGED"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),

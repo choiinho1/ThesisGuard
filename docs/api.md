@@ -49,3 +49,43 @@ Evidence로 다시 저장하지 않는다. 소스 호출 실패, 빈 응답, RAG
 
 모든 요청·응답 필드명은 `snake_case`를 사용한다. C는 `backend/mcp_tools/` 이외의 외부 데이터 API를
 직접 호출하지 않는다.
+
+## 자연어 포트폴리오 질의
+
+Portfolio Q&A는 `ThesisGuardAgent` 인스턴스의 async 또는 sync 메서드를 사용한다.
+
+```python
+from agents.models import PortfolioQueryEvidence
+
+answer = await agent.aanswer_portfolio_query(
+    portfolio_id,
+    question,
+    evidence=[
+        PortfolioQueryEvidence(
+            holding_id=holding_id,
+            ticker=ticker,
+            thesis_id=thesis_id,
+            evidence=evidence_item,
+        )
+    ],
+)
+```
+
+시그니처는 다음과 같다.
+
+```python
+async def aanswer_portfolio_query(
+    portfolio_id: str,
+    question: str,
+    evidence: list[PortfolioQueryEvidence | EvidenceItem] | None = None,
+) -> PortfolioQueryAnswer
+```
+
+`answer_portfolio_query()`는 동일 계약의 sync 진입점이다. 질문은 앞뒤 공백을 제거한 뒤 1~500자로
+검증한다. 신규 연동은 Evidence가 어느 종목에 속하는지 모델이 명확히 알 수 있도록
+`PortfolioQueryEvidence`를 사용한다. 기존 Backend 호환을 위해 `EvidenceItem` 목록도 허용하지만,
+이 경우 답변의 `limitations`에 종목별 귀속이 제한된다는 문구가 추가된다.
+
+Portfolio Thesis가 없거나 Evidence가 비어 있으면 채팅 모델을 호출하지 않고 결정론적인 안내와
+한계를 반환한다. 모델이 반환한 `evidence_document_ids`는 입력 Evidence에 존재하는 값만 남기고
+중복을 제거한다. 이 Q&A 결과는 Thesis 점수, 상태, 포트폴리오 비중 또는 알림 판정을 변경하지 않는다.

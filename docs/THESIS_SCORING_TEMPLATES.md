@@ -64,7 +64,7 @@ assumption_state = combined_support - combined_contradict
 | `CONFLICTING` | 지지와 반박 근거가 모두 있음 |
 | `INSUFFICIENT` | 어느 방향의 근거도 없음 |
 
-기존 API 호환과 0~100 점수 투영을 위해 `state = support - contradict`도 함께 제공하지만,
+기존 API 호환과 -50~50 점수 투영을 위해 `state = support - contradict`도 함께 제공하지만,
 논리 판정에는 `verdict`를 사용한다. 따라서 강한 지지와 강한 반박이 같은 크기여도
 `INSUFFICIENT`가 아니라 `CONFLICTING`이다. 중복 문서 ID는 다시 반영하지 않으며 새
 방향성 근거가 없는 가정은 이전의 두 강도와 판정을 유지한다.
@@ -77,10 +77,10 @@ assumption_state = combined_support - combined_contradict
 
 ```text
 root_state = root_support - root_contradict
-health_score = round_half_up(50 + 50 × root_state)
+health_score = round_half_up(50 × root_state)
 ```
 
-`root_state=-1`이면 0점, `0`이면 50점, `1`이면 100점이다. 근거 충족도는 루트 아래
+`root_state=-1`이면 -50점, `0`이면 0점, `1`이면 50점이다. 근거 충족도는 루트 아래
 말단 가정 중 실제 방향성 근거가 있는 가정의 비율로 별도 표시한다.
 
 ## 추가 검색 기준

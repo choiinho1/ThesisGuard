@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from sqlalchemy import create_engine, inspect
 
 from thesisguard_backend.db import _upgrade_legacy_local_schema
@@ -75,3 +77,83 @@ def test_upgrade_legacy_local_schema_adds_version_columns_without_data_loss() ->
     assert saved_thesis == ("kept thesis", "GENERAL_FUNDAMENTAL", "1.0.0", "{}")
     assert saved_evidence == ("doc-1", 0, "[]", 0.0, "[]")
     assert saved_alert == ("kept alert", 0)
+
+
+def test_upgrade_legacy_local_schema_centers_existing_scores_once() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TABLE theses ("
+            "id TEXT PRIMARY KEY, confidence_score INTEGER NOT NULL, score_breakdown JSON NOT NULL)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE thesis_versions ("
+            "id TEXT PRIMARY KEY, confidence_score INTEGER NOT NULL, snapshot JSON NOT NULL)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE analysis_results (id TEXT PRIMARY KEY, raw_result JSON NOT NULL)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO theses VALUES (?, ?, ?)",
+            (
+                "thesis-1",
+                82,
+                json.dumps({"previous_score": 50, "health_score": 82}),
+            ),
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO thesis_versions VALUES (?, ?, ?)",
+            (
+                "version-1",
+                54,
+                json.dumps(
+                    {
+                        "confidence_score": 50,
+                        "score_breakdown": {
+                            "previous_score": 50,
+                            "health_score": 54,
+                        },
+                    }
+                ),
+            ),
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO analysis_results VALUES (?, ?)",
+            (
+                "analysis-1",
+                json.dumps(
+                    {
+                        "updated_confidence": 54,
+                        "score_breakdown": {
+                            "previous_score": 50,
+                            "health_score": 54,
+                        },
+                    }
+                ),
+            ),
+        )
+
+        _upgrade_legacy_local_schema(connection)
+        _upgrade_legacy_local_schema(connection)
+
+        thesis_score, thesis_breakdown = connection.exec_driver_sql(
+            "SELECT confidence_score, score_breakdown FROM theses WHERE id = 'thesis-1'"
+        ).one()
+        version_score, version_snapshot = connection.exec_driver_sql(
+            "SELECT confidence_score, snapshot FROM thesis_versions WHERE id = 'version-1'"
+        ).one()
+        raw_result = connection.exec_driver_sql(
+            "SELECT raw_result FROM analysis_results WHERE id = 'analysis-1'"
+        ).scalar_one()
+
+    assert thesis_score == 32
+    assert json.loads(thesis_breakdown) == {"previous_score": 0, "health_score": 32}
+    assert version_score == 4
+    assert json.loads(version_snapshot) == {
+        "confidence_score": 0,
+        "score_breakdown": {"previous_score": 0, "health_score": 4},
+    }
+    assert json.loads(raw_result) == {
+        "updated_confidence": 4,
+        "score_breakdown": {"previous_score": 0, "health_score": 4},
+    }

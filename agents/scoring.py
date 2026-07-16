@@ -188,7 +188,7 @@ def prepare_structured_thesis(thesis: StructuredThesis) -> StructuredThesis:
         update={
             "logic_graph": graph,
             "score_breakdown": None,
-            "confidence_score": 50,
+            "confidence_score": 0,
             "status": ThesisStatus.UNCHANGED,
         }
     )
@@ -269,10 +269,10 @@ def _combine_strength(base: float, additions: Iterable[float]) -> float:
 
 
 def _health_score(root_state: float) -> int:
-    score = (Decimal("50") + Decimal("50") * Decimal(str(root_state))).quantize(
+    score = (Decimal("50") * Decimal(str(root_state))).quantize(
         Decimal("1"), rounding=ROUND_HALF_UP
     )
-    return min(100, max(0, int(score)))
+    return min(50, max(-50, int(score)))
 
 
 def _attribution_orders(document_ids: Sequence[str]) -> list[tuple[str, ...]]:
@@ -606,25 +606,57 @@ def status_from_score_delta(delta: int) -> ThesisStatus:
 
 def deterministic_change_reason(breakdown: ThesisScoreBreakdown) -> str:
     if breakdown.is_broken:
-        assumptions = ", ".join(breakdown.invalidated_assumptions) or "기존 무효화 가정"
+        assumptions = ", ".join(breakdown.invalidated_assumptions) or "중요하게 보던 기대"
         return (
-            f"필수 가정 '{assumptions}'이 HIGH 반박 근거로 "
-            f"{INVALIDATION_STREAK_REQUIRED}회 연속 확인되어 투자 논리를 BROKEN으로 판정했습니다. "
-            "논리를 재설정하기 전까지 이 상태를 유지합니다."
+            f"그동안 중요하게 보던 '{assumptions}'와 어긋나는 내용이 연이어 확인됐습니다. "
+            "이전에는 이 기대를 더 지켜볼 수 있었지만, 이제는 기존 판단을 그대로 유지하기 "
+            "어려운 상황입니다."
         )
-    sign = "+" if breakdown.score_delta > 0 else ""
-    verdict_label = {
-        NodeEvidenceVerdict.SUPPORTED: "지지",
-        NodeEvidenceVerdict.REFUTED: "반박",
-        NodeEvidenceVerdict.CONFLICTING: "상충",
-        NodeEvidenceVerdict.INSUFFICIENT: "근거 부족",
-    }[breakdown.root_verdict]
+
+    supported = [
+        item.assumption
+        for item in breakdown.assumption_scores
+        if item.verdict == NodeEvidenceVerdict.SUPPORTED
+    ]
+    challenged = [
+        item.assumption
+        for item in breakdown.assumption_scores
+        if item.verdict in {NodeEvidenceVerdict.REFUTED, NodeEvidenceVerdict.CONFLICTING}
+    ]
+
+    def expectations(items: list[str], fallback: str) -> str:
+        quoted = [f"'{item}'" for item in items[:2]]
+        if not quoted:
+            return fallback
+        if len(items) > 2:
+            quoted.append("그 밖의 기대")
+        return ", ".join(quoted)
+
+    if breakdown.score_delta > 0:
+        subject = expectations(supported, "기존에 기대했던 흐름")
+        return (
+            f"기존에는 {subject} 같은 기대가 실제로 이어질지 지켜보는 상황이었지만, 이번에는 이를 "
+            f"뒷받침하는 내용이 더 확인됐습니다. 그 결과 확신도는 {breakdown.previous_score}점에서 "
+            f"{breakdown.health_score}점으로 높아졌습니다."
+        )
+    if breakdown.score_delta < 0:
+        subject = expectations(challenged, "기존에 기대했던 흐름")
+        return (
+            f"기존에는 {subject} 같은 흐름을 기대했지만, 이번에는 그 기대와 어긋나는 내용이 "
+            f"확인됐습니다. 그 결과 확신도는 {breakdown.previous_score}점에서 "
+            f"{breakdown.health_score}점으로 낮아졌습니다."
+        )
+    if breakdown.root_verdict == NodeEvidenceVerdict.CONFLICTING:
+        subject = expectations(challenged, "기존에 기대했던 흐름")
+        return (
+            f"기존에는 {subject} 같은 흐름을 기대했지만, 이번에는 이에 부합하는 내용과 우려할 "
+            f"내용이 함께 확인됐습니다. 어느 한쪽도 기존 판단을 바꿀 만큼 뚜렷하지 않아 "
+            f"확신도는 {breakdown.health_score}점으로 유지됐습니다."
+        )
     return (
-        f"정보-노드 기여도 행렬 점수가 {breakdown.previous_score}점에서 "
-        f"{breakdown.health_score}점으로 {sign}{breakdown.score_delta}점 변했습니다. "
-        f"루트 근거 판정은 {verdict_label}(지지 {breakdown.root_support_strength:.2f}, "
-        f"반박 {breakdown.root_contradict_strength:.2f})이며, "
-        f"근거 충족도는 {breakdown.coverage_percent:.1f}%입니다."
+        "기존에는 지금까지 확인된 내용에 따라 현재 판단을 유지하고 있었고, 이번에 확인된 "
+        "자료에도 이를 바꿀 만큼 분명한 새 내용이 없었습니다. "
+        f"따라서 확신도는 {breakdown.health_score}점으로 유지됐습니다."
     )
 
 

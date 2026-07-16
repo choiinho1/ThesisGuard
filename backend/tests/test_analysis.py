@@ -72,7 +72,7 @@ async def test_get_latest_analysis_distinguishes_new_and_past_evidence(db_sessio
     version1 = orm.ThesisVersion(
         thesis_id=thesis.id,
         version_no=1,
-        confidence_score=50,
+        confidence_score=0,
         status="UNCHANGED",
         change_reason="first run",
     )
@@ -105,7 +105,7 @@ async def test_get_latest_analysis_distinguishes_new_and_past_evidence(db_sessio
     version2 = orm.ThesisVersion(
         thesis_id=thesis.id,
         version_no=2,
-        confidence_score=55,
+        confidence_score=5,
         status="UNCHANGED",
         change_reason="second run",
     )

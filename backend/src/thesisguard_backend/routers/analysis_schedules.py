@@ -39,7 +39,9 @@ async def _response(db: DbSession, schedule: orm.AnalysisSchedule) -> AnalysisSc
 
 
 @router.get("/api/analysis-schedules", response_model=list[AnalysisScheduleResponse])
-async def list_schedules(db: DbSession, current_user: CurrentUser) -> list[AnalysisScheduleResponse]:
+async def list_schedules(
+    db: DbSession, current_user: CurrentUser
+) -> list[AnalysisScheduleResponse]:
     schedules = list(
         await db.scalars(
             select(orm.AnalysisSchedule)
@@ -76,13 +78,19 @@ async def put_schedule(
     thesis_id = await db.scalar(select(orm.Thesis.id).where(orm.Thesis.holding_id == holding.id))
     if payload.enabled and thesis_id is None:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "투자 논리가 등록된 종목만 자동 재분석을 예약할 수 있습니다."
+            status.HTTP_400_BAD_REQUEST,
+            "투자 논리가 등록된 종목만 자동 재분석을 예약할 수 있습니다.",
         )
 
     schedule = await db.scalar(
         select(orm.AnalysisSchedule).where(orm.AnalysisSchedule.holding_id == holding.id)
     )
-    next_run_at = compute_next_run_at(payload.daily_time, payload.timezone, after=datetime.now(UTC))
+    next_run_at = compute_next_run_at(
+        payload.daily_time,
+        payload.timezone,
+        after=datetime.now(UTC),
+        allow_current_minute=True,
+    )
     if schedule is None:
         schedule = orm.AnalysisSchedule(
             holding_id=holding.id,

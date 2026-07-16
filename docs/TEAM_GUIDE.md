@@ -262,7 +262,7 @@ def run_analysis_workflow(portfolio_id: str, holding_id: str) -> ThesisAnalysisR
 | positive_signals | JSONB (string[]) | 긍정 신호 |
 | negative_signals | JSONB (string[]) | 부정 신호 |
 | key_risks | JSONB (string[]) | 주요 리스크 |
-| confidence_score | SMALLINT | 0~100 |
+| confidence_score | SMALLINT | -50~50 |
 | status | thesis_status | 현재 상태 6단계 |
 | created_at / updated_at | TIMESTAMPTZ | - |
 
@@ -365,7 +365,7 @@ class AnalysisState(TypedDict):
     bear_report: str
     judge_report: str
 
-    updated_confidence: int          # 0~100
+    updated_confidence: int          # -50~50
     updated_status: str              # thesis_status 값
     change_reason: str
     conflicting_assumptions: list[str]

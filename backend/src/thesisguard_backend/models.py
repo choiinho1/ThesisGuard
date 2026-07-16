@@ -10,7 +10,7 @@ backend-only concerns and are defined locally.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, time
+from datetime import UTC, datetime, time
 from enum import StrEnum
 
 from agents.models import (
@@ -37,6 +37,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
+from sqlalchemy.types import TypeDecorator
 
 from thesisguard_backend.db import Base
 
@@ -60,6 +61,27 @@ class ScheduledRunStatus(StrEnum):
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     SKIPPED = "SKIPPED"
+
+
+class UTCDateTime(TypeDecorator[datetime]):
+    """Persist UTC datetimes and restore SQLite's discarded timezone metadata."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, _dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    def process_result_value(self, value: datetime | None, _dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 def _uuid_pk() -> Mapped[uuid.UUID]:
@@ -158,14 +180,11 @@ class AnalysisSchedule(Base):
     daily_time: Mapped[time] = mapped_column(nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Seoul", nullable=False)
     recipient_email: Mapped[str] = mapped_column(String(255), nullable=False)
-    # DateTime(timezone=True) explicit on every timestamp below: the Mapped[datetime]
-    # default without it infers a naive column, but scheduler.py compares/subtracts
-    # these against tz-aware datetime.now(UTC) — asyncpg rejects that mismatch at
-    # insert/query time (StringData... no, DataError: "can't subtract offset-naive
-    # and offset-aware datetimes"). Caught via real end-to-end testing.
-    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # PostgreSQL preserves timezone metadata natively. SQLite drops it on
+    # round-trip, so UTCDateTime restores UTC before scheduler comparisons.
+    last_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     next_run_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, index=True
+        UTCDateTime(), nullable=False, index=True
     )
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
@@ -189,9 +208,9 @@ class ScheduledAnalysisRun(Base):
     holding_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("holdings.id", ondelete="CASCADE"), nullable=False
     )
-    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scheduled_for: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     status: Mapped[ScheduledRunStatus] = mapped_column(
         SAEnum(ScheduledRunStatus, name="scheduled_run_status"),
         default=ScheduledRunStatus.PENDING,
@@ -253,7 +272,7 @@ class Thesis(Base):
     )
     logic_graph: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
     score_breakdown: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
-    confidence_score: Mapped[int] = mapped_column(SmallInteger, default=50)
+    confidence_score: Mapped[int] = mapped_column(SmallInteger, default=0)
     status: Mapped[ThesisStatus] = mapped_column(
         SAEnum(ThesisStatus, name="thesis_status"), default=ThesisStatus.UNCHANGED, nullable=False
     )

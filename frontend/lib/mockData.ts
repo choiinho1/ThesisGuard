@@ -48,7 +48,7 @@ function mockScoreBreakdown(
   graph: NonNullable<Thesis["logic_graph"]>,
   healthScore: number,
 ): NonNullable<Thesis["score_breakdown"]> {
-  const rootState = (healthScore - 50) / 50;
+  const rootState = healthScore / 50;
   const rootVerdict = rootState > 0 ? "SUPPORTED" : rootState < 0 ? "REFUTED" : "INSUFFICIENT";
   return {
     scoring_method: "EVIDENCE_NODE_MATRIX_V2",
@@ -109,8 +109,8 @@ const nvdaThesis: Thesis = {
   negative_signals: ["고객사 자체 ASIC 확대", "데이터센터 투자 효율화"],
   key_risks: ["수출 규제 강화", "대형 고객 매출 집중"],
   logic_graph: nvdaGraph,
-  score_breakdown: mockScoreBreakdown(nvdaGraph, 82),
-  confidence_score: 82,
+  score_breakdown: mockScoreBreakdown(nvdaGraph, 32),
+  confidence_score: 32,
   status: "STRENGTHENED",
   created_at: "2026-03-02T09:00:00Z",
   updated_at: now,
@@ -131,8 +131,8 @@ const avgoThesis: Thesis = {
   negative_signals: ["고객사 발주 지연"],
   key_risks: ["소수 고객 의존도"],
   logic_graph: avgoGraph,
-  score_breakdown: mockScoreBreakdown(avgoGraph, 54),
-  confidence_score: 54,
+  score_breakdown: mockScoreBreakdown(avgoGraph, 4),
+  confidence_score: 4,
   status: "WEAKENED",
   created_at: "2026-02-10T09:00:00Z",
   updated_at: now,
@@ -372,8 +372,8 @@ export function createMockThesis(holdingId: string, rawInput: string): Thesis {
     negative_signals: ["예상보다 느린 수요 회복"],
     key_risks: ["산업 사이클 변동성"],
     logic_graph: graph,
-    score_breakdown: mockScoreBreakdown(graph, 70),
-    confidence_score: 70,
+    score_breakdown: mockScoreBreakdown(graph, 0),
+    confidence_score: 0,
     status: "UNCHANGED",
     created_at: createdAt,
     updated_at: createdAt,
@@ -401,8 +401,8 @@ export function updateMockThesis(thesisId: string, rawInput: string): Thesis {
     negative_signals: ["핵심 전제를 약화하는 반대 근거"],
     key_risks: ["수정된 핵심 전제가 성립하지 않을 가능성"],
     logic_graph: graph,
-    score_breakdown: mockScoreBreakdown(graph, 50),
-    confidence_score: 50,
+    score_breakdown: mockScoreBreakdown(graph, 0),
+    confidence_score: 0,
     status: "UNCHANGED",
     updated_at: new Date().toISOString(),
   };
@@ -421,12 +421,12 @@ export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
 
   const updatedThesis: Thesis = {
     ...holding.thesis,
-    confidence_score: Math.min(100, holding.thesis.confidence_score + 6),
+    confidence_score: Math.min(50, holding.thesis.confidence_score + 6),
     score_breakdown: holding.thesis.score_breakdown
       ? {
           ...holding.thesis.score_breakdown,
           previous_score: holding.thesis.confidence_score,
-          health_score: Math.min(100, holding.thesis.confidence_score + 6),
+          health_score: Math.min(50, holding.thesis.confidence_score + 6),
           score_delta: 6,
         }
       : null,

@@ -30,6 +30,17 @@ def test_compute_next_run_at_rolls_to_next_day_once_past() -> None:
     assert next_run == datetime(2026, 7, 15, 12, 0, tzinfo=UTC)  # 21:00 KST next day
 
 
+def test_compute_next_run_at_can_run_immediately_during_selected_minute() -> None:
+    after = datetime(2026, 7, 14, 12, 0, 46, tzinfo=UTC)  # 21:00:46 KST
+    next_run = compute_next_run_at(
+        time(21, 0),
+        "Asia/Seoul",
+        after=after,
+        allow_current_minute=True,
+    )
+    assert next_run == after
+
+
 def test_schedule_request_rejects_unknown_timezone() -> None:
     with pytest.raises(ValidationError):
         AnalysisScheduleRequest(daily_time=time(21, 0), timezone="Not/AZone")
@@ -117,6 +128,33 @@ async def test_put_schedule_creates_then_updates(db_session) -> None:
     assert updated.id == created.id  # same row, not a duplicate
     assert updated.enabled is False
     assert updated.daily_time == time(9, 30)
+
+
+@pytest.mark.asyncio
+async def test_schedule_timestamps_remain_utc_aware_after_sqlite_round_trip(db_session) -> None:
+    user = orm.User(email="utc@example.com", password_hash="hash")
+    portfolio = orm.Portfolio(user=user, name="Test")
+    holding = orm.Holding(portfolio=portfolio, ticker="CRDO", quantity=1, avg_buy_price=1)
+    scheduled_for = datetime(2026, 7, 15, 6, 0, tzinfo=UTC)
+    schedule = orm.AnalysisSchedule(
+        holding=holding,
+        enabled=True,
+        daily_time=time(15, 0),
+        timezone="Asia/Seoul",
+        recipient_email=user.email,
+        next_run_at=scheduled_for,
+    )
+    db_session.add(schedule)
+    await db_session.commit()
+    schedule_id = schedule.id
+
+    db_session.expunge_all()
+    restored = await db_session.get(orm.AnalysisSchedule, schedule_id)
+
+    assert restored is not None
+    assert restored.next_run_at == scheduled_for
+    assert restored.next_run_at.tzinfo is UTC
+    assert restored.next_run_at <= datetime(2026, 7, 15, 6, 1, tzinfo=UTC)
 
 
 @pytest.mark.asyncio

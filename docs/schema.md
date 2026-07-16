@@ -60,3 +60,29 @@ classification과 impact를 보존하며, 시점 구분은 평가 강도와 독�
 자동으로 `NEUTRAL/LOW`를 의미하지 않는다.
 
 그래프 내부용 재시도 횟수, 모델 출력 객체, 포트폴리오 문맥은 추가 필드로만 관리하며 B에 노출하지 않는다.
+
+## PortfolioQueryEvidence
+
+Portfolio Q&A에서 Evidence를 holding과 정확히 연결하기 위한 전용 입력 계약이다.
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `holding_id` | `str` | Evidence가 속한 보유 종목 ID |
+| `ticker` | `str` | 입력 포트폴리오에 존재하는 티커 |
+| `thesis_id` | `str \| None` | Backend Thesis ID. 알 수 없으면 `None` |
+| `evidence` | `EvidenceItem` | 검증된 근거 객체 |
+
+기존 `EvidenceItem` 직접 입력은 호환 목적으로 허용하지만 신규 Backend 연동은
+`PortfolioQueryEvidence`를 사용한다.
+
+## PortfolioQueryAnswer
+
+| 필드 | 타입 | 제약 및 설명 |
+|---|---|---|
+| `answer` | `str` | 1~4,000자 한국어 답변 |
+| `evidence_document_ids` | `list[str]` | 최대 20개. 실제 입력 Evidence ID만 허용 |
+| `limitations` | `list[str]` | 최대 8개, 항목별 1~500자 |
+
+Agent는 허용되지 않은 문서 ID와 중복 ID를 제거하고, 한계 문구의 공백·중복을 정규화한다.
+직접 연결된 검증 근거가 없으면 이를 `limitations`에 명시한다. Q&A 출력은 설명 전용이며
+`ThesisAnalysisResult`의 점수·상태 계산에 사용하지 않는다.

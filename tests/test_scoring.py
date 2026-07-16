@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+from pydantic import ValidationError
+
 from agents.logic_graph import (
     build_fallback_logic_graph,
     evaluate_evidence_graph,
@@ -26,6 +29,7 @@ from agents.models import (
 )
 from agents.scoring import (
     calculate_score_breakdown,
+    deterministic_change_reason,
     prepare_structured_thesis,
     status_from_score_delta,
 )
@@ -119,6 +123,17 @@ def test_graph_operators_propagate_leaf_states_deterministically() -> None:
     assert or_states["root_claim"] == 1.0
     assert contributing_states["root_claim"] == 1 / 3
     assert coverage["root_claim"] == 100
+
+
+def test_confidence_score_contract_is_limited_to_minus_50_through_50() -> None:
+    payload = _thesis().model_dump(mode="python")
+
+    for score in (-50, 0, 50):
+        assert StructuredThesis.model_validate({**payload, "confidence_score": score})
+
+    for score in (-51, 51):
+        with pytest.raises(ValidationError):
+            StructuredThesis.model_validate({**payload, "confidence_score": score})
 
 
 def test_four_value_graph_propagates_support_and_contradiction_independently() -> None:
@@ -267,7 +282,7 @@ def test_independent_evidence_accumulates_with_reduced_strength() -> None:
     assert demand.support_strength == 0.7884
     assert demand.state == 0.7884
     assert result.root_state == 0.2628
-    assert result.health_score == 63
+    assert result.health_score == 13
 
 
 def test_repeated_reports_of_the_same_event_count_once_across_runs() -> None:
@@ -486,7 +501,7 @@ def test_opposing_evidence_is_conflicting_even_when_numeric_projection_cancels()
     assert first.root_contradict_strength > 0
     assert second.assumption_scores[0] == first.assumption_scores[0]
     assert second.root_verdict == NodeEvidenceVerdict.CONFLICTING
-    assert second.health_score == 50
+    assert second.health_score == 0
 
 
 def test_two_distinct_high_contradictions_break_required_assumption() -> None:
@@ -550,7 +565,7 @@ def test_broken_state_latches_until_thesis_is_prepared_again() -> None:
 
     assert latched.is_broken is True
     assert reset.status == ThesisStatus.UNCHANGED
-    assert reset.confidence_score == 50
+    assert reset.confidence_score == 0
     assert reset.score_breakdown is not None
     assert reset.score_breakdown.is_broken is False
 
@@ -576,3 +591,48 @@ def test_status_thresholds_remain_deterministic() -> None:
     assert status_from_score_delta(4) == ThesisStatus.UNCHANGED
     assert status_from_score_delta(-5) == ThesisStatus.WEAKENED
     assert status_from_score_delta(-15) == ThesisStatus.STRONGLY_WEAKENED
+
+
+def test_fallback_change_reasons_are_plain_before_and_after_explanations() -> None:
+    thesis = _thesis()
+    strengthened = calculate_score_breakdown(
+        thesis,
+        [_evidence("support", ASSUMPTIONS[0], EvidenceClassification.SUPPORT, EvidenceImpact.HIGH)],
+    )
+    unchanged = calculate_score_breakdown(thesis, [])
+    first_challenge = calculate_score_breakdown(
+        _thesis(LogicOperator.AND),
+        [
+            _evidence(
+                "challenge-1",
+                ASSUMPTIONS[0],
+                EvidenceClassification.CONTRADICT,
+                EvidenceImpact.HIGH,
+            )
+        ],
+    )
+    broken = calculate_score_breakdown(
+        _persist(_thesis(LogicOperator.AND), first_challenge),
+        [
+            _evidence(
+                "challenge-2",
+                ASSUMPTIONS[0],
+                EvidenceClassification.CONTRADICT,
+                EvidenceImpact.HIGH,
+            )
+        ],
+    )
+
+    reasons = [
+        deterministic_change_reason(strengthened),
+        deterministic_change_reason(unchanged),
+        deterministic_change_reason(broken),
+    ]
+
+    assert "기존에는" in reasons[0]
+    assert "이번에는" in reasons[0]
+    assert ASSUMPTIONS[0] in reasons[0]
+    assert "이를 바꿀 만큼" in reasons[1]
+    assert "어긋나는 내용이 연이어 확인됐습니다" in reasons[2]
+    forbidden_terms = ("정보-노드", "행렬", "루트", "HIGH", "BROKEN", "결정론", "코드", "모델")
+    assert all(term not in reason for reason in reasons for term in forbidden_terms)

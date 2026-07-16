@@ -37,7 +37,7 @@ def _structured_thesis() -> StructuredThesis:
                 ),
             ],
         ),
-        confidence_score=50,
+        confidence_score=0,
         status=ThesisStatus.UNCHANGED,
     )
 
@@ -125,7 +125,7 @@ async def test_direct_model_call_receives_request_local_runnable_config() -> Non
         "Budget growth converts into measurable supplier revenue."
     )
     assert result.score_breakdown is not None
-    assert result.score_breakdown.health_score == 50
+    assert result.score_breakdown.health_score == 0
     assert runnable.config == config
     assert runnable.messages is not None
     assert len(runnable.calls) == 2

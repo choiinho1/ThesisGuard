@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CausalLogicGraph } from "@/components/CausalLogicGraph";
 import { StatusBadge } from "@/components/StatusBadge";
 import { saveEvidenceToHistory } from "@/lib/apiClient";
 import type {
@@ -8,43 +9,10 @@ import type {
   DashboardHolding,
   Evidence,
   HoldingAnalysisResponse,
-  NodeEvidenceVerdict,
 } from "@/types/schema";
-
-const evidenceVerdictLabel: Record<NodeEvidenceVerdict, string> = {
-  SUPPORTED: "지지",
-  REFUTED: "반박",
-  CONFLICTING: "충돌",
-  INSUFFICIENT: "근거 부족",
-};
 
 function finiteNumber(value: number | null | undefined, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function evidenceAxes(value: {
-  state?: number | null;
-  support_strength?: number | null;
-  contradict_strength?: number | null;
-}) {
-  const state = finiteNumber(value.state);
-  return {
-    state,
-    support: finiteNumber(value.support_strength, Math.max(0, state)),
-    contradict: finiteNumber(value.contradict_strength, Math.max(0, -state)),
-  };
-}
-
-function resolveEvidenceVerdict(
-  verdict: NodeEvidenceVerdict | null | undefined,
-  support: number,
-  contradict: number,
-): NodeEvidenceVerdict {
-  if (verdict && verdict in evidenceVerdictLabel) return verdict;
-  if (support > 0 && contradict > 0) return "CONFLICTING";
-  if (support > 0) return "SUPPORTED";
-  if (contradict > 0) return "REFUTED";
-  return "INSUFFICIENT";
 }
 
 interface ThesisDetailProps {
@@ -202,17 +170,6 @@ export function ThesisDetail({
     );
   }
 
-  const rootAxes = evidenceAxes({
-    state: thesis.score_breakdown?.root_state,
-    support_strength: thesis.score_breakdown?.root_support_strength,
-    contradict_strength: thesis.score_breakdown?.root_contradict_strength,
-  });
-  const rootVerdict = resolveEvidenceVerdict(
-    thesis.score_breakdown?.root_verdict,
-    rootAxes.support,
-    rootAxes.contradict,
-  );
-
   return (
     <section className="panel thesis-detail">
       <div className="thesis-title-row">
@@ -235,55 +192,8 @@ export function ThesisDetail({
         <DetailList title="주요 리스크" items={thesis.key_risks} tone="risk" />
       </div>
 
-      {thesis.score_breakdown && thesis.score_breakdown.node_scores.length > 0 && (
-        <section className="score-breakdown-panel" aria-label="점수 산정 내역">
-          <div className="score-breakdown-header">
-            <div>
-              <span>CAUSAL LOGIC GRAPH</span>
-              <strong>ROOT · {evidenceVerdictLabel[rootVerdict]}</strong>
-            </div>
-            <p>
-              근거 충족도{" "}
-              <strong>{finiteNumber(thesis.score_breakdown.coverage_percent).toFixed(1)}%</strong>
-            </p>
-          </div>
-          <div className="score-breakdown-grid">
-            {thesis.score_breakdown.node_scores.map((node) => {
-              const axes = evidenceAxes(node);
-              const verdict = resolveEvidenceVerdict(
-                node.verdict,
-                axes.support,
-                axes.contradict,
-              );
-              return (
-                <article key={node.node_id}>
-                  <div>
-                    <strong>{node.label}</strong>
-                    <span>
-                      {node.kind === "CLAIM" ? node.operator : "가정"}
-                      {node.required ? " · REQUIRED" : ""}
-                    </span>
-                  </div>
-                  <p className={axes.state > 0 ? "positive" : axes.state < 0 ? "negative" : ""}>
-                    {evidenceVerdictLabel[verdict]}
-                    <small>
-                      S {axes.support.toFixed(2)} / R {axes.contradict.toFixed(2)}
-                    </small>
-                  </p>
-                </article>
-              );
-            })}
-          </div>
-          {thesis.score_breakdown.is_broken && (
-            <div className="score-invalidation-alert" role="alert">
-              <strong>BROKEN · 핵심 가정 무효화</strong>
-              {thesis.score_breakdown.invalidated_assumptions.length > 0 && (
-                <p>{thesis.score_breakdown.invalidated_assumptions.join(" · ")}</p>
-              )}
-              <span>논리를 재설정하기 전까지 이 상태가 유지됩니다.</span>
-            </div>
-          )}
-        </section>
+      {thesis.logic_graph && thesis.score_breakdown && thesis.score_breakdown.node_scores.length > 0 && (
+        <CausalLogicGraph graph={thesis.logic_graph} scoreBreakdown={thesis.score_breakdown} />
       )}
 
       {editing && (
@@ -328,16 +238,16 @@ export function ThesisDetail({
           <div className="analysis-summary-grid">
             <section className="analysis-card analysis-card--judge">
               <div className="analysis-card-heading">
-                <span className="result-label">JUDGE</span>
+                <span className="result-label">종합 판단</span>
                 <strong className="judge-score" aria-label={`최종 점수 ${analysis.thesis.confidence_score}점`}>
-                  {analysis.thesis.confidence_score}<small>/100</small>
+                  {analysis.thesis.confidence_score}<small>/±50</small>
                 </strong>
               </div>
               <p>{analysis.analysis_result.judge_summary}</p>
             </section>
 
             <section className="analysis-card analysis-card--changes">
-              <span className="result-label">CHANGES</span>
+              <span className="result-label">달라진 점</span>
               <p>{analysis.version.change_reason}</p>
             </section>
           </div>

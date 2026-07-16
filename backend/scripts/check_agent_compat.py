@@ -47,7 +47,7 @@ class FakeContextProvider:
             positive_signals=[],
             negative_signals=[],
             key_risks=["Custom ASIC competition erodes share"],
-            confidence_score=70,
+            confidence_score=20,
             status=ThesisStatus.UNCHANGED,
         )
         return AnalysisContext(
@@ -70,7 +70,7 @@ class FakeAnalysisModel:
             raw_input=raw_input,
             main_thesis="fake structured thesis",
             key_assumptions=["fake assumption"],
-            confidence_score=50,
+            confidence_score=0,
             status=ThesisStatus.UNCHANGED,
         )
 

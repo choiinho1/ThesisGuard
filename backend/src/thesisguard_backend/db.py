@@ -142,6 +142,111 @@ def _upgrade_legacy_local_schema(connection: Connection) -> None:
             if index_sql is not None:
                 connection.exec_driver_sql(index_sql)
 
+    connection.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS thesisguard_local_migrations "
+        "(migration_id VARCHAR(100) PRIMARY KEY)"
+    )
+    centered_scores = connection.exec_driver_sql(
+        "SELECT 1 FROM thesisguard_local_migrations "
+        "WHERE migration_id = '0011_center_confidence_scores'"
+    ).first()
+    if centered_scores is not None:
+        return
+
+    migrated_inspector = inspect(connection)
+    migrated_columns = {
+        table_name: {
+            column["name"] for column in migrated_inspector.get_columns(table_name)
+        }
+        for table_name in table_names
+    }
+
+    if "confidence_score" in migrated_columns.get("theses", set()):
+        connection.exec_driver_sql(
+            "UPDATE theses SET confidence_score = confidence_score - 50"
+        )
+    if "score_breakdown" in migrated_columns.get("theses", set()):
+        connection.exec_driver_sql(
+            """
+            UPDATE theses
+            SET score_breakdown = json_set(
+                score_breakdown,
+                '$.previous_score', json_extract(score_breakdown, '$.previous_score') - 50,
+                '$.health_score', json_extract(score_breakdown, '$.health_score') - 50
+            )
+            WHERE json_valid(score_breakdown)
+              AND json_type(score_breakdown, '$.previous_score') IN ('integer', 'real')
+              AND json_type(score_breakdown, '$.health_score') IN ('integer', 'real')
+            """
+        )
+    if "confidence_score" in migrated_columns.get("thesis_versions", set()):
+        connection.exec_driver_sql(
+            "UPDATE thesis_versions SET confidence_score = confidence_score - 50"
+        )
+    if "snapshot" in migrated_columns.get("thesis_versions", set()):
+        connection.exec_driver_sql(
+            """
+            UPDATE thesis_versions
+            SET snapshot = json_set(
+                snapshot,
+                '$.confidence_score', json_extract(snapshot, '$.confidence_score') - 50
+            )
+            WHERE json_valid(snapshot)
+              AND json_type(snapshot, '$.confidence_score') IN ('integer', 'real')
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            UPDATE thesis_versions
+            SET snapshot = json_set(
+                snapshot,
+                '$.score_breakdown.previous_score',
+                    json_extract(snapshot, '$.score_breakdown.previous_score') - 50,
+                '$.score_breakdown.health_score',
+                    json_extract(snapshot, '$.score_breakdown.health_score') - 50
+            )
+            WHERE json_valid(snapshot)
+              AND json_type(snapshot, '$.score_breakdown.previous_score')
+                    IN ('integer', 'real')
+              AND json_type(snapshot, '$.score_breakdown.health_score')
+                    IN ('integer', 'real')
+            """
+        )
+    if "raw_result" in migrated_columns.get("analysis_results", set()):
+        connection.exec_driver_sql(
+            """
+            UPDATE analysis_results
+            SET raw_result = json_set(
+                raw_result,
+                '$.updated_confidence', json_extract(raw_result, '$.updated_confidence') - 50
+            )
+            WHERE json_valid(raw_result)
+              AND json_type(raw_result, '$.updated_confidence') IN ('integer', 'real')
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            UPDATE analysis_results
+            SET raw_result = json_set(
+                raw_result,
+                '$.score_breakdown.previous_score',
+                    json_extract(raw_result, '$.score_breakdown.previous_score') - 50,
+                '$.score_breakdown.health_score',
+                    json_extract(raw_result, '$.score_breakdown.health_score') - 50
+            )
+            WHERE json_valid(raw_result)
+              AND json_type(raw_result, '$.score_breakdown.previous_score')
+                    IN ('integer', 'real')
+              AND json_type(raw_result, '$.score_breakdown.health_score')
+                    IN ('integer', 'real')
+            """
+        )
+
+    connection.exec_driver_sql(
+        "INSERT INTO thesisguard_local_migrations (migration_id) "
+        "VALUES ('0011_center_confidence_scores')"
+    )
+
 
 async def get_db() -> AsyncIterator[AsyncSession]:
     async with session_factory() as session:

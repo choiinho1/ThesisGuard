@@ -13,6 +13,7 @@ from agents.models import (
     JudgeExplanation,
     PortfolioAnalysis,
     PortfolioQueryAnswer,
+    PortfolioQueryEvidence,
     PortfolioThesis,
     ResearchRequest,
     SourceDocument,
@@ -105,5 +106,5 @@ class AnalysisModel(Protocol):
         self,
         question: str,
         portfolio_theses: list[PortfolioThesis],
-        evidence: list[EvidenceItem],
+        evidence: list[PortfolioQueryEvidence | EvidenceItem],
     ) -> PortfolioQueryAnswer: ...

@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+from agents.contracts import EmbeddingModel
 from agents.graph import ThesisGuardAgent
 from agents.logic_graph import normalize_logic_graph
 from agents.model import LangChainAnalysisModel
@@ -403,22 +404,51 @@ def create_chat_model():
     )
 
 
-def create_rag_retriever() -> HybridRAGRetriever | None:
-    """Build Upstage hybrid RAG, or retain deterministic retrieval when unavailable."""
+def create_embedding_model() -> EmbeddingModel | None:
+    """Build the configured RAG embedding client when its credentials are available."""
 
     settings = get_settings()
-    if not settings.rag_enabled or not settings.upstage_api_key:
+    if not settings.rag_enabled:
         return None
-    try:
-        from langchain_upstage import UpstageEmbeddings
+    provider = settings.rag_embedding_provider.strip().casefold()
 
-        embeddings = UpstageEmbeddings(
-            model=settings.upstage_embedding_model,
-            api_key=settings.upstage_api_key,
-            timeout=settings.rag_embedding_timeout_seconds,
-            embed_batch_size=10,
-        )
+    try:
+        if provider == "openai":
+            if not settings.openai_api_key:
+                return None
+            from langchain_openai import OpenAIEmbeddings
+
+            return OpenAIEmbeddings(
+                model=settings.openai_embedding_model,
+                api_key=settings.openai_api_key,
+                timeout=settings.rag_embedding_timeout_seconds,
+                max_retries=2,
+            )
+        if provider == "upstage":
+            if not settings.upstage_api_key:
+                return None
+            from langchain_upstage import UpstageEmbeddings
+
+            return UpstageEmbeddings(
+                model=settings.upstage_embedding_model,
+                api_key=settings.upstage_api_key,
+                timeout=settings.rag_embedding_timeout_seconds,
+                embed_batch_size=10,
+            )
     except (ImportError, ValueError):
+        return None
+
+    raise ValueError(
+        f"Unsupported RAG_EMBEDDING_PROVIDER={settings.rag_embedding_provider!r}. "
+        "Use 'openai' or 'upstage'."
+    )
+
+
+def create_rag_retriever() -> HybridRAGRetriever | None:
+    """Build provider-backed hybrid RAG, or retain deterministic retrieval."""
+
+    embeddings = create_embedding_model()
+    if embeddings is None:
         return None
     return HybridRAGRetriever(embeddings)
 

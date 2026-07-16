@@ -22,6 +22,7 @@ from agents.models import (
     JudgeExplanation,
     PortfolioAnalysis,
     PortfolioQueryAnswer,
+    PortfolioQueryEvidence,
     PortfolioThesis,
     SourceDocument,
     StructuredThesis,
@@ -65,6 +66,37 @@ def _json(value: BaseModel | list[BaseModel]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
+def _portfolio_query_evidence_json(
+    evidence: list[PortfolioQueryEvidence | EvidenceItem],
+) -> str:
+    """Keep legacy evidence compatible while making missing portfolio identity explicit."""
+
+    payload = [
+        (
+            item.model_dump(mode="json")
+            if isinstance(item, PortfolioQueryEvidence)
+            else {
+                "holding_id": None,
+                "ticker": None,
+                "thesis_id": None,
+                "evidence": item.model_dump(mode="json"),
+            }
+        )
+        for item in evidence
+    ]
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _portfolio_query_evidence_item(
+    item: PortfolioQueryEvidence | EvidenceItem,
+) -> EvidenceItem:
+    return item.evidence if isinstance(item, PortfolioQueryEvidence) else item
+
+
+def _unique_nonempty(items: list[str]) -> list[str]:
+    return list(dict.fromkeys(item.strip() for item in items if item.strip()))
+
+
 class LangChainAnalysisModel:
     """Turns any LangChain BaseChatModel into the AnalysisModel contract."""
 
@@ -87,7 +119,7 @@ class LangChainAnalysisModel:
             StructuredThesis,
             f"""
 Structure the user's investment thesis. Keep every claim faithful to the input.
-Use confidence 50 and UNCHANGED because no evidence has been analyzed.
+Use confidence 0 and UNCHANGED because no evidence has been analyzed.
 Leave optional lists empty instead of inventing missing details.
 Build a thesis-specific causal logic_graph instead of selecting a predefined template.
 The graph must contain exactly one CLAIM root and every key_assumptions string exactly once
@@ -130,7 +162,7 @@ Rebuild logic_graph from the strengthened thesis. Every key_assumptions string m
 exactly once as an ASSUMPTION leaf and must be copied verbatim. Use intermediate CLAIM nodes
 only for a clear causal bridge. Use AND when every child is necessary, OR when any child is a
 sufficient alternative, and CONTRIBUTING when the children independently add strength. The
-graph must be connected and acyclic. Set confidence_score to 50, status to UNCHANGED, and
+graph must be connected and acyclic. Set confidence_score to 0, status to UNCHANGED, and
 score_breakdown to null because trusted code owns scoring. Keep raw_input exactly equal to the
 original user input.
 
@@ -393,8 +425,23 @@ Act as a narrative-only Judge Agent. Re-check both reports against the evidence 
 the deterministic score_breakdown supplied by trusted code. You must not calculate, revise,
 or propose a score or status. Use historical_context only to explain continuity or reversal;
 historical facts are already reflected in the stored assumption states and must not be counted
-again. Keep conflicting_assumptions limited to exact key_assumptions strings. Explain the
-result without investment advice.
+again. Keep conflicting_assumptions limited to exact key_assumptions strings.
+
+Write judge_summary and change_reason for a non-technical Korean user:
+- Never expose implementation language such as agents, models, code, algorithms, prompts,
+  matrices, graphs, nodes, roots, schemas, field names, or enum labels such as SUPPORT,
+  CONTRADICT, HIGH, UNCHANGED, and BROKEN.
+- In judge_summary, lead with the conclusion in 2-4 short sentences. Name the decisive facts
+  in ordinary language and explain the causal link: what the user previously expected, how
+  each new fact supports or weakens that expectation, and why the overall judgment moved or
+  stayed the same. If meaningful facts point in both directions, explain which mattered more
+  and why. If they are insufficient, say what remains unknown in plain language.
+- In change_reason, use 1-2 short sentences that compare the before and after situations.
+  Describe what was true or expected before, what is newly known now, and what practical
+  difference that made. When nothing changed, say why the new information was not enough to
+  alter the previous situation. Do not merely restate a score change.
+- Refer to assumptions as concrete expectations or real-world situations, not as parts of a
+  thesis structure. Avoid investment advice.
 <previous_thesis>{_json(thesis)}</previous_thesis>
 <historical_context role="narrative_only_non_scoring">
 {_history_context(evidence_history_summary)}
@@ -467,23 +514,81 @@ IDs from the input. Concentration scores will be recalculated by code from actua
         self,
         question: str,
         portfolio_theses: list[PortfolioThesis],
-        evidence: list[EvidenceItem],
+        evidence: list[PortfolioQueryEvidence | EvidenceItem],
     ) -> PortfolioQueryAnswer:
+        if not portfolio_theses:
+            return PortfolioQueryAnswer(
+                answer=(
+                    "등록된 투자 논리가 없어 포트폴리오 질문에 근거 기반으로 답할 수 없습니다. "
+                    "먼저 보유 종목에 Thesis를 등록해 주세요."
+                ),
+                limitations=[
+                    "포트폴리오에 구조화된 Thesis가 없습니다.",
+                    "답변을 생성할 검증 근거가 없습니다.",
+                ],
+            )
+        if not evidence:
+            return PortfolioQueryAnswer(
+                answer=(
+                    "현재 포트폴리오에 저장된 검증 근거가 없어 근거 기반 답변을 생성할 수 "
+                    "없습니다. 먼저 각 종목의 Thesis 분석을 실행해 주세요."
+                ),
+                limitations=[
+                    "외부 근거가 제공되지 않아 등록된 Thesis를 사실로 검증할 수 없습니다."
+                ],
+            )
         result = await self._invoke(
             PortfolioQueryAnswer,
             f"""
-Answer the portfolio question using only the supplied theses and evidence. State limitations
-when evidence is missing. Never provide buy or sell recommendations.
+Act as ThesisGuard's portfolio question-answering agent. Answer using only the supplied
+portfolio theses and evidence. Distinguish facts supported by evidence from interpretations
+derived only from the registered thesis structure. When comparing holdings, identify them
+only by supplied holding IDs and tickers. Never invent facts, figures, holdings, tickers,
+document IDs, URLs, portfolio weights, confidence scores, or statuses.
+
+Lead with a direct answer in Korean. Then explain relevant holdings, shared assumptions,
+supporting or conflicting evidence, and uncertainty only when applicable. Preserve official
+names and tickers. Treat thesis statements as investor hypotheses, not verified external facts.
+
+For every material factual claim based on evidence, include the supporting supplied document
+IDs in evidence_document_ids. Return only document IDs present in the evidence input, and do
+not cite a document unless it supports a claim in the answer. Do not return every input ID by
+default. Do not use NEUTRAL or UNCERTAIN evidence as directional support or contradiction, and
+do not hide conflicts between SUPPORT and CONTRADICT evidence. Absence of evidence is never
+contradictory evidence.
+
+Explicitly add a limitation when evidence is missing, stale, unrelated, conflicting, lacks a
+holding or ticker identity, or is unevenly distributed across holdings. State which holding or
+comparison is affected when the input makes that knowable. Do not claim system details that are
+not in the input, such as how many database rows were searched.
+
+Do not calculate, modify, or propose thesis confidence scores, statuses, portfolio weights,
+concentration scores, or alert decisions. Do not recommend buying, selling, holding,
+rebalancing, or timing a trade. If the question asks for investment action, decline that part
+and provide only an evidence-grounded explanation of the relevant assumptions and risks.
+
 <question>{question}</question>
 <portfolio_theses>{_json(portfolio_theses)}</portfolio_theses>
-<evidence>{_json(evidence)}</evidence>
+<evidence>{_portfolio_query_evidence_json(evidence)}</evidence>
 """.strip(),
         )
-        allowed = {item.document_id for item in evidence}
+        allowed = {_portfolio_query_evidence_item(item).document_id for item in evidence}
+        evidence_document_ids = list(
+            dict.fromkeys(item for item in result.evidence_document_ids if item in allowed)
+        )
+        limitations = _unique_nonempty(result.limitations)
+        if any(not isinstance(item, PortfolioQueryEvidence) for item in evidence):
+            limitations.append("일부 근거에 종목 식별자가 없어 종목별 귀속이 제한됩니다.")
+        if not evidence_document_ids:
+            limitations.append("답변에 직접 연결된 검증 근거 문서가 없습니다.")
+        answer = result.answer.strip()
+        if not answer:
+            answer = "모델이 유효한 답변을 생성하지 못했습니다. 질문을 더 구체적으로 입력해 주세요."
+            limitations.append("구조화된 응답에 유효한 답변 본문이 없었습니다.")
         return result.model_copy(
             update={
-                "evidence_document_ids": [
-                    item for item in result.evidence_document_ids if item in allowed
-                ]
+                "answer": answer,
+                "evidence_document_ids": evidence_document_ids,
+                "limitations": _unique_nonempty(limitations)[:8],
             }
         )

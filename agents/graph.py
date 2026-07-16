@@ -14,6 +14,7 @@ from agents.contracts import AnalysisModel, ContextProvider, DocumentRetriever, 
 from agents.models import (
     EvidenceItem,
     PortfolioQueryAnswer,
+    PortfolioQueryEvidence,
     StructuredThesis,
     ThesisAnalysisResult,
 )
@@ -187,10 +188,15 @@ class ThesisGuardAgent:
         self,
         portfolio_id: str,
         question: str,
-        evidence: list[EvidenceItem] | None = None,
+        evidence: list[PortfolioQueryEvidence | EvidenceItem] | None = None,
         *,
         runnable_config: RunnableConfig | None = None,
     ) -> PortfolioQueryAnswer:
+        normalized_question = question.strip()
+        if not normalized_question:
+            raise ValueError("Portfolio question must not be empty")
+        if len(normalized_question) > 500:
+            raise ValueError("Portfolio question must be at most 500 characters")
         portfolio_theses = await self.dependencies.context_provider.load_portfolio_theses(
             portfolio_id
         )
@@ -198,7 +204,7 @@ class ThesisGuardAgent:
             return await call_model(
                 self.dependencies,
                 self.dependencies.model.answer_portfolio_query,
-                question,
+                normalized_question,
                 portfolio_theses,
                 evidence or [],
             )
@@ -207,7 +213,7 @@ class ThesisGuardAgent:
         self,
         portfolio_id: str,
         question: str,
-        evidence: list[EvidenceItem] | None = None,
+        evidence: list[PortfolioQueryEvidence | EvidenceItem] | None = None,
         *,
         runnable_config: RunnableConfig | None = None,
     ) -> PortfolioQueryAnswer:

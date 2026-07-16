@@ -10,6 +10,7 @@ import type { AnalysisSchedule, ApiMode, DashboardHolding } from "@/types/schema
 
 const DEFAULT_TIME = "09:00";
 const SEOUL_TIMEZONE = "Asia/Seoul";
+const SCHEDULE_REFRESH_MS = 15_000;
 
 function compactTime(value: string) {
   return value.slice(0, 5);
@@ -41,22 +42,34 @@ export function AutoAnalysisSchedule({
   useEffect(() => {
     let cancelled = false;
 
-    void listAnalysisSchedules(mode)
-      .then((items) => {
+    const loadSchedule = async (syncControls: boolean) => {
+      try {
+        const items = await listAnalysisSchedules(mode);
         if (cancelled) return;
         const current = items.find((item) => item.holding_id === holding.id) ?? null;
         setSchedule(current);
-        setDailyTime(current ? compactTime(current.daily_time) : DEFAULT_TIME);
-        setEnabled(current?.enabled ?? true);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : "예약을 불러오지 못했습니다.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+        if (syncControls) {
+          setDailyTime(current ? compactTime(current.daily_time) : DEFAULT_TIME);
+          setEnabled(current?.enabled ?? true);
+        }
+      } catch (error) {
+        if (!cancelled && syncControls) {
+          setMessage(error instanceof Error ? error.message : "예약을 불러오지 못했습니다.");
+        }
+      } finally {
+        if (!cancelled && syncControls) setLoading(false);
+      }
+    };
 
-    return () => { cancelled = true; };
+    void loadSchedule(true);
+    const refreshId = mode === "live"
+      ? window.setInterval(() => { void loadSchedule(false); }, SCHEDULE_REFRESH_MS)
+      : null;
+
+    return () => {
+      cancelled = true;
+      if (refreshId !== null) window.clearInterval(refreshId);
+    };
   }, [holding.id, mode]);
 
   const save = async () => {

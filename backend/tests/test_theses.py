@@ -92,7 +92,7 @@ async def test_create_thesis_persists_causal_graph_and_neutral_score(db_session)
     assert thesis.logic_graph["root_id"] == "root_claim"
     assert thesis.logic_graph["nodes"][0]["operator"] == "AND"
     assert thesis.score_breakdown["scoring_method"] == "EVIDENCE_NODE_MATRIX_V2"
-    assert thesis.score_breakdown["health_score"] == 50
+    assert thesis.score_breakdown["health_score"] == 0
     assert thesis.template_catalog_version == "deprecated"
 
 
@@ -135,7 +135,7 @@ async def test_resetting_raw_thesis_rebuilds_graph_and_resets_score(db_session) 
 
     assert reset_agent.calls == ["Alternative routes can restore the business."]
     assert updated.logic_graph["nodes"][0]["operator"] == "OR"
-    assert updated.confidence_score == 50
+    assert updated.confidence_score == 0
     assert updated.status == "UNCHANGED"
     assert updated.score_breakdown["root_state"] == 0
     assert updated.score_breakdown["is_broken"] is False

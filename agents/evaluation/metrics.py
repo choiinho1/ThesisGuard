@@ -41,3 +41,36 @@ def contradiction_recall(
         if item.classification == EvidenceClassification.CONTRADICT
     }
     return len(expected_contradiction_ids & predicted_ids) / len(expected_contradiction_ids)
+
+
+def portfolio_query_citation_precision(
+    allowed_document_ids: set[str], predicted_document_ids: Iterable[str]
+) -> float:
+    """Measure whether a Portfolio Q&A answer cites only supplied evidence IDs."""
+
+    predicted = set(predicted_document_ids)
+    if not predicted:
+        return 1.0
+    return len(allowed_document_ids & predicted) / len(predicted)
+
+
+def portfolio_query_citation_recall(
+    expected_document_ids: set[str], predicted_document_ids: Iterable[str]
+) -> float:
+    """Measure whether a Portfolio Q&A answer cites the expected supporting evidence."""
+
+    if not expected_document_ids:
+        return 1.0
+    return len(expected_document_ids & set(predicted_document_ids)) / len(expected_document_ids)
+
+
+def portfolio_query_limitation_recall(
+    required_keywords: set[str], predicted_limitations: Iterable[str]
+) -> float:
+    """Measure required limitation coverage using case-insensitive benchmark keywords."""
+
+    if not required_keywords:
+        return 1.0
+    normalized = "\n".join(predicted_limitations).casefold()
+    covered = sum(keyword.casefold() in normalized for keyword in required_keywords)
+    return covered / len(required_keywords)
