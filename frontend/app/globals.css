@@ -374,11 +374,15 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 .history-actions a:hover { color: var(--mint); }
 .history-actions button:hover { color: var(--risk); }
 .score-breakdown-panel { background: rgba(4,15,12,.58); border: 1px solid var(--line); border-radius: 12px; margin-top: 18px; padding: 16px; }
-.score-breakdown-header { align-items: center; display: flex; gap: 16px; justify-content: space-between; }
+.score-breakdown-header { align-items: center; cursor: pointer; display: flex; gap: 16px; justify-content: space-between; list-style: none; }
+.score-breakdown-header::-webkit-details-marker { display: none; }
+.score-breakdown-header::after { color: var(--muted); content: "펼치기"; flex-shrink: 0; font-size: 9px; font-weight: 800; }
+.score-breakdown-panel[open] > .score-breakdown-header::after { content: "접기"; }
+.score-breakdown-header:hover::after { color: var(--mint); }
 .score-breakdown-header div { display: grid; gap: 5px; }
 .score-breakdown-header span { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
 .score-breakdown-header strong { color: var(--mint); font-size: 12px; }
-.score-breakdown-header p { color: var(--muted); font-size: 10px; margin: 0; }
+.score-breakdown-header p { color: var(--muted); font-size: 10px; margin: 0 16px 0 0; }
 .causal-graph-legend { align-items: center; color: var(--muted); display: flex; font-size: 9px; font-weight: 800; gap: 8px; justify-content: flex-end; margin-top: 10px; }
 .causal-graph-legend i { color: var(--mint); font-style: normal; }
 .causal-graph-viewport { background: radial-gradient(circle at 75% 50%, rgba(91,230,176,.055), transparent 38%), #06100d; border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; overflow-x: auto; overscroll-behavior-inline: contain; }
