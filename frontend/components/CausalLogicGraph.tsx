@@ -150,8 +150,8 @@ export function CausalLogicGraph({ graph, scoreBreakdown }: CausalLogicGraphProp
   );
 
   return (
-    <section className="score-breakdown-panel" aria-label="투자 논리 인과관계 그래프">
-      <div className="score-breakdown-header">
+    <details className="score-breakdown-panel" open>
+      <summary className="score-breakdown-header" aria-label="투자 논리 인과관계 그래프 펼치기/접기">
         <div>
           <span>CAUSAL LOGIC GRAPH</span>
           <strong>최종 판단 · {verdictLabel[rootVerdict]}</strong>
@@ -159,7 +159,7 @@ export function CausalLogicGraph({ graph, scoreBreakdown }: CausalLogicGraphProp
         <p>
           확인된 범위 <strong>{finiteNumber(scoreBreakdown.coverage_percent).toFixed(1)}%</strong>
         </p>
-      </div>
+      </summary>
 
       <div className="causal-graph-legend" aria-hidden="true">
         <span>기대 조건</span>
@@ -248,6 +248,6 @@ export function CausalLogicGraph({ graph, scoreBreakdown }: CausalLogicGraphProp
           <span>중요하게 보던 기대와 어긋나는 내용이 연이어 확인됐습니다.</span>
         </div>
       )}
-    </section>
+    </details>
   );
 }
