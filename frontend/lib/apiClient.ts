@@ -1,4 +1,4 @@
-import { addMockHolding, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, getMockThesisHistory, mockPortfolios, removeMockAlert, removeMockHolding, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
+import { addMockHolding, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, getMockPortfolioQuery, getMockThesisHistory, mockPortfolios, removeMockAlert, removeMockHolding, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
 import type {
   ApiMode,
   AnalysisSchedule,
@@ -12,6 +12,7 @@ import type {
   MarketSnapshot,
   Portfolio,
   PortfolioDashboard,
+  PortfolioQueryResponse,
   Thesis,
   ThesisVersion,
   UpdateHoldingPositionInput,
@@ -95,6 +96,21 @@ export async function getPortfolioDashboard(
     return getMockDashboard();
   }
   return request<PortfolioDashboard>(`/api/portfolios/${portfolioId}/dashboard`);
+}
+
+export async function queryPortfolio(
+  portfolioId: string,
+  question: string,
+  mode = getApiMode(),
+): Promise<PortfolioQueryResponse> {
+  if (mode === "mock") {
+    await delay(650);
+    return getMockPortfolioQuery(question);
+  }
+  return request<PortfolioQueryResponse>(`/api/portfolios/${portfolioId}/query`, {
+    method: "POST",
+    body: JSON.stringify({ question }),
+  });
 }
 
 export async function analyzeHolding(

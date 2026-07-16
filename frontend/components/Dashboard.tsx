@@ -7,6 +7,7 @@ import { AllocationPanel } from "@/components/AllocationPanel";
 import { HoldingGrid } from "@/components/HoldingGrid";
 import { InsightPanel } from "@/components/InsightPanel";
 import { PortfolioHeader } from "@/components/PortfolioHeader";
+import { PortfolioQueryPanel } from "@/components/PortfolioQueryPanel";
 import { SavedEvidenceHistory } from "@/components/SavedEvidenceHistory";
 import { ThesisDetail } from "@/components/ThesisDetail";
 import {
@@ -45,19 +46,30 @@ export function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<"main" | "history">("main");
+  const [activeSection, setActiveSection] = useState<"main" | "qa" | "history">("main");
   const selectedIdRef = useRef<string | null>(null);
-  const skippedInitialMockLoadRef = useRef(false);
+  const loadedModeRef = useRef<ApiMode>("mock");
 
   useEffect(() => {
     selectedIdRef.current = selected?.id ?? null;
   }, [selected]);
 
   useEffect(() => {
-    const preferredMode = getApiMode();
     // This one-time hydration sync applies the user's persisted API mode.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (preferredMode !== mode) setMode(preferredMode);
+    /* eslint-disable react-hooks/set-state-in-effect */
+    const preferredMode = getApiMode();
+    if (preferredMode !== mode) {
+      // Mock-seeded holding IDs (e.g. "20000000-...") don't exist on the
+      // real backend. Clear them here, in the same effect that flips the
+      // mode, so the live-analysis-fetch effect below never runs against a
+      // stale mock holding before loadDashboard() gets a chance to replace it.
+      if (preferredMode !== "mock") {
+        setDashboard(null);
+        setSelected(null);
+      }
+      setMode(preferredMode);
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -97,10 +109,14 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (mode === "mock" && !skippedInitialMockLoadRef.current) {
-      skippedInitialMockLoadRef.current = true;
-      return;
-    }
+    // Compare against the last mode we actually loaded (not a "have we run
+    // yet" flag) so this stays idempotent under React Strict Mode's
+    // mount -> cleanup -> mount double-invocation in dev. A mutable
+    // "already ran once" ref behaves differently on the 2nd invocation than
+    // the 1st, which let a stray loadDashboard("mock") slip through and
+    // re-seed mock holding IDs right as the mode flipped to "live".
+    if (mode === loadedModeRef.current) return;
+    loadedModeRef.current = mode;
     // API 모드가 외부 데이터 소스를 결정하므로 모드 변경 때 화면 상태를 다시 동기화한다.
     void loadDashboard(mode);
   }, [loadDashboard, mode]);
@@ -332,6 +348,14 @@ export function Dashboard() {
           Main
         </button>
         <button
+          aria-current={activeSection === "qa" ? "page" : undefined}
+          className={activeSection === "qa" ? "is-active" : ""}
+          onClick={() => setActiveSection("qa")}
+          type="button"
+        >
+          Q&amp;A
+        </button>
+        <button
           aria-current={activeSection === "history" ? "page" : undefined}
           className={activeSection === "history" ? "is-active" : ""}
           onClick={() => setActiveSection("history")}
@@ -344,6 +368,15 @@ export function Dashboard() {
         <AutoAnalysisSchedule holding={selected} mode={mode} />
       )}
       {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} holding={selected} mode={mode} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
+      {activeSection === "qa" && (
+        <PortfolioQueryPanel
+          key={dashboard.portfolio.id}
+          holdingCount={dashboard.holdings.length}
+          mode={mode}
+          portfolioId={dashboard.portfolio.id}
+          thesisCount={dashboard.holdings.filter((holding) => holding.thesis).length}
+        />
+      )}
       {activeSection === "history" && <SavedEvidenceHistory holdings={dashboard.holdings} mode={mode} portfolioId={dashboard.portfolio.id} selectedHoldingId={selected?.id ?? null} />}
       <footer>
         <span>THESISGUARD</span>
