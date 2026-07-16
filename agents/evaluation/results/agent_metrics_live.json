@@ -1,0 +1,664 @@
+{
+  "metadata": {
+    "dataset_id": "agent-metrics-v1",
+    "labeling_method": "사람이 투자 논리와 문서 내용을 대조해 문서별 방향 및 알림 필요 여부를 사전 라벨링",
+    "model_provider": "openai",
+    "model": "gpt-5.4-mini",
+    "trace_name": "thesisguard.evidence-classification-eval-v1-20260716-full",
+    "concurrency": 3,
+    "wall_clock_seconds": 42.43
+  },
+  "evidence_classification": {
+    "samples": 37,
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "per_class": {
+      "SUPPORT": {
+        "support": 9,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "CONTRADICT": {
+        "support": 8,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "NEUTRAL": {
+        "support": 20,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    "confusion_matrix": {
+      "SUPPORT": {
+        "SUPPORT": 9,
+        "CONTRADICT": 0,
+        "NEUTRAL": 0,
+        "UNCERTAIN": 0,
+        "ERROR": 0
+      },
+      "CONTRADICT": {
+        "SUPPORT": 0,
+        "CONTRADICT": 8,
+        "NEUTRAL": 0,
+        "UNCERTAIN": 0,
+        "ERROR": 0
+      },
+      "NEUTRAL": {
+        "SUPPORT": 0,
+        "CONTRADICT": 0,
+        "NEUTRAL": 20,
+        "UNCERTAIN": 0,
+        "ERROR": 0
+      }
+    }
+  },
+  "citation_groundedness": {
+    "definition": "선택된 source_excerpt의 모든 구간이 원문에 그대로 존재하는 비율",
+    "grounded": 37,
+    "samples": 37,
+    "rate": 1.0
+  },
+  "classification_latency": {
+    "samples": 37,
+    "mean_ms": 3350.38,
+    "p50_ms": 3200.99,
+    "p95_ms": 4311.86
+  },
+  "execution": {
+    "successful": 37,
+    "failed": 0,
+    "success_rate": 1.0
+  },
+  "alert_policy": {
+    "samples": 16,
+    "confusion": {
+      "true_positive": 8,
+      "false_positive": 0,
+      "false_negative": 0,
+      "true_negative": 8
+    },
+    "false_positive_rate": 0.0,
+    "recall": 1.0,
+    "policy_exact_match": 1.0,
+    "cases": [
+      {
+        "case_id": "unchanged-to-unchanged",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "unchanged-to-strengthened",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "unchanged-to-strongly-strengthened",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "weakened-to-unchanged",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "weakened-to-strengthened",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "strongly-weakened-to-unchanged",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "strengthened-to-strongly-strengthened",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "strongly-strengthened-stable",
+        "expected_should_send": false,
+        "predicted_should_send": false,
+        "expected_severity": "NONE",
+        "predicted_severity": "NONE",
+        "expected_delivery": "NONE",
+        "predicted_delivery": "NONE",
+        "exact_match": true
+      },
+      {
+        "case_id": "unchanged-to-weakened",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MINOR",
+        "predicted_severity": "MINOR",
+        "expected_delivery": "WEEKLY",
+        "predicted_delivery": "WEEKLY",
+        "exact_match": true
+      },
+      {
+        "case_id": "unchanged-to-strongly-weakened",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MAJOR",
+        "predicted_severity": "MAJOR",
+        "expected_delivery": "IMMEDIATE",
+        "predicted_delivery": "IMMEDIATE",
+        "exact_match": true
+      },
+      {
+        "case_id": "unchanged-to-broken",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "CRITICAL",
+        "predicted_severity": "CRITICAL",
+        "expected_delivery": "IMMEDIATE",
+        "predicted_delivery": "IMMEDIATE",
+        "exact_match": true
+      },
+      {
+        "case_id": "strengthened-to-unchanged",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MINOR",
+        "predicted_severity": "MINOR",
+        "expected_delivery": "WEEKLY",
+        "predicted_delivery": "WEEKLY",
+        "exact_match": true
+      },
+      {
+        "case_id": "strongly-strengthened-to-strengthened",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MINOR",
+        "predicted_severity": "MINOR",
+        "expected_delivery": "WEEKLY",
+        "predicted_delivery": "WEEKLY",
+        "exact_match": true
+      },
+      {
+        "case_id": "strengthened-to-weakened",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MAJOR",
+        "predicted_severity": "MAJOR",
+        "expected_delivery": "IMMEDIATE",
+        "predicted_delivery": "IMMEDIATE",
+        "exact_match": true
+      },
+      {
+        "case_id": "weakened-to-strongly-weakened",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "MAJOR",
+        "predicted_severity": "MAJOR",
+        "expected_delivery": "IMMEDIATE",
+        "predicted_delivery": "IMMEDIATE",
+        "exact_match": true
+      },
+      {
+        "case_id": "strongly-weakened-to-broken",
+        "expected_should_send": true,
+        "predicted_should_send": true,
+        "expected_severity": "CRITICAL",
+        "predicted_severity": "CRITICAL",
+        "expected_delivery": "IMMEDIATE",
+        "predicted_delivery": "IMMEDIATE",
+        "exact_match": true
+      }
+    ]
+  },
+  "langfuse_cost": {
+    "status": "pending_observations_query",
+    "trace_name": "thesisguard.evidence-classification-eval-v1-20260716-full",
+    "note": "Langfuse flush 후 GENERATION observation의 totalCost를 trace별 합산한다."
+  },
+  "cases": [
+    {
+      "case_id": "hood-competition-and-growth",
+      "document_id": "hood-price",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Robinhood shares fell 6 percent during the session as technology stocks traded lower. The report did not discuss operating results or competitors.",
+      "content_snippet": "Robinhood 주가가 장중 6% 하락했지만, 이는 기술주 전반 약세와 함께 나타난 시장 움직임입니다. 문서는 운영 실적이나 경쟁사에 대해 언급하지 않아, 매출·이익 성장과 직접 경쟁 제한 여부 모두를 판단할 근거가 없습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 2679.57,
+      "error": null
+    },
+    {
+      "case_id": "hood-competition-and-growth",
+      "document_id": "hood-earnings",
+      "expected": "SUPPORT",
+      "predicted": "SUPPORT",
+      "source_excerpt": "Robinhood reported that quarterly revenue increased 45 percent year over year while net income more than doubled. Subscription revenue and transaction-based revenue both expanded.",
+      "content_snippet": "Robinhood의 분기 매출이 전년 대비 45% 증가했고 순이익은 2배 이상 늘었습니다. 또한 subscription revenue와 transaction-based revenue가 모두 확대되었습니다. 이는 ‘revenue and earnings continue to grow’를 지지하지만, 경쟁 제한 여부는 다루지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 2876.86,
+      "error": null
+    },
+    {
+      "case_id": "hood-competition-and-growth",
+      "document_id": "hood-meta-competitor",
+      "expected": "CONTRADICT",
+      "predicted": "CONTRADICT",
+      "source_excerpt": "Meta Platforms is developing a competing prediction-markets application. A launch would introduce a large consumer platform as a direct rival to Robinhood's event-contract business.",
+      "content_snippet": "Meta Platforms가 경쟁 예측시장 앱을 개발 중이며, 출시되면 Robinhood의 event-contract 사업에 직접적인 대형 경쟁자가 생길 수 있습니다. 따라서 ‘direct competition remains limited’ 가정은 약화되지만, 매출·이익 성장 여부는 이 문서에서 확인되지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3104.65,
+      "error": null
+    },
+    {
+      "case_id": "hood-competition-and-growth",
+      "document_id": "hood-office",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "The company signed a lease for renovated office space and plans to move several administrative teams next year.",
+      "content_snippet": "Robinhood가 리노베이션된 사무공간을 임차했고, 내년에 일부 행정팀을 이전할 계획입니다. 이 내용은 매출·이익 성장이나 직접 경쟁 제한 여부를 직접 보여주지 않으므로, 핵심 가설에 대한 판단은 거의 바뀌지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 2525.11,
+      "error": null
+    },
+    {
+      "case_id": "nvda-capex-and-asic-risk",
+      "document_id": "nvda-split",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "NVIDIA completed a ten-for-one stock split. The transaction changed the share count but did not change the company's market value or demand outlook.",
+      "content_snippet": "NVIDIA는 10-for-1 주식 분할을 완료했습니다. 이 거래는 주식 수만 바꾸었고, 회사의 시장가치나 수요 전망은 변하지 않았다고 명시됩니다. 따라서 AI 인프라 투자 확대나 커스텀 ASIC 경쟁에 대한 직접적 판단 근거는 없습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3547.46,
+      "error": null
+    },
+    {
+      "case_id": "nvda-capex-and-asic-risk",
+      "document_id": "nvda-capex-filing",
+      "expected": "SUPPORT",
+      "predicted": "SUPPORT",
+      "source_excerpt": "Management reported multi-year purchase commitments from major cloud service providers and said customers increased capital expenditure budgets for accelerated computing infrastructure.",
+      "content_snippet": "주요 클라우드 서비스 제공업체들의 다년간 구매 약정이 확인됐고, 고객들이 가속 컴퓨팅 인프라에 대한 자본지출 예산을 늘렸습니다. 이는 hyperscaler AI capex 확대 가정을 지지합니다. 다만 커스텀 ASIC 경쟁이나 NVIDIA의 점유율 변화는 언급되지 않았습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 2929.3,
+      "error": null
+    },
+    {
+      "case_id": "nvda-capex-and-asic-risk",
+      "document_id": "nvda-asic-news",
+      "expected": "CONTRADICT",
+      "predicted": "CONTRADICT",
+      "source_excerpt": "Two hyperscalers plan wider deployment of internally designed custom ASIC accelerators. The programs could substitute for some NVIDIA GPU workloads and create pricing pressure.",
+      "content_snippet": "두 hyperscaler가 내부 설계 custom ASIC accelerator를 더 넓게 배치할 계획이라고 했습니다. 이 프로그램은 일부 NVIDIA GPU workload를 대체하고 가격 압박을 만들 수 있어, NVIDIA의 custom ASIC 대비 점유율 유지 가정에는 부정적입니다. 다만 AI 자본지출의 총량 증가 여부는 직접 다루지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3417.59,
+      "error": null
+    },
+    {
+      "case_id": "nvda-capex-and-asic-risk",
+      "document_id": "nvda-gaming",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Gaming channel inventory returned to normal levels after holiday promotions. The filing did not quantify cloud infrastructure investment.",
+      "content_snippet": "패시지 0은 게이밍 채널 재고가 연말 프로모션 이후 정상 수준으로 돌아왔다고 설명합니다. 그러나 클라우드 인프라 투자나 custom ASIC 경쟁에 대한 언급은 없어, 두 핵심 가정 모두를 직접 검증하지 못합니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3097.02,
+      "error": null
+    },
+    {
+      "case_id": "tsla-margin-and-regulation",
+      "document_id": "tsla-delivery-price",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Tesla shares gained during trading after quarterly vehicle deliveries were published. Analysts changed their price targets.",
+      "content_snippet": "Tesla의 분기 차량 인도 발표 이후 주가가 장중 상승했고, 애널리스트들이 목표주가를 조정했습니다. 다만 자동차 마진 회복이나 상업용 robotaxi 규제 승인에 대한 직접 정보는 없어 두 핵심 가설 모두 평가되지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 2641.19,
+      "error": null
+    },
+    {
+      "case_id": "tsla-margin-and-regulation",
+      "document_id": "tsla-margin",
+      "expected": "CONTRADICT",
+      "predicted": "CONTRADICT",
+      "source_excerpt": "Automotive gross margin excluding regulatory credits fell to 14.2 percent from 17.1 percent a year earlier. Battery input costs declined, but vehicle price reductions more than offset those savings.",
+      "content_snippet": "규제 크레딧 제외 자동차 총마진은 14.2%로 전년 17.1%에서 하락했습니다. 배터리 투입비용은 내려갔지만 차량 가격 인하가 절감 효과를 더 크게 상쇄했습니다. 이는 자동차 총마진 회복 가정에는 반대되지만, 상업용 robotaxi 규제 승인 여부는 다루지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3743.45,
+      "error": null
+    },
+    {
+      "case_id": "tsla-margin-and-regulation",
+      "document_id": "tsla-permit",
+      "expected": "CONTRADICT",
+      "predicted": "CONTRADICT",
+      "source_excerpt": "The state regulator postponed a decision on Tesla's permit for paid driverless robotaxi service and requested additional safety data. Testing may continue, but commercial rides remain unauthorized.",
+      "content_snippet": "주 규제기관이 Tesla의 유료 driverless robotaxi 서비스 허가 결정을 연기하고 추가 안전 데이터를 요구했습니다. 시험 운영은 계속될 수 있지만, 상업적 운행은 아직 승인되지 않았다고 명시합니다. 따라서 규제 승인 가정에는 직접적으로 반대되는 신호입니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 4153.06,
+      "error": null
+    },
+    {
+      "case_id": "tsla-margin-and-regulation",
+      "document_id": "tsla-storage",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Energy storage deployments reached a quarterly record as Megapack production increased at the California factory.",
+      "content_snippet": "Tesla의 에너지 저장장치 배치는 분기 기준 기록을 세웠고, 캘리포니아 공장의 Megapack 생산 증가가 배경으로 제시됩니다. 그러나 이 문서는 자동차 총마진 회복이나 상업적 robotaxi 규제 승인에 대한 직접 증거를 제공하지 않습니다. 따라서 핵심 가설은 모두 NOT_ADDRESSED입니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3821.2,
+      "error": null
+    },
+    {
+      "case_id": "lly-demand-supply-and-competition",
+      "document_id": "lly-dividend",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "The board declared a regular quarterly cash dividend payable to shareholders of record next month.",
+      "content_snippet": "보도는 Eli Lilly 이사회가 보통주에 대한 정규 분기 현금배당을 선언했다는 내용입니다. 지급 대상은 다음 달 기록 주주이며, 비만 치료 수요나 생산능력 확대와는 직접 관련이 없습니다. 경쟁 치료제에 대한 정보도 제시되지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3066.73,
+      "error": null
+    },
+    {
+      "case_id": "lly-demand-supply-and-competition",
+      "document_id": "lly-capacity",
+      "expected": "SUPPORT",
+      "predicted": "SUPPORT",
+      "source_excerpt": "Eli Lilly said two new manufacturing lines began production, increasing available GLP-1 doses by 35 percent. Prescription demand continued to exceed supply during the quarter.",
+      "content_snippet": "Eli Lilly는 신규 제조 라인 2개가 생산을 시작해 GLP-1 doses 가용량이 35% 늘었다고 밝혔습니다. 같은 분기에 처방 수요는 여전히 공급을 초과했습니다. 이는 수요 강세와 공급 확대를 직접 뒷받침하지만, 경쟁 치료제의 점유율 잠식 여부는 언급하지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3707.68,
+      "error": null
+    },
+    {
+      "case_id": "lly-demand-supply-and-competition",
+      "document_id": "lly-rival-trial",
+      "expected": "CONTRADICT",
+      "predicted": "CONTRADICT",
+      "source_excerpt": "A competing obesity therapy achieved greater average weight loss than the current market leader in a phase-three study. If approved, the rival could pressure Eli Lilly's market share.",
+      "content_snippet": "경쟁 비만 치료제가 3상에서 현재 시장 선도 약물보다 평균 체중 감량이 더 컸다고 보고되었습니다. 승인될 경우 Eli Lilly의 시장 점유율에 압박을 줄 수 있다는 점이 제시되어, ‘경쟁 치료가 점유율을 잠식하지 않는다’는 가정은 반박됩니다. 제조 확대나 공급 개선에 관한 정보는 없습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3852.35,
+      "error": null
+    },
+    {
+      "case_id": "lly-demand-supply-and-competition",
+      "document_id": "lly-office",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "The company renewed an administrative office lease for five years under terms similar to the previous agreement.",
+      "content_snippet": "1개의 공시 내용은 행정 사무실 임대 계약을 5년 연장했으며, 조건은 이전 계약과 유사합니다. 이는 비만 치료 수요, 생산능력 확대, 또는 경쟁 치료제와의 점유율 변화에 대한 직접 증거가 아닙니다. 따라서 핵심 가정들은 모두 확인되지 않았습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3069.11,
+      "error": null
+    },
+    {
+      "case_id": "aapl-korean-cross-language",
+      "document_id": "aapl-headset",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Apple released a software update that adds new window-management features to its mixed-reality headset.",
+      "content_snippet": "Apple이 혼합현실 헤드셋에 새 창 관리 기능을 추가하는 소프트웨어 업데이트를 배포했습니다. 이는 제품 기능 개선 소식일 뿐, 서비스 매출 성장률이나 중국 스마트폰 경쟁력에는 직접적인 증거를 제공하지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 2780.77,
+      "error": null
+    },
+    {
+      "case_id": "aapl-korean-cross-language",
+      "document_id": "aapl-services",
+      "expected": "SUPPORT",
+      "predicted": "SUPPORT",
+      "source_excerpt": "Apple Services revenue grew 14 percent year over year to a quarterly record. Paid subscriptions increased across cloud, music, video, and payment products.",
+      "content_snippet": "Apple Services 매출이 전년 대비 14% 증가해 분기 기준 기록을 세웠고, 유료 구독자도 클라우드·음악·비디오·결제 제품 전반에서 늘었습니다. 이는 서비스 매출 성장 가정을 직접 지지합니다. 다만 중국 스마트폰 경쟁이나 점유율 방어에 대한 정보는 없습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3200.99,
+      "error": null
+    },
+    {
+      "case_id": "aapl-korean-cross-language",
+      "document_id": "aapl-china-share",
+      "expected": "CONTRADICT",
+      "predicted": "CONTRADICT",
+      "source_excerpt": "Apple's smartphone market share in China declined by four percentage points as Huawei and other domestic competitors gained premium handset sales.",
+      "content_snippet": "Apple의 중국 스마트폰 시장 점유율이 4%포인트 하락했고, Huawei와 다른 국내 경쟁사들이 프리미엄 단말 판매를 늘렸습니다. 이는 중국 현지 업체와의 경쟁에서 점유율을 방어한다는 가정을 직접 약화시키며, 서비스 매출 성장률 유지 여부는 다루지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3684.56,
+      "error": null
+    },
+    {
+      "case_id": "aapl-korean-cross-language",
+      "document_id": "aapl-campus",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Apple acquired land next to an existing corporate campus for possible future office development.",
+      "content_snippet": "Apple이 기존 기업 캠퍼스 인근 토지를 매입했으며, 향후 사무공간 개발 가능성을 위해서라고 밝혔습니다. 이 내용은 서비스 매출 성장이나 중국 스마트폰 시장의 경쟁력과는 직접 연결되지 않아 두 핵심 가정 모두를 평가하지 못합니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3099.99,
+      "error": null
+    },
+    {
+      "case_id": "jpm-margin-and-credit-cycle",
+      "document_id": "jpm-branch",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "JPMorgan plans to open twelve retail branches in growing metropolitan areas over the next two years.",
+      "content_snippet": "JPMorgan이 향후 2년간 성장 중인 대도시권에 리테일 지점 12곳을 열 계획이라고 밝혔습니다. 이 내용은 금리 하락기에 순이자마진이 유지되는지나 소비자 신용손실이 관리되는지에 대한 직접 증거가 아닙니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 4518.0,
+      "error": null
+    },
+    {
+      "case_id": "jpm-margin-and-credit-cycle",
+      "document_id": "jpm-credit",
+      "expected": "CONTRADICT",
+      "predicted": "CONTRADICT",
+      "source_excerpt": "JPMorgan lowered net interest income guidance as deposit costs remained elevated. The credit-card net charge-off rate increased to 3.6 percent, near the upper end of management guidance.",
+      "content_snippet": "JPMorgan은 순이자이익(NII) 가이던스를 낮췄고, 예금 비용은 여전히 높은 수준이라고 밝혔습니다. 신용카드 순상각률은 3.6%로 상승해 경영진 가이던스 상단에 근접했습니다. 이는 금리 하락에도 NIM이 견조하다는 가정과 소비자 신용손실이 통제된다는 가정에 모두 부정적입니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3367.25,
+      "error": null
+    },
+    {
+      "case_id": "jpm-margin-and-credit-cycle",
+      "document_id": "jpm-fed-rate",
+      "expected": "CONTRADICT",
+      "predicted": "CONTRADICT",
+      "source_excerpt": "The Federal Reserve's updated projections indicate two additional policy-rate cuts. Lower short-term rates can compress bank asset yields and net interest margins.",
+      "content_snippet": "연준이 추가 정책금리 인하 2회를 전망했고, 이는 단기금리 하락으로 은행의 자산수익률과 순이자마진을 압박할 수 있다는 점을 시사합니다. 다만 JPMorgan의 실제 마진이나 소비자 신용손실은 직접 확인되지 않아, 문서 전체 영향은 제한적입니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3463.91,
+      "error": null
+    },
+    {
+      "case_id": "jpm-margin-and-credit-cycle",
+      "document_id": "jpm-cpi",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Headline consumer price inflation moderated because gasoline prices declined. The release did not discuss bank margins or consumer loan performance.",
+      "content_snippet": "헤드라인 소비자물가가 휘발유 가격 하락으로 둔화됐다고만 설명하며, 은행 마진이나 소비자 대출 성과는 언급하지 않습니다. JPMorgan의 순이자마진 안정성과 소비자 신용손실 통제 여부를 직접 시험하는 내용이 없어 핵심 가설에 대한 증분 정보는 제한적입니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3147.66,
+      "error": null
+    },
+    {
+      "case_id": "amzn-title-and-hard-negatives",
+      "document_id": "amzn-keyword-noise",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "This index page lists frequently searched phrases including AWS margin, cloud growth, artificial intelligence, and capital expenditure. It contains no company results, guidance, or management statements.",
+      "content_snippet": "이 문서는 AWS margin, cloud growth, artificial intelligence, capital expenditure 등의 빈번한 검색어를 나열한 색인 페이지입니다. 회사 실적, 가이던스, 경영진 발언은 없어서 두 핵심 가설을 직접 검증하지 못합니다. 따라서 문서의 증분 정보는 제한적이며, 가설들에 대한 평가는 모두 NOT_ADDRESSED입니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3287.94,
+      "error": null
+    },
+    {
+      "case_id": "amzn-title-and-hard-negatives",
+      "document_id": "amzn-aws-margin",
+      "expected": "SUPPORT",
+      "predicted": "SUPPORT",
+      "source_excerpt": "The segment generated 11.8 billion dollars of operating income compared with 9.2 billion dollars one year earlier. Sales increased 18 percent over the same period, reflecting improved cost efficiency.",
+      "content_snippet": "AWS operating income는 1년 전 9.2 billion dollars에서 11.8 billion dollars로 증가했고, 같은 기간 매출은 18% 늘었다고 합니다. 비용 효율 개선이 언급되어 AWS 영업마진 확대 가설은 지지되지만, AI 데이터센터 CAPEX와 클라우드 성장의 연결은 다루지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3489.71,
+      "error": null
+    },
+    {
+      "case_id": "amzn-title-and-hard-negatives",
+      "document_id": "amzn-ai-capex",
+      "expected": "SUPPORT",
+      "predicted": "SUPPORT",
+      "source_excerpt": "Amazon said new AI data-center capital expenditure is backed by multi-year customer contracts. Management expects the added capacity to support AWS cloud revenue growth as facilities enter service.",
+      "content_snippet": "Amazon은 신규 AI 데이터센터 자본지출이 다년 계약 고객 수요로 뒷받침된다고 밝혔습니다. 경영진은 추가 용량이 가동되면 AWS 클라우드 매출 성장을 지원할 것으로 기대한다고 했습니다. 따라서 ‘AI 인프라 투자가 클라우드 성장으로 이어진다’는 가설은 지지되지만, AWS 운영마진 확대는 직접 확인되지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3138.78,
+      "error": null
+    },
+    {
+      "case_id": "amzn-title-and-hard-negatives",
+      "document_id": "amzn-delivery",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Amazon adjusted same-day delivery zones in several cities and added weekend delivery windows for household products.",
+      "content_snippet": "Amazon은 여러 도시에서 당일 배송 구역을 조정하고 가정용 제품의 주말 배송 창을 추가했습니다. 이는 물류 운영 변화에 관한 내용일 뿐, AWS 마진 확대나 AI 데이터센터 투자와 클라우드 성장의 관계는 다루지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 2769.9,
+      "error": null
+    },
+    {
+      "case_id": "coin-query-coverage-noise",
+      "document_id": "coin-topic-index",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "This page links to articles about Coinbase subscription revenue, trading volume, staking, stablecoins and regulation. It does not report new financial figures or a regulatory decision.",
+      "content_snippet": "이 문서는 Coinbase의 구독 매출, 거래량, 스테이킹, 스테이블코인, 규제 관련 기사 링크를 모아둔 페이지입니다. 신규 재무 수치나 규제 결정은 없어서 구독/서비스 매출이 거래 변동성을 상쇄하는지, 핵심 제품이 규제에 의해 제한되지 않는지는 판단할 수 없습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3369.19,
+      "error": null
+    },
+    {
+      "case_id": "coin-query-coverage-noise",
+      "document_id": "coin-subscription",
+      "expected": "SUPPORT",
+      "predicted": "SUPPORT",
+      "source_excerpt": "Coinbase subscription and services revenue rose 22 percent as stablecoin and custody income increased, partly offsetting a 15 percent decline in transaction revenue caused by lower trading volume.",
+      "content_snippet": "Coinbase의 subscription and services revenue가 22% 증가했고, stablecoin과 custody 수입 증가가 거래 매출 15% 감소를 일부 상쇄했습니다. 이는 구독/서비스 매출이 거래 цикlical 변동을 완충한다는 가설을 지지합니다. 다만 규제 조치가 핵심 제품을 제한하는지에 대해서는 언급이 없습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3167.91,
+      "error": null
+    },
+    {
+      "case_id": "coin-query-coverage-noise",
+      "document_id": "coin-regulation",
+      "expected": "SUPPORT",
+      "predicted": "SUPPORT",
+      "source_excerpt": "A federal court rejected the request to halt Coinbase's staking service while litigation continues. The decision permits the core product to remain available but does not resolve the full enforcement case.",
+      "content_snippet": "연방법원은 Coinbase의 staking 서비스 중단 요청을 기각해, 소송이 계속되는 동안에도 해당 핵심 제품이 유지될 수 있게 했습니다. 다만 본문은 최종 집행 사건이 아직 해결되지 않았다고 밝혀 규제 리스크가 완전히 제거된 것은 아닙니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3798.88,
+      "error": null
+    },
+    {
+      "case_id": "coin-query-coverage-noise",
+      "document_id": "coin-price",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Coinbase shares rose during the session as the price of bitcoin moved above a technical level watched by traders.",
+      "content_snippet": "Coinbase 주가는 비트코인 가격이 트레이더가 주시하는 기술적 수준을 상회하자 장중 상승했습니다. 이는 단기 시장 연동성을 보여주지만, 구독·서비스 매출의 지속성이나 규제 리스크 완화 여부는 검증하지 못합니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 3759.58,
+      "error": null
+    },
+    {
+      "case_id": "coin-query-coverage-noise",
+      "document_id": "coin-office",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Coinbase entered a short-term agreement to sublease unused office space to another technology company.",
+      "content_snippet": "Coinbase가 사용하지 않는 사무공간을 다른 기술기업에 단기 재임대했다는 내용입니다. 이는 비핵심 자산 활용에 관한 사항으로, 구독·서비스 매출 확대나 규제에 따른 핵심 제품 제한 여부를 직접 보여주지 않습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 2990.15,
+      "error": null
+    },
+    {
+      "case_id": "nflx-abstain-from-noise",
+      "document_id": "nflx-ad-metrics",
+      "expected": "SUPPORT",
+      "predicted": "SUPPORT",
+      "source_excerpt": "Netflix said advertising revenue more than doubled year over year while monthly active users on the ad tier increased 40 percent. Viewing hours per member were stable and quarterly churn declined slightly.",
+      "content_snippet": "패시지 0은 Netflix의 광고 매출이 전년 대비 두 배 이상 증가했고, 광고 요금제 월간 활성 이용자도 40% 늘었다고 전합니다. 동시에 회원당 시청 시간은 안정적이었고 분기 churn은 소폭 하락해, 광고 성장과 참여도 유지 가정을 함께 지지합니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 4260.32,
+      "error": null
+    },
+    {
+      "case_id": "nflx-abstain-from-noise",
+      "document_id": "nflx-topic-page",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "An archive page lists links tagged advertising revenue, engagement, viewing hours and subscriber churn. The page itself contains no reported metrics or company statements.",
+      "content_snippet": "[0]은 advertising revenue, engagement, viewing hours, subscriber churn 태그가 붙은 링크를 나열한 아카이브 페이지입니다. 그러나 실제 수치나 Netflix의 발언은 없어 광고 매출 성장이나 참여도·이탈률 안정성 여부를 검증하지 못합니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 2627.75,
+      "error": null
+    },
+    {
+      "case_id": "nflx-abstain-from-noise",
+      "document_id": "nflx-actor",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "A television actor joined the cast of a drama scheduled to begin production later this year.",
+      "content_snippet": "배우가 Netflix 드라마 출연진에 합류했고, 해당 작품은 올해 후반 제작을 시작할 예정입니다. 광고 매출 성장이나 시청자 참여도, 이탈률에 대한 정보는 없어 두 핵심 가정 모두 NOT_ADDRESSED입니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 5160.7,
+      "error": null
+    },
+    {
+      "case_id": "nflx-abstain-from-noise",
+      "document_id": "nflx-price",
+      "expected": "NEUTRAL",
+      "predicted": "NEUTRAL",
+      "source_excerpt": "Netflix shares reached a record during afternoon trading after a brokerage raised its price target.",
+      "content_snippet": "Netflix 주가가 오후 거래에서 기록을 세웠고, 한 브로커리지가 목표주가를 상향했다는 내용입니다. 광고 매출, 시청자 참여도, 이탈률에 대한 직접 정보는 없어 두 핵심 가설을 판단할 수 없습니다.",
+      "source_excerpt_grounded": true,
+      "latency_ms": 2647.72,
+      "error": null
+    }
+  ]
+}
