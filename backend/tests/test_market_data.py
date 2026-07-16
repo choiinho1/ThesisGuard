@@ -118,3 +118,36 @@ async def test_get_price_falls_back_to_daily_bar_when_meta_incomplete(
     assert point.date == datetime(2026, 7, 13).date()
     assert point.close == 203.53
     assert point.volume == 120_943_800
+
+
+@pytest.mark.asyncio
+async def test_get_quote_computes_change_pct_against_prior_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _payload_with_stale_daily_bar()
+    monkeypatch.setattr(market.httpx, "AsyncClient", _FakeAsyncClient(payload))
+
+    quote = await market.get_quote("^GSPC")
+
+    assert quote.ticker == "^GSPC"
+    assert quote.price == 205.0
+    assert quote.as_of == "2026-07-14"
+    # prior day's close is 203.53 (the last daily bar, 07-13)
+    assert quote.change_pct == round((205.0 - 203.53) / 203.53 * 100, 2)
+
+
+@pytest.mark.asyncio
+async def test_get_quote_returns_none_fields_when_fetch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fetch_none(*args: object, **kwargs: object) -> dict | None:
+        return None
+
+    monkeypatch.setattr(market, "_fetch_chart_result", _fetch_none)
+
+    quote = await market.get_quote("BTC-USD")
+
+    assert quote.ticker == "BTC-USD"
+    assert quote.price is None
+    assert quote.change_pct is None
+    assert quote.as_of is None

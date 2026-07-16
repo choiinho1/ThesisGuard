@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { MarketIndexTicker } from "@/components/MarketIndexTicker";
 
 export const metadata: Metadata = {
   title: "ThesisGuard | 투자 논리 관리",
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>
+        <MarketIndexTicker />
+        {children}
+      </body>
     </html>
   );
 }

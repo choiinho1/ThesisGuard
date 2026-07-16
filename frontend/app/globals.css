@@ -27,6 +27,18 @@ button, input, textarea { font: inherit; }
 button { color: inherit; }
 a { color: inherit; }
 
+.market-ticker-wrap { background: var(--surface); border-bottom: 1px solid var(--line); height: 38px; overflow: hidden; position: sticky; top: 0; width: 100%; z-index: 50; }
+.market-ticker-track { animation: market-ticker-scroll 32s linear infinite; align-items: center; display: flex; height: 100%; width: max-content; }
+.market-ticker-wrap:hover .market-ticker-track { animation-play-state: paused; }
+@keyframes market-ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.market-ticker-item { align-items: baseline; border-right: 1px solid var(--line); display: flex; gap: 8px; padding: 0 20px; white-space: nowrap; }
+.market-ticker-symbol { color: var(--muted); font-size: 11px; letter-spacing: .04em; }
+.market-ticker-price { color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 700; }
+.market-ticker-change { font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 700; }
+.market-ticker-change.is-positive { color: var(--mint); }
+.market-ticker-change.is-negative { color: var(--red); }
+.market-ticker-change.is-flat { color: var(--muted); }
+
 .auth-shell { display: grid; grid-template-columns: minmax(0, .95fr) minmax(420px, 1.05fr); min-height: 100vh; }
 .auth-story { background: radial-gradient(circle at 18% 12%, rgba(91, 230, 176, .075), transparent 24rem), linear-gradient(145deg, #0a1513 0%, #07100f 72%); border-right: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; padding: 42px clamp(38px, 5vw, 72px); position: relative; }
 .auth-story::after { border: 1px solid rgba(91, 230, 176, .08); border-radius: 50%; bottom: -36vw; content: ""; height: 62vw; position: absolute; right: -30vw; width: 62vw; }
@@ -77,7 +89,7 @@ a { color: inherit; }
 .auth-switch-copy { color: var(--muted); font-size: 11px; margin: 22px 0 0; text-align: center; }
 .auth-switch-copy button { background: transparent; border: 0; color: var(--mint); cursor: pointer; font-size: inherit; font-weight: 900; margin-left: 6px; padding: 0; }
 .auth-disclaimer { color: #53645f; font-size: 9px; letter-spacing: .04em; margin: 34px 0 0; text-align: center; }
-.auth-session-bar { align-items: center; background: rgba(7, 16, 15, .92); border: 1px solid var(--line); border-radius: 999px; display: flex; font-size: 10px; gap: 10px; padding: 5px 6px 5px 12px; position: fixed; right: 22px; top: 18px; z-index: 20; }
+.auth-session-bar { align-items: center; background: rgba(7, 16, 15, .92); border: 1px solid var(--line); border-radius: 999px; display: flex; font-size: 10px; gap: 10px; padding: 5px 6px 5px 12px; position: fixed; right: 22px; top: 56px; z-index: 20; }
 .auth-session-bar span { color: var(--muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .auth-session-bar button { background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; font-size: 9px; font-weight: 800; padding: 6px 9px; }
 
@@ -374,11 +386,15 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 .history-actions a:hover { color: var(--mint); }
 .history-actions button:hover { color: var(--risk); }
 .score-breakdown-panel { background: rgba(4,15,12,.58); border: 1px solid var(--line); border-radius: 12px; margin-top: 18px; padding: 16px; }
-.score-breakdown-header { align-items: center; display: flex; gap: 16px; justify-content: space-between; }
+.score-breakdown-header { align-items: center; cursor: pointer; display: flex; gap: 16px; justify-content: space-between; list-style: none; }
+.score-breakdown-header::-webkit-details-marker { display: none; }
+.score-breakdown-header::after { color: var(--muted); content: "펼치기"; flex-shrink: 0; font-size: 9px; font-weight: 800; }
+.score-breakdown-panel[open] > .score-breakdown-header::after { content: "접기"; }
+.score-breakdown-header:hover::after { color: var(--mint); }
 .score-breakdown-header div { display: grid; gap: 5px; }
 .score-breakdown-header span { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
 .score-breakdown-header strong { color: var(--mint); font-size: 12px; }
-.score-breakdown-header p { color: var(--muted); font-size: 10px; margin: 0; }
+.score-breakdown-header p { color: var(--muted); font-size: 10px; margin: 0 16px 0 0; }
 .causal-graph-legend { align-items: center; color: var(--muted); display: flex; font-size: 9px; font-weight: 800; gap: 8px; justify-content: flex-end; margin-top: 10px; }
 .causal-graph-legend i { color: var(--mint); font-style: normal; }
 .causal-graph-viewport { background: radial-gradient(circle at 75% 50%, rgba(91,230,176,.055), transparent 38%), #06100d; border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; overflow-x: auto; overscroll-behavior-inline: contain; }
@@ -489,7 +505,7 @@ footer span:first-child { color: var(--mint); font-weight: 900; }
   .auth-proof div:nth-child(3) { display: none; }
   .auth-proof { grid-template-columns: 1fr 1fr; }
   .auth-panel { padding: 48px 22px; }
-  .auth-session-bar { right: 12px; top: 10px; }
+  .auth-session-bar { right: 12px; top: 48px; }
   .app-shell { width: min(100% - 24px, 1320px); padding-top: 24px; }
   .topbar, .thesis-actions { align-items: flex-start; flex-direction: column; }
   .add-holding-trigger { grid-template-columns: auto 1fr; }

@@ -15,6 +15,7 @@ import type {
   PortfolioQueryResponse,
   Thesis,
   ThesisVersion,
+  TickerQuote,
   UpdateHoldingPositionInput,
 } from "@/types/schema";
 
@@ -340,6 +341,11 @@ export async function getHoldingMarketSnapshot(
     return getMockMarketSnapshot(ticker);
   }
   return request<MarketSnapshot>(`/api/holdings/${holdingId}/market-snapshot`);
+}
+
+export async function getMarketTicker(mode = getApiMode()): Promise<TickerQuote[]> {
+  if (mode === "mock") return [];
+  return request<TickerQuote[]>("/api/market/ticker");
 }
 
 export async function getHoldingHistory(

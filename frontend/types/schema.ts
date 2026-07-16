@@ -178,6 +178,13 @@ export interface MarketSnapshot {
   volume: number | null;
 }
 
+export interface TickerQuote {
+  symbol: string;
+  price: number | null;
+  change_pct: number | null;
+  as_of: string | null;
+}
+
 export interface Thesis {
   id: string;
   holding_id: string;
