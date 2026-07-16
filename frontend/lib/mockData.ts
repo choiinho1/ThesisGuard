@@ -8,6 +8,7 @@ import type {
   HoldingHistoryResponse,
   MarketSnapshot,
   Portfolio,
+  PortfolioCreateInput,
   PortfolioDashboard,
   PortfolioQueryEvidence,
   PortfolioQueryResponse,
@@ -248,9 +249,43 @@ function refreshMockWeights() {
   };
 }
 
-export function getMockDashboard(): PortfolioDashboard {
+export function getMockDashboard(portfolioId?: string): PortfolioDashboard {
+  if (portfolioId && portfolioId !== dashboardState.portfolio.id) {
+    const portfolio = mockPortfolios.find((item) => item.id === portfolioId);
+    if (portfolio) {
+      return {
+        portfolio: structuredClone(portfolio),
+        holdings: [],
+        concentration: null,
+        common_risks: [],
+        recent_alerts: [],
+      };
+    }
+  }
   refreshMockWeights();
   return structuredClone(dashboardState);
+}
+
+export function removeMockPortfolio(portfolioId: string): void {
+  const index = mockPortfolios.findIndex((item) => item.id === portfolioId);
+  if (index === -1) throw new Error("삭제할 포트폴리오를 찾을 수 없습니다.");
+  mockPortfolios.splice(index, 1);
+}
+
+export function addMockPortfolio(input: PortfolioCreateInput): Portfolio {
+  const timestamp = new Date().toISOString();
+  const portfolio: Portfolio = {
+    id: crypto.randomUUID(),
+    user_id: userId,
+    name: input.name,
+    investment_purpose: input.investment_purpose ?? "",
+    investment_horizon: input.investment_horizon ?? "",
+    cash_ratio: input.cash_ratio ?? 0,
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+  mockPortfolios.push(portfolio);
+  return structuredClone(portfolio);
 }
 
 export function addMockHolding(portfolioId: string, input: CreateHoldingInput): DashboardHolding {

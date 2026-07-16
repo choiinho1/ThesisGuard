@@ -100,6 +100,7 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 .responsibility-notice { align-items: center; background: rgba(244,188,103,.1); border: 1px solid rgba(244,188,103,.35); border-radius: 8px; color: var(--amber); display: inline-flex; font-size: 12px; font-weight: 700; gap: 6px; margin: 2px 0 10px; padding: 8px 13px; }
 .responsibility-notice strong { font-weight: 900; letter-spacing: .02em; }
 .subtitle { color: var(--muted); margin: 0; }
+.topbar-actions { align-items: center; display: flex; gap: 10px; }
 .mode-switch { background: #091412; border: 1px solid var(--line); border-radius: 999px; display: flex; padding: 4px; }
 .mode-switch button { background: transparent; border: 0; border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 800; padding: 8px 15px; text-transform: uppercase; }
 .mode-switch button.is-active { background: var(--mint); color: #06100d; }
@@ -487,6 +488,34 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 footer { color: var(--muted); display: flex; font-size: 10px; justify-content: space-between; letter-spacing: .08em; padding: 24px 4px 0; }
 footer span:first-child { color: var(--mint); font-weight: 900; }
 
+.portfolio-select-shell { align-items: center; display: flex; justify-content: center; min-height: 100vh; padding: 40px 20px; }
+.portfolio-select-card { background: linear-gradient(145deg, rgba(16, 32, 29, .96), rgba(10, 23, 20, .96)); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 18px 50px rgba(0, 0, 0, .18); padding: 34px; width: min(720px, 100%); }
+.portfolio-select-heading { align-items: flex-start; display: flex; gap: 20px; justify-content: space-between; margin-bottom: 26px; }
+.portfolio-select-heading h1 { font-size: clamp(24px, 3vw, 32px); letter-spacing: -.03em; margin: 10px 0 8px; }
+.portfolio-select-loading { color: var(--muted); font-size: 13px; margin: 10px 0 24px; }
+.portfolio-select-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin-bottom: 20px; }
+.portfolio-select-item { background: rgba(255, 255, 255, .02); border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 4px; padding: 12px 12px 10px; transition: border-color .2s ease, transform .2s ease; }
+.portfolio-select-item:hover { border-color: var(--mint); transform: translateY(-1px); }
+.portfolio-select-item-main { background: transparent; border: 0; cursor: pointer; display: grid; gap: 6px; padding: 4px; text-align: left; width: 100%; }
+.portfolio-select-item-main strong { font-size: 15px; }
+.portfolio-select-item-main span { color: var(--muted); font-size: 12px; }
+.portfolio-select-item-main small { color: var(--mint); font-size: 10px; font-weight: 800; }
+.portfolio-delete { background: transparent; border: 1px solid transparent; border-radius: 7px; color: #71837d; cursor: pointer; font-size: 10px; justify-self: end; padding: 6px 9px; }
+.portfolio-delete:hover { background: rgba(255, 127, 115, .08); border-color: rgba(255, 127, 115, .25); color: var(--red); }
+.portfolio-delete:disabled { cursor: wait; opacity: .5; }
+.portfolio-select-new { background: transparent; border: 1px dashed rgba(91, 230, 176, .46); border-radius: 12px; color: var(--mint); cursor: pointer; font-size: 12px; font-weight: 800; padding: 14px; width: 100%; }
+.portfolio-select-new:hover { border-style: solid; }
+.portfolio-select-new:disabled { cursor: wait; opacity: .55; }
+.portfolio-create-form { display: grid; gap: 16px; margin-top: 4px; }
+.portfolio-create-form label { display: grid; gap: 8px; }
+.portfolio-create-form label > span:first-child { font-size: 11px; font-weight: 800; }
+.portfolio-create-form label small { color: var(--muted); font-size: 9px; font-weight: 600; margin-left: 5px; }
+.portfolio-create-form input { background: #07120f; border: 1px solid var(--line); border-radius: 10px; color: var(--text); outline: none; padding: 12px 14px; width: 100%; }
+.portfolio-create-form input:focus { border-color: var(--mint); }
+.portfolio-create-fields { display: grid; gap: 12px; grid-template-columns: repeat(3, 1fr); }
+.portfolio-switch-button { background: transparent; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); cursor: pointer; font-size: 11px; font-weight: 800; padding: 8px 15px; }
+.portfolio-switch-button:hover { border-color: var(--mint); color: var(--mint); }
+
 @media (max-width: 900px) {
   .auth-shell { grid-template-columns: 1fr; }
   .auth-story { min-height: 430px; padding: 34px; }
@@ -534,4 +563,7 @@ footer span:first-child { color: var(--mint); font-weight: 900; }
   .qa-suggestion-chip { font-size: 10px; padding: 7px 11px; }
   .qa-answer-block, .qa-evidence-card { padding: 14px; }
   .qa-answer p { font-size: 13px; }
+  .portfolio-select-card { padding: 22px; }
+  .portfolio-select-heading { flex-direction: column; }
+  .portfolio-create-fields { grid-template-columns: 1fr; }
 }

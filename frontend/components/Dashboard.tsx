@@ -8,6 +8,7 @@ import { HoldingGrid } from "@/components/HoldingGrid";
 import { InsightPanel } from "@/components/InsightPanel";
 import { PortfolioHeader } from "@/components/PortfolioHeader";
 import { PortfolioQueryPanel } from "@/components/PortfolioQueryPanel";
+import { PortfolioSelector } from "@/components/PortfolioSelector";
 import { SavedEvidenceHistory } from "@/components/SavedEvidenceHistory";
 import { ThesisDetail } from "@/components/ThesisDetail";
 import {
@@ -20,35 +21,32 @@ import {
   getLatestHoldingAnalysis,
   getHoldingMarketSnapshot,
   getApiMode,
-  listPortfolios,
   setApiMode,
   updateHoldingPosition,
   updateHoldingThesis,
 } from "@/lib/apiClient";
-import { getMockDashboard } from "@/lib/mockData";
 import type {
   ApiMode,
   CreateHoldingInput,
   DashboardHolding,
   HoldingAnalysisResponse,
+  Portfolio,
   PortfolioDashboard,
   UpdateHoldingPositionInput,
 } from "@/types/schema";
 
 export function Dashboard() {
-  const initialMockDashboard = getMockDashboard();
   const [mode, setMode] = useState<ApiMode>("mock");
-  const [dashboard, setDashboard] = useState<PortfolioDashboard | null>(initialMockDashboard);
-  const [selected, setSelected] = useState<DashboardHolding | null>(
-    initialMockDashboard.holdings[0] ?? null,
-  );
+  const [selectedPortfolio, setSelectedPortfolio] = useState<Portfolio | null>(null);
+  const [dashboard, setDashboard] = useState<PortfolioDashboard | null>(null);
+  const [selected, setSelected] = useState<DashboardHolding | null>(null);
   const [analysis, setAnalysis] = useState<HoldingAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<"main" | "qa" | "history">("main");
   const selectedIdRef = useRef<string | null>(null);
-  const loadedModeRef = useRef<ApiMode>("mock");
+  const loadedDashboardKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     selectedIdRef.current = selected?.id ?? null;
@@ -58,17 +56,7 @@ export function Dashboard() {
     // This one-time hydration sync applies the user's persisted API mode.
     /* eslint-disable react-hooks/set-state-in-effect */
     const preferredMode = getApiMode();
-    if (preferredMode !== mode) {
-      // Mock-seeded holding IDs (e.g. "20000000-...") don't exist on the
-      // real backend. Clear them here, in the same effect that flips the
-      // mode, so the live-analysis-fetch effect below never runs against a
-      // stale mock holding before loadDashboard() gets a chance to replace it.
-      if (preferredMode !== "mock") {
-        setDashboard(null);
-        setSelected(null);
-      }
-      setMode(preferredMode);
-    }
+    if (preferredMode !== mode) setMode(preferredMode);
     /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -87,17 +75,14 @@ export function Dashboard() {
     return () => { cancelled = true; };
   }, [mode, selected?.id, selected?.thesis]);
 
-  const loadDashboard = useCallback(async (nextMode: ApiMode) => {
+  const loadDashboard = useCallback(async (portfolioId: string, apiMode: ApiMode) => {
     await Promise.resolve();
     setLoading(true);
     setError(null);
-    setDashboard(null);
     setSelected(null);
     setAnalysis(null);
     try {
-      const portfolios = await listPortfolios(nextMode);
-      if (!portfolios[0]) throw new Error("등록된 포트폴리오가 없습니다.");
-      const data = await getPortfolioDashboard(portfolios[0].id, nextMode);
+      const data = await getPortfolioDashboard(portfolioId, apiMode);
       setDashboard(data);
       setSelected((current) => data.holdings.find((item) => item.id === current?.id) ?? data.holdings[0] ?? null);
       setAnalysis(null);
@@ -109,26 +94,36 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    // Compare against the last mode we actually loaded (not a "have we run
-    // yet" flag) so this stays idempotent under React Strict Mode's
-    // mount -> cleanup -> mount double-invocation in dev. A mutable
-    // "already ran once" ref behaves differently on the 2nd invocation than
-    // the 1st, which let a stray loadDashboard("mock") slip through and
-    // re-seed mock holding IDs right as the mode flipped to "live".
-    if (mode === loadedModeRef.current) return;
-    loadedModeRef.current = mode;
-    // API 모드가 외부 데이터 소스를 결정하므로 모드 변경 때 화면 상태를 다시 동기화한다.
-    void loadDashboard(mode);
-  }, [loadDashboard, mode]);
+    if (!selectedPortfolio) return;
+    // Compare against the last portfolio+mode we actually loaded (not a
+    // "have we run yet" flag) so this stays idempotent under React Strict
+    // Mode's mount -> cleanup -> mount double-invocation in dev.
+    const key = `${mode}:${selectedPortfolio.id}`;
+    if (key === loadedDashboardKeyRef.current) return;
+    loadedDashboardKeyRef.current = key;
+    void loadDashboard(selectedPortfolio.id, mode);
+  }, [loadDashboard, mode, selectedPortfolio]);
 
   const changeMode = (nextMode: ApiMode) => {
     if (nextMode === mode) return;
+    // Portfolios live in separate mock/live universes, so switching modes
+    // sends the user back to portfolio selection rather than reloading a
+    // portfolio id that may not exist under the new mode.
+    setSelectedPortfolio(null);
     setDashboard(null);
     setSelected(null);
     setAnalysis(null);
     setError(null);
     setApiMode(nextMode);
     setMode(nextMode);
+  };
+
+  const switchPortfolio = () => {
+    setSelectedPortfolio(null);
+    setDashboard(null);
+    setSelected(null);
+    setAnalysis(null);
+    setError(null);
   };
 
   const refreshPortfolioAnalysis = async (portfolioId: string) => {
@@ -314,12 +309,16 @@ export function Dashboard() {
     }
   };
 
+  if (!selectedPortfolio) {
+    return <PortfolioSelector mode={mode} onModeChange={changeMode} onSelect={setSelectedPortfolio} />;
+  }
+
   if (loading && !dashboard) return <main className="loading-screen">ThesisGuard 데이터를 불러오는 중…</main>;
   if (!dashboard) return <main className="loading-screen error-screen">{error ?? "대시보드를 표시할 수 없습니다."}</main>;
 
   return (
     <main className="app-shell">
-      <PortfolioHeader mode={mode} onModeChange={changeMode} portfolio={dashboard.portfolio} />
+      <PortfolioHeader mode={mode} onModeChange={changeMode} onSwitchPortfolio={switchPortfolio} portfolio={dashboard.portfolio} />
       {error && <div className="error-banner">{error}</div>}
       <AddHoldingForm
         existingTickers={dashboard.holdings.map((holding) => holding.ticker)}

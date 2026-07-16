@@ -1,4 +1,4 @@
-import { addMockHolding, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, getMockPortfolioQuery, getMockThesisHistory, mockPortfolios, removeMockAlert, removeMockHolding, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
+import { addMockHolding, addMockPortfolio, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, getMockPortfolioQuery, getMockThesisHistory, mockPortfolios, removeMockAlert, removeMockHolding, removeMockPortfolio, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
 import type {
   ApiMode,
   AnalysisSchedule,
@@ -11,6 +11,7 @@ import type {
   HoldingHistoryResponse,
   MarketSnapshot,
   Portfolio,
+  PortfolioCreateInput,
   PortfolioDashboard,
   PortfolioQueryResponse,
   Thesis,
@@ -88,13 +89,39 @@ export async function listPortfolios(mode = getApiMode()): Promise<Portfolio[]> 
   return request<Portfolio[]>("/api/portfolios");
 }
 
+export async function createPortfolio(
+  input: PortfolioCreateInput,
+  mode = getApiMode(),
+): Promise<Portfolio> {
+  if (mode === "mock") {
+    await delay(280);
+    return addMockPortfolio(input);
+  }
+  return request<Portfolio>("/api/portfolios", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deletePortfolio(
+  portfolioId: string,
+  mode = getApiMode(),
+): Promise<void> {
+  if (mode === "mock") {
+    await delay(180);
+    removeMockPortfolio(portfolioId);
+    return;
+  }
+  await request<void>(`/api/portfolios/${portfolioId}`, { method: "DELETE" });
+}
+
 export async function getPortfolioDashboard(
   portfolioId: string,
   mode = getApiMode(),
 ): Promise<PortfolioDashboard> {
   if (mode === "mock") {
     await delay();
-    return getMockDashboard();
+    return getMockDashboard(portfolioId);
   }
   return request<PortfolioDashboard>(`/api/portfolios/${portfolioId}/dashboard`);
 }

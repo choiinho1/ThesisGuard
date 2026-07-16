@@ -4,9 +4,10 @@ interface PortfolioHeaderProps {
   portfolio: Portfolio;
   mode: ApiMode;
   onModeChange: (mode: ApiMode) => void;
+  onSwitchPortfolio: () => void;
 }
 
-export function PortfolioHeader({ portfolio, mode, onModeChange }: PortfolioHeaderProps) {
+export function PortfolioHeader({ portfolio, mode, onModeChange, onSwitchPortfolio }: PortfolioHeaderProps) {
   return (
     <header className="topbar">
       <div>
@@ -19,17 +20,22 @@ export function PortfolioHeader({ portfolio, mode, onModeChange }: PortfolioHead
           {portfolio.investment_purpose} · {portfolio.investment_horizon}
         </p>
       </div>
-      <div className="mode-switch" aria-label="API 모드">
-        {(["mock", "live"] as const).map((item) => (
-          <button
-            className={mode === item ? "is-active" : ""}
-            key={item}
-            onClick={() => onModeChange(item)}
-            type="button"
-          >
-            {item}
-          </button>
-        ))}
+      <div className="topbar-actions">
+        <button className="portfolio-switch-button" onClick={onSwitchPortfolio} type="button">
+          포트폴리오 변경
+        </button>
+        <div className="mode-switch" aria-label="API 모드">
+          {(["mock", "live"] as const).map((item) => (
+            <button
+              className={mode === item ? "is-active" : ""}
+              key={item}
+              onClick={() => onModeChange(item)}
+              type="button"
+            >
+              {item}
+            </button>
+          ))}
+        </div>
       </div>
     </header>
   );

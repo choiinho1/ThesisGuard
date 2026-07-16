@@ -144,6 +144,13 @@ export interface Portfolio {
   updated_at: string;
 }
 
+export interface PortfolioCreateInput {
+  name: string;
+  investment_purpose?: string;
+  investment_horizon?: string;
+  cash_ratio?: number;
+}
+
 export interface Holding {
   id: string;
   portfolio_id: string;
