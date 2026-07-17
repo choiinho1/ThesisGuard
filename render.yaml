@@ -1,0 +1,57 @@
+services:
+  - type: web
+    name: thesisguard-backend
+    runtime: python
+    plan: free
+    buildCommand: |
+      pip install -e .
+      pip install -e "./backend[llm-openai]"
+    startCommand: |
+      cd backend && alembic upgrade head && uvicorn thesisguard_backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: LLM_PROVIDER
+        value: openai
+      - key: LLM_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: RAG_ENABLED
+        value: "true"
+      - key: RAG_EMBEDDING_PROVIDER
+        value: openai
+      - key: OPENAI_EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: RAG_EMBEDDING_TIMEOUT_SECONDS
+        value: "20"
+      - key: EVIDENCE_HISTORY_DIR
+        value: ./data/evidence_history
+      - key: EVIDENCE_HISTORY_MAX_ITEMS
+        value: "30"
+      - key: SEC_USER_AGENT
+        sync: false
+      - key: FRED_BASE_URL
+        value: https://fred.stlouisfed.org/graph/fredgraph.csv
+      - key: EMAIL_DRY_RUN
+        value: "true"
+      - key: SCHEDULER_ENABLED
+        value: "true"
+      - key: SCHEDULER_POLL_SECONDS
+        value: "60"
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+
+databases:
+  - name: thesisguard-db
+    plan: free

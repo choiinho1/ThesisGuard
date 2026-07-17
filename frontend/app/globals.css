@@ -12,6 +12,26 @@
   --radius: 18px;
 }
 
+.feedback-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: var(--mint);
+  color: #06231a;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 12px 30px rgba(91, 230, 176, .35);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.feedback-fab:hover { transform: translateY(-2px); box-shadow: 0 16px 36px rgba(91, 230, 176, .45); }
+
 * { box-sizing: border-box; }
 html { background: var(--bg); }
 body {

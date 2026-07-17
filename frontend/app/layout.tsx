@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { MarketIndexTicker } from "@/components/MarketIndexTicker";
+import { FeedbackButton } from "@/components/FeedbackButton";
 
 export const metadata: Metadata = {
   title: "ThesisGuard | 투자 논리 관리",
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <MarketIndexTicker />
         {children}
+        <FeedbackButton />
       </body>
     </html>
   );
