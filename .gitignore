@@ -10,6 +10,7 @@ build/
 *.egg-info/
 *.db
 backend/data/evidence_history/
+backend/data/qdrant/
 .env
 .env.*
 !.env.example

@@ -22,6 +22,7 @@ from agents.models import (
     EvidenceImpact,
     EvidenceNodeContribution,
     EvidenceSourceType,
+    LogicOperator,
     ThesisLogicGraph,
     ThesisScoreBreakdown,
     ThesisStatus,
@@ -182,6 +183,11 @@ class ThesisUpdateRequest(BaseModel):
     positive_signals: list[str] | None = None
     negative_signals: list[str] | None = None
     key_risks: list[str] | None = None
+
+
+class ThesisLogicOperatorUpdateRequest(BaseModel):
+    node_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    operator: LogicOperator
 
 
 class ThesisResponse(ORMModel):

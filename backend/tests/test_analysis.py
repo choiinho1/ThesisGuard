@@ -3,19 +3,23 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from agents.models import PortfolioQueryAnswer, PortfolioQueryEvidence
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.db import Base
+from thesisguard_backend.evidence_vector_store import SemanticEvidenceMatch
 from thesisguard_backend.routers.analysis import (
     get_evidence_history,
     get_holding_evidence_history,
     get_latest_analysis,
     get_owned_evidence,
+    query_portfolio,
     save_evidence,
     unsave_evidence,
 )
+from thesisguard_backend.schemas import NaturalLanguageQueryRequest
 
 
 @pytest.fixture
@@ -169,6 +173,88 @@ async def _make_owned_holding(db_session, *, ticker: str = "NVDA") -> orm.Holdin
     db_session.add(holding)
     await db_session.flush()
     return holding
+
+
+@pytest.mark.asyncio
+async def test_portfolio_query_uses_semantic_match_instead_of_latest_evidence(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    holding = await _make_owned_holding(db_session)
+    portfolio = holding.portfolio
+    thesis = orm.Thesis(
+        holding_id=holding.id,
+        raw_input="AI demand and margin durability determine the investment thesis.",
+        main_thesis="AI demand and margin durability",
+        key_assumptions=["Margins remain durable"],
+    )
+    db_session.add(thesis)
+    await db_session.flush()
+    relevant = orm.Evidence(
+        thesis_id=thesis.id,
+        document_id="old-margin-evidence",
+        source_type="EARNINGS",
+        source_url="https://example.com/old-margin-evidence",
+        content_snippet="Gross margin declined because of product mix.",
+        classification="CONTRADICT",
+        impact="HIGH",
+        reason="Directly addresses margin durability.",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    latest_but_irrelevant = orm.Evidence(
+        thesis_id=thesis.id,
+        document_id="new-demand-evidence",
+        source_type="NEWS",
+        source_url="https://example.com/new-demand-evidence",
+        content_snippet="Unit demand increased this week.",
+        classification="SUPPORT",
+        impact="LOW",
+        reason="Addresses demand, not margins.",
+        created_at=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+    db_session.add_all([relevant, latest_but_irrelevant])
+    await db_session.commit()
+
+    async def semantic_search(question, *, portfolio_id, limit):
+        assert question == "마진 악화 근거는 무엇인가요?"
+        assert portfolio_id == portfolio.id
+        assert limit > 1
+        return [SemanticEvidenceMatch(evidence_id=relevant.id, score=0.97)]
+
+    monkeypatch.setattr(
+        "thesisguard_backend.routers.analysis.search_portfolio_evidence",
+        semantic_search,
+    )
+
+    class QueryAgent:
+        evidence: list[PortfolioQueryEvidence]
+
+        async def aanswer_portfolio_query(
+            self,
+            portfolio_id,
+            question,
+            evidence,
+            *,
+            runnable_config=None,
+        ):
+            self.evidence = evidence
+            return PortfolioQueryAnswer(
+                answer="마진 관련 반박 근거가 있습니다.",
+                evidence_document_ids=["old-margin-evidence"],
+            )
+
+    agent = QueryAgent()
+    response = await query_portfolio(
+        NaturalLanguageQueryRequest(question="마진 악화 근거는 무엇인가요?"),
+        portfolio,
+        db_session,
+        agent,  # type: ignore[arg-type]
+    )
+
+    assert [item.evidence.document_id for item in agent.evidence] == ["old-margin-evidence"]
+    assert agent.evidence[0].ticker == "NVDA"
+    assert [item.document_id for item in response.evidence] == ["old-margin-evidence"]
+    assert response.scope.candidate_evidence_count == 2
 
 
 @pytest.mark.asyncio

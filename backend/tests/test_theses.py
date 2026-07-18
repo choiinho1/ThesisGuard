@@ -7,8 +7,16 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.db import Base
-from thesisguard_backend.routers.theses import create_thesis, update_thesis
-from thesisguard_backend.schemas import ThesisCreateRequest, ThesisUpdateRequest
+from thesisguard_backend.routers.theses import (
+    create_thesis,
+    update_thesis,
+    update_thesis_logic_operator,
+)
+from thesisguard_backend.schemas import (
+    ThesisCreateRequest,
+    ThesisLogicOperatorUpdateRequest,
+    ThesisUpdateRequest,
+)
 
 
 @pytest.fixture
@@ -123,6 +131,20 @@ async def test_resetting_raw_thesis_rebuilds_graph_and_resets_score(db_session) 
         GraphStructuringAgent(LogicOperator.AND),  # type: ignore[arg-type]
         user,
     )
+    old_evidence = orm.Evidence(
+        thesis_id=thesis.id,
+        document_id="evidence-for-old-logic",
+        source_type=orm.EvidenceSourceType.NEWS,
+        content_snippet="Evidence assessed against the old thesis logic.",
+        classification=orm.EvidenceClassification.SUPPORT,
+        impact=orm.EvidenceImpact.MEDIUM,
+        reason="Only relevant to the old logic.",
+        related_assumptions=thesis.key_assumptions,
+        saved_to_history=False,
+    )
+    db_session.add(old_evidence)
+    await db_session.commit()
+    old_evidence_id = old_evidence.id
     reset_agent = GraphStructuringAgent(LogicOperator.OR)
 
     updated = await update_thesis(
@@ -139,3 +161,45 @@ async def test_resetting_raw_thesis_rebuilds_graph_and_resets_score(db_session) 
     assert updated.status == "UNCHANGED"
     assert updated.score_breakdown["root_state"] == 0
     assert updated.score_breakdown["is_broken"] is False
+    assert await db_session.get(orm.Evidence, old_evidence_id) is None
+
+
+@pytest.mark.asyncio
+async def test_user_can_change_claim_operator_and_history_is_cleared(db_session) -> None:
+    user, holding = await _owned_holding(db_session)
+    thesis = await create_thesis(
+        ThesisCreateRequest(raw_input="AI infrastructure demand will keep expanding."),
+        holding,
+        db_session,
+        GraphStructuringAgent(LogicOperator.AND),  # type: ignore[arg-type]
+        user,
+    )
+    evidence = orm.Evidence(
+        thesis_id=thesis.id,
+        document_id="old-evidence",
+        source_type=orm.EvidenceSourceType.NEWS,
+        content_snippet="Old supporting evidence.",
+        classification=orm.EvidenceClassification.SUPPORT,
+        impact=orm.EvidenceImpact.HIGH,
+        reason="Old graph support.",
+        related_assumptions=thesis.key_assumptions,
+        saved_to_history=True,
+    )
+    db_session.add(evidence)
+    await db_session.commit()
+    evidence_id = evidence.id
+
+    updated = await update_thesis_logic_operator(
+        ThesisLogicOperatorUpdateRequest(
+            node_id="root_claim",
+            operator=LogicOperator.CONTRIBUTING,
+        ),
+        thesis,
+        db_session,
+    )
+    assert updated.logic_graph["nodes"][0]["operator"] == "CONTRIBUTING"
+    assert updated.confidence_score == 0
+    assert updated.status == "UNCHANGED"
+    assert updated.score_breakdown["health_score"] == 0
+    assert updated.score_breakdown["node_scores"][0]["operator"] == "CONTRIBUTING"
+    assert await db_session.get(orm.Evidence, evidence_id) is None

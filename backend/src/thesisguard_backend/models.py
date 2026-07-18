@@ -128,7 +128,9 @@ class User(Base):
         # those lowercase labels — store .value instead, matching every
         # other StrEnum column that already uses this pattern indirectly by
         # having name == value.
-        SAEnum(UserRole, name="user_role", values_callable=lambda enum_cls: [e.value for e in enum_cls]),
+        SAEnum(
+            UserRole, name="user_role", values_callable=lambda enum_cls: [e.value for e in enum_cls]
+        ),
         default=UserRole.USER,
         server_default=UserRole.USER.value,
         nullable=False,
@@ -207,9 +209,7 @@ class AnalysisSchedule(Base):
     # PostgreSQL preserves timezone metadata natively. SQLite drops it on
     # round-trip, so UTCDateTime restores UTC before scheduler comparisons.
     last_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
-    next_run_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), nullable=False, index=True
-    )
+    next_run_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, index=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 

@@ -24,6 +24,7 @@ import {
   setApiMode,
   updateHoldingPosition,
   updateHoldingThesis,
+  updateThesisLogicOperator,
 } from "@/lib/apiClient";
 import { getMockDashboard } from "@/lib/mockData";
 import type {
@@ -31,6 +32,7 @@ import type {
   CreateHoldingInput,
   DashboardHolding,
   HoldingAnalysisResponse,
+  LogicOperator,
   PortfolioDashboard,
   UpdateHoldingPositionInput,
 } from "@/types/schema";
@@ -167,6 +169,9 @@ export function Dashboard() {
     const holdingId = selected.id;
     setAnalyzing(true);
     setError(null);
+    if (mode === "mock") {
+      window.localStorage.removeItem(`thesisguard_saved_evidence_${holdingId}`);
+    }
     try {
       const result = await analyzeHolding(holdingId, mode);
       setSelected((current) => current?.id === holdingId
@@ -249,6 +254,9 @@ export function Dashboard() {
     const thesisId = selected.thesis.id;
     setAnalyzing(true);
     setError(null);
+    if (mode === "mock") {
+      window.localStorage.removeItem(`thesisguard_saved_evidence_${holdingId}`);
+    }
     try {
       const updatedThesis = await updateHoldingThesis(thesisId, rawInput, mode);
       setSelected((current) => current?.id === holdingId
@@ -279,6 +287,33 @@ export function Dashboard() {
       throw new Error(message);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const updateLogicOperator = async (nodeId: string, operator: LogicOperator) => {
+    if (!selected?.thesis) return;
+    const holdingId = selected.id;
+    const thesisId = selected.thesis.id;
+    setError(null);
+    if (mode === "mock") {
+      window.localStorage.removeItem(`thesisguard_saved_evidence_${holdingId}`);
+    }
+    try {
+      const thesis = await updateThesisLogicOperator(thesisId, nodeId, operator, mode);
+      setAnalysis(null);
+      setSelected((current) => current?.id === holdingId ? { ...current, thesis } : current);
+      setDashboard((current) => current ? {
+        ...current,
+        holdings: current.holdings.map((item) =>
+          item.id === holdingId ? { ...item, thesis } : item,
+        ),
+      } : current);
+    } catch (caught) {
+      const message = caught instanceof Error
+        ? caught.message
+        : "논리 연결 방식을 변경하지 못했습니다.";
+      setError(message);
+      throw new Error(message);
     }
   };
 
@@ -407,7 +442,7 @@ export function Dashboard() {
       {activeSection === "main" && selected && (
         <AutoAnalysisSchedule holding={selected} mode={mode} />
       )}
-      {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} holding={selected} mode={mode} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
+      {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} holding={selected} mode={mode} onAnalyze={runAnalysis} onOperatorChange={updateLogicOperator} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
       {activeSection === "qa" && (
         <PortfolioQueryPanel
           key={dashboard.portfolio.id}

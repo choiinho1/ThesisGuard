@@ -13,6 +13,7 @@ import type {
   HoldingAnalysisResponse,
   HoldingHistoryResponse,
   LangfuseTrace,
+  LogicOperator,
   MarketSnapshot,
   Portfolio,
   PortfolioDashboard,
@@ -411,6 +412,42 @@ export function updateMockThesis(thesisId: string, rawInput: string): Thesis {
     positive_signals: ["핵심 전제를 뒷받침하는 신규 근거"],
     negative_signals: ["핵심 전제를 약화하는 반대 근거"],
     key_risks: ["수정된 핵심 전제가 성립하지 않을 가능성"],
+    logic_graph: graph,
+    score_breakdown: mockScoreBreakdown(graph, 0),
+    confidence_score: 0,
+    status: "UNCHANGED",
+    updated_at: new Date().toISOString(),
+  };
+  dashboardState = {
+    ...dashboardState,
+    holdings: dashboardState.holdings.map((item) =>
+      item.id === holding.id ? { ...item, thesis } : item,
+    ),
+  };
+  return structuredClone(thesis);
+}
+
+export function updateMockThesisLogicOperator(
+  thesisId: string,
+  nodeId: string,
+  operator: LogicOperator,
+): Thesis {
+  const holding = dashboardState.holdings.find((item) => item.thesis?.id === thesisId);
+  if (!holding?.thesis?.logic_graph) throw new Error("변경할 논리 그래프를 찾을 수 없습니다.");
+
+  const target = holding.thesis.logic_graph.nodes.find((node) => node.node_id === nodeId);
+  if (!target || target.kind !== "CLAIM" || target.child_ids.length === 0) {
+    throw new Error("하위 노드를 연결하는 CLAIM 노드만 변경할 수 있습니다.");
+  }
+
+  const graph = {
+    ...holding.thesis.logic_graph,
+    nodes: holding.thesis.logic_graph.nodes.map((node) =>
+      node.node_id === nodeId ? { ...node, operator } : node,
+    ),
+  };
+  const thesis: Thesis = {
+    ...holding.thesis,
     logic_graph: graph,
     score_breakdown: mockScoreBreakdown(graph, 0),
     confidence_score: 0,

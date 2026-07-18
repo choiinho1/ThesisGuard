@@ -97,7 +97,10 @@ copy .env.example .env
 ## DB 준비 & 마이그레이션
 
 PostgreSQL이 필요하다(로컬 설치 또는 Docker). `evidence`/`analysis_results`와 라이브 Hybrid RAG는
-pgvector 없이도 동작한다. 과거 문서 전체를 영구 보관·검색하는 Vector Store(ADR-0002)는 별도로 붙인다.
+pgvector 없이도 동작한다. 포트폴리오 Q&A용 Evidence 벡터는 Qdrant에 영구 저장한다. 로컬에서는
+공식 Python 클라이언트의 디스크 모드(`QDRANT_PATH=./data/qdrant`)를 사용하므로 별도 서버가
+필요하지 않다. 운영에서는 `QDRANT_URL`, `QDRANT_API_KEY`를 설정해 Qdrant Server/Cloud를 사용한다.
+서버 시작 시 DB Evidence를 백필하며, 새 분석 Evidence는 커밋 직후 자동 인덱싱한다.
 
 PostgreSQL 없이 로컬 화면과 인증 흐름을 확인하려면 `backend/.env`에
 `DATABASE_URL=sqlite+aiosqlite:///./thesisguard.db`를 사용한다. 이 경우 서버 시작 시 로컬 테이블이

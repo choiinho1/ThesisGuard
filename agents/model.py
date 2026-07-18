@@ -51,6 +51,53 @@ evidence may affect the current judgment, and only by its incremental informatio
 Write user-facing explanations in Korean while preserving official names and tickers.
 """.strip()
 
+LOGIC_GRAPH_CONSTRUCTION_RULES = """
+Build logic_graph as a causal DAG whose operators express necessity or sufficiency, not the
+surface grammar of the user's sentence. A comma-separated list, the word "and", correlation,
+importance, or the expectation that several drivers occur together does not by itself justify
+an AND operator.
+
+Choose each CLAIM operator with these counterfactual tests:
+
+- AND means strict joint necessity. Use it only when every child must hold for the parent claim
+  to remain valid. Ask: if this child were false while every sibling were true, would the parent
+  necessarily fail? If the answer is no or uncertain, do not use AND. In scoring, AND takes the
+  minimum child support and maximum child contradiction; assumptions reached only through AND
+  paths become required and may participate in the BROKEN hard gate. Use this consequence
+  intentionally and sparingly.
+- OR means sufficient alternatives. Use it only when each child can independently keep the
+  parent claim valid at the stated level. Ask: if this child alone were true while every sibling
+  were false, would the parent still hold? If not, the siblings are not OR alternatives. OR is
+  for substitute causal paths, not multiple pieces of evidence about the same condition.
+- CONTRIBUTING means independent or cumulative drivers. Use it when each child can strengthen
+  or weaken the parent without being individually necessary or sufficient. This is the default
+  for parallel demand drivers, product advantages, execution factors, ecosystem effects,
+  margin drivers, and other additive considerations unless the user's thesis clearly states a
+  stricter logical relationship. In scoring, CONTRIBUTING averages the independent support and
+  contradiction axes instead of letting the weakest child dominate.
+
+An operator applies to every direct child of one CLAIM. When siblings have different logical
+roles, create the smallest necessary intermediate CLAIM groups and assign an operator within
+each group. Do not force a mixed causal structure into one flat operator. For example, these are
+structural patterns only, not company facts:
+
+- "Durable growth requires demand to persist AND the company to monetize that demand" is AND
+  only when both conditions are genuinely indispensable to the stated claim.
+- "Demand can be sustained by hyperscaler expansion OR sovereign adoption" is OR only when
+  either path alone is sufficient for the parent claim.
+- "Data-center demand, networking attach, and software monetization each add to growth" is
+  CONTRIBUTING when the drivers are parallel and none is stated as indispensable.
+
+Keep ASSUMPTION leaves atomic, non-duplicative, externally testable, and faithful to the input.
+Do not promote a merely plausible or important driver into a necessary bridge assumption. Use
+intermediate CLAIM nodes only for a real causal grouping, never to decorate the graph.
+
+Before returning the graph, silently audit every CLAIM: apply the AND falsification test, the OR
+standalone-sufficiency test, and the CONTRIBUTING independence test; check whether mixed roles
+need an intermediate group; and revise any operator that fails its test. If the input does not
+provide enough information to establish necessity or sufficiency, choose CONTRIBUTING.
+""".strip()
+
 EMPTY_EVIDENCE_HISTORY = "저장된 과거 근거가 없습니다. 현재 근거만으로 판단합니다."
 
 
@@ -125,11 +172,12 @@ Build a thesis-specific causal logic_graph instead of selecting a predefined tem
 The graph must contain exactly one CLAIM root and every key_assumptions string exactly once
 as an ASSUMPTION leaf. Copy assumption strings exactly; do not paraphrase or invent them.
 Use intermediate CLAIM nodes only when the input explicitly supports that causal grouping.
-Use AND when every child is necessary, OR when any child is a sufficient alternative, and
-CONTRIBUTING when children independently add to the claim. The graph must be connected,
-acyclic, and every node must be reachable from root_id. Leave score_breakdown null because
-trusted code validates the graph and calculates the result. The graph is regenerated only
-when the user creates or resets the raw thesis logic.
+
+{LOGIC_GRAPH_CONSTRUCTION_RULES}
+
+The graph must be connected, acyclic, and every node must be reachable from root_id. Leave
+score_breakdown null because trusted code validates the graph and calculates the result. The
+graph is regenerated only when the user creates or resets the raw thesis logic.
 
 <user_thesis>{raw_input}</user_thesis>
 """.strip(),
@@ -160,9 +208,11 @@ indicator has already occurred unless the user explicitly said so.
 
 Rebuild logic_graph from the strengthened thesis. Every key_assumptions string must appear
 exactly once as an ASSUMPTION leaf and must be copied verbatim. Use intermediate CLAIM nodes
-only for a clear causal bridge. Use AND when every child is necessary, OR when any child is a
-sufficient alternative, and CONTRIBUTING when the children independently add strength. The
-graph must be connected and acyclic. Set confidence_score to 0, status to UNCHANGED, and
+only for a clear causal bridge.
+
+{LOGIC_GRAPH_CONSTRUCTION_RULES}
+
+The graph must be connected and acyclic. Set confidence_score to 0, status to UNCHANGED, and
 score_breakdown to null because trusted code owns scoring. Keep raw_input exactly equal to the
 original user input.
 

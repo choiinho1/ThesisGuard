@@ -416,6 +416,10 @@ h1 { font-size: clamp(34px, 5vw, 66px); letter-spacing: -.055em; line-height: .9
 .causal-node-topline { align-items: center; display: flex; gap: 6px; min-width: 0; }
 .causal-node-topline span { color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 .causal-node-topline small, .causal-node-topline em { background: rgba(255,255,255,.045); border-radius: 999px; color: var(--muted); font-size: 7px; font-style: normal; font-weight: 800; padding: 3px 5px; white-space: nowrap; }
+.causal-operator-select { appearance: auto; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 999px; color: var(--text); cursor: pointer; font-size: 7px; font-weight: 800; max-width: 105px; padding: 3px 5px; }
+.causal-operator-select:hover, .causal-operator-select:focus-visible { border-color: rgba(91,230,176,.65); outline: none; }
+.causal-operator-select:disabled { cursor: wait; opacity: .55; }
+.causal-operator-select option { background: #10201b; color: var(--text); }
 .causal-node-topline em { background: rgba(244,188,103,.1); color: var(--amber); margin-left: auto; }
 .causal-node > strong { display: -webkit-box; font-size: 11px; line-height: 1.45; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .causal-node-footer { align-items: flex-end; display: flex; gap: 8px; justify-content: space-between; }

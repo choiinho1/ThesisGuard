@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from agents.models import EvidenceItem
+
 from thesisguard_backend.scheduler import MIN_CONFIDENCE_DELTA_FOR_ALERT, score_delta_alert_decision
 
 _SOURCED_EVIDENCE = [
@@ -63,9 +64,7 @@ def test_score_delta_excludes_failed_classification_evidence() -> None:
         impact="LOW",
         reason="분류 모델 오류(ChatGoogleGenerativeAIError)로 불확실 처리했습니다.",
     )
-    decision = score_delta_alert_decision(
-        50, 60, "NVDA", "실적 호조", [failed, *_SOURCED_EVIDENCE]
-    )
+    decision = score_delta_alert_decision(50, 60, "NVDA", "실적 호조", [failed, *_SOURCED_EVIDENCE])
     assert "ChatGoogleGenerativeAIError" not in decision.reason
     assert "positive earnings signal" in decision.reason
 

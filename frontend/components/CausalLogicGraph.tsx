@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import type {
   LogicNodeScore,
   LogicOperator,
@@ -138,9 +141,15 @@ function edgePath(source: PositionedNode, target: PositionedNode) {
 interface CausalLogicGraphProps {
   graph: ThesisLogicGraph;
   scoreBreakdown: ThesisScoreBreakdown;
+  onOperatorChange: (nodeId: string, operator: LogicOperator) => Promise<void>;
 }
 
-export function CausalLogicGraph({ graph, scoreBreakdown }: CausalLogicGraphProps) {
+export function CausalLogicGraph({
+  graph,
+  scoreBreakdown,
+  onOperatorChange,
+}: CausalLogicGraphProps) {
+  const [updatingOperatorNodeId, setUpdatingOperatorNodeId] = useState<string | null>(null);
   const scores = new Map(scoreBreakdown.node_scores.map((score) => [score.node_id, score]));
   const layout = layoutGraph(graph, scores);
   const rootScore = scores.get(graph.root_id);
@@ -222,13 +231,42 @@ export function CausalLogicGraph({ graph, scoreBreakdown }: CausalLogicGraphProp
                 >
                   <div className="causal-node-topline">
                     <span>{role}</span>
-                    {node.operator && <small>{operatorLabel[node.operator]}</small>}
+                    {node.operator && (
+                      <select
+                        aria-label={`${node.label} 연결 방식`}
+                        className="causal-operator-select"
+                        disabled={updatingOperatorNodeId === node.node_id}
+                        onChange={async (event) => {
+                          const operator = event.target.value as LogicOperator;
+                          if (operator === node.operator) return;
+                          setUpdatingOperatorNodeId(node.node_id);
+                          try {
+                            await onOperatorChange(node.node_id, operator);
+                          } catch {
+                            // The dashboard displays the request error and keeps the prior value.
+                          } finally {
+                            setUpdatingOperatorNodeId(null);
+                          }
+                        }}
+                        title="노드 연결 방식 변경"
+                        value={node.operator}
+                      >
+                        {(Object.keys(operatorLabel) as LogicOperator[]).map((operator) => (
+                          <option key={operator} value={operator}>
+                            {operator} · {operatorLabel[operator]}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {score?.required && <em>필수</em>}
                   </div>
                   <strong title={node.label}>{node.label}</strong>
                   <div className="causal-node-footer">
                     <span>{verdictLabel[verdict]}</span>
-                    <small>긍정 {axes.support.toFixed(2)} · 우려 {axes.contradict.toFixed(2)}</small>
+                    <small>
+                      긍정 +{(axes.support * 50).toFixed(1)}점 · 우려
+                      {axes.contradict > 0 ? ` -${(axes.contradict * 50).toFixed(1)}점` : " 0.0점"}
+                    </small>
                   </div>
                 </article>
               </foreignObject>
@@ -237,7 +275,10 @@ export function CausalLogicGraph({ graph, scoreBreakdown }: CausalLogicGraphProp
         </svg>
       </div>
 
-      <p className="causal-graph-hint">화살표는 왼쪽 조건이 오른쪽 결과에 영향을 주는 방향을 뜻합니다.</p>
+      <p className="causal-graph-hint">
+        화살표는 왼쪽 조건이 오른쪽 결과에 영향을 주는 방향입니다. 연결 방식은 선택해
+        변경할 수 있으며, 변경하면 기존 점수와 근거 History가 초기화됩니다.
+      </p>
 
       {scoreBreakdown.is_broken && (
         <div className="score-invalidation-alert" role="alert">

@@ -12,6 +12,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from agents.logic_graph import (
+    apply_logic_operator_guardrails,
     evaluate_evidence_graph,
     evidence_verdict,
     normalize_logic_graph,
@@ -184,6 +185,7 @@ def prepare_structured_thesis(thesis: StructuredThesis) -> StructuredThesis:
         main_thesis=thesis.main_thesis,
         key_assumptions=thesis.key_assumptions,
     )
+    graph = apply_logic_operator_guardrails(graph, raw_input=thesis.raw_input)
     normalized = thesis.model_copy(
         update={
             "logic_graph": graph,

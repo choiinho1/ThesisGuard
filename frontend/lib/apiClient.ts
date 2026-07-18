@@ -1,4 +1,29 @@
-import { addMockEvalScenario, addMockHolding, createMockThesis, getMockAdminHealth, getMockAdminSchedules, getMockAppSettings, getMockDashboard, getMockEvalScenarios, getMockHoldingHistory, getMockLangfuseTraces, getMockMarketSnapshot, getMockPortfolioQuery, getMockQaLogs, getMockThesisHistory, mockPortfolios, removeMockAlert, removeMockHolding, runMockAnalysis, runMockEvalScenario, updateMockAppSetting, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
+import {
+  addMockEvalScenario,
+  addMockHolding,
+  createMockThesis,
+  getMockAdminHealth,
+  getMockAdminSchedules,
+  getMockAppSettings,
+  getMockDashboard,
+  getMockEvalScenarios,
+  getMockHoldingHistory,
+  getMockLangfuseTraces,
+  getMockMarketSnapshot,
+  getMockPortfolioQuery,
+  getMockQaLogs,
+  getMockThesisHistory,
+  mockPortfolios,
+  removeMockAlert,
+  removeMockHolding,
+  runMockAnalysis,
+  runMockEvalScenario,
+  updateMockAppSetting,
+  updateMockHoldingPosition,
+  updateMockHoldingWeight,
+  updateMockThesis,
+  updateMockThesisLogicOperator,
+} from "@/lib/mockData";
 import type {
   ApiMode,
   AdminHealth,
@@ -16,6 +41,7 @@ import type {
   HoldingAnalysisResponse,
   HoldingHistoryResponse,
   LangfuseTrace,
+  LogicOperator,
   MarketSnapshot,
   Portfolio,
   PortfolioDashboard,
@@ -272,6 +298,22 @@ export async function updateHoldingThesis(
   return request<Thesis>(`/api/theses/${thesisId}`, {
     method: "PUT",
     body: JSON.stringify({ raw_input: rawInput }),
+  });
+}
+
+export async function updateThesisLogicOperator(
+  thesisId: string,
+  nodeId: string,
+  operator: LogicOperator,
+  mode = getApiMode(),
+): Promise<Thesis> {
+  if (mode === "mock") {
+    await delay(180);
+    return updateMockThesisLogicOperator(thesisId, nodeId, operator);
+  }
+  return request<Thesis>(`/api/theses/${thesisId}/logic-operator`, {
+    method: "PATCH",
+    body: JSON.stringify({ node_id: nodeId, operator }),
   });
 }
 

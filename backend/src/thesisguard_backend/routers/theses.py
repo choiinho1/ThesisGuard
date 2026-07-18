@@ -6,16 +6,19 @@ import logging
 import uuid
 from typing import Annotated
 
-from agents.scoring import prepare_structured_thesis
+from agents.models import StructuredThesis, ThesisLogicGraph, ThesisStatus
+from agents.scoring import initialize_score_breakdown, prepare_structured_thesis
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.deps import Agent, CurrentUser, DbSession
+from thesisguard_backend.evidence_history import reset_evidence_for_logic_change
 from thesisguard_backend.observability import observe_llm_operation
 from thesisguard_backend.routers.holdings import OwnedHolding
 from thesisguard_backend.schemas import (
     ThesisCreateRequest,
+    ThesisLogicOperatorUpdateRequest,
     ThesisResponse,
     ThesisUpdateRequest,
     ThesisVersionResponse,
@@ -130,6 +133,8 @@ async def update_thesis(
 ) -> orm.Thesis:
     values = payload.model_dump(exclude_unset=True)
     raw_input = values.pop("raw_input", None)
+    logic_changed = raw_input is not None or bool(values)
+    holding: orm.Holding | None = None
     if raw_input is not None:
         holding = await db.get(orm.Holding, thesis.holding_id)
         assert holding is not None
@@ -177,7 +182,67 @@ async def update_thesis(
         thesis.status = structured.status
     for field, value in values.items():
         setattr(thesis, field, value)
-    await db.commit()
+    if logic_changed:
+        if holding is None:
+            holding = await db.get(orm.Holding, thesis.holding_id)
+        assert holding is not None
+        await reset_evidence_for_logic_change(db, holding=holding, thesis=thesis)
+    else:
+        await db.commit()
+    await db.refresh(thesis)
+    return thesis
+
+
+@router.patch("/api/theses/{thesis_id}/logic-operator", response_model=ThesisResponse)
+async def update_thesis_logic_operator(
+    payload: ThesisLogicOperatorUpdateRequest,
+    thesis: OwnedThesis,
+    db: DbSession,
+) -> orm.Thesis:
+    if not thesis.logic_graph:
+        raise HTTPException(status.HTTP_409_CONFLICT, "논리 그래프가 아직 구성되지 않았습니다.")
+
+    graph = ThesisLogicGraph.model_validate(thesis.logic_graph)
+    target = next((node for node in graph.nodes if node.node_id == payload.node_id), None)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "논리 노드를 찾을 수 없습니다.")
+    if target.kind != "CLAIM" or not target.child_ids:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "하위 노드를 연결하는 CLAIM 노드의 연산자만 변경할 수 있습니다.",
+        )
+
+    graph = graph.model_copy(
+        update={
+            "nodes": [
+                node.model_copy(update={"operator": payload.operator})
+                if node.node_id == payload.node_id
+                else node
+                for node in graph.nodes
+            ]
+        }
+    )
+    reset_thesis = StructuredThesis(
+        raw_input=thesis.raw_input,
+        main_thesis=thesis.main_thesis,
+        key_assumptions=thesis.key_assumptions,
+        positive_signals=thesis.positive_signals,
+        negative_signals=thesis.negative_signals,
+        key_risks=thesis.key_risks,
+        logic_graph=graph,
+        confidence_score=0,
+        status=ThesisStatus.UNCHANGED,
+    )
+    breakdown = initialize_score_breakdown(reset_thesis)
+
+    thesis.logic_graph = graph.model_dump(mode="json")
+    thesis.score_breakdown = breakdown.model_dump(mode="json")
+    thesis.confidence_score = 0
+    thesis.status = ThesisStatus.UNCHANGED
+
+    holding = await db.get(orm.Holding, thesis.holding_id)
+    assert holding is not None
+    await reset_evidence_for_logic_change(db, holding=holding, thesis=thesis)
     await db.refresh(thesis)
     return thesis
 

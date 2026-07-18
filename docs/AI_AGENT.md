@@ -73,9 +73,13 @@ RAG가 활성화되면 규칙 기반 선별 결과를 최종 개수의 3배까�
 8. 선택 청크의 앞뒤 청크까지 확장해 문맥을 복원한 뒤 Evidence 분류기에 전달한다.
 
 동일 원문은 SHA-256 기반 메모리 캐시에서 임베딩을 재사용한다. 임베딩 API 오류가 나거나
-키가 없으면 분석을 중단하지 않고 기존 규칙 기반 Source Selector로 자동 전환한다. 현재 구현은
-매 분석에서 새로 수집한 라이브 후보를 검색하는 구조이며, 과거 전체 문서 코퍼스의 영구 검색은
-추후 pgvector 같은 저장소를 연결하는 별도 단계다.
+키가 없으면 분석을 중단하지 않고 기존 규칙 기반 Source Selector로 자동 전환한다.
+
+분석을 마친 Evidence는 별도의 Qdrant 컬렉션에도 영구 저장한다. 로컬 개발은
+`backend/data/qdrant` 디스크 저장소를 사용하고, 운영은 `QDRANT_URL`과 `QDRANT_API_KEY`로
+Qdrant Server/Cloud에 연결한다. 포트폴리오 Q&A는 질문을 임베딩한 뒤 `portfolio_id` payload
+필터를 적용해 의미적으로 가까운 Evidence만 가져오며, DB에 실제 존재하는 행만 에이전트에
+전달한다. 서버 시작 시 DB Evidence 중 아직 인덱싱되지 않은 행을 자동 백필한다.
 
 검색 품질은 `agents/evaluation/datasets/investment_rag_v1.json` 골든셋과 RAGAS ID-Based Context
 Precision/Recall, MRR, nDCG로 회귀 평가한다. 실행법과 현재 기준 점수는

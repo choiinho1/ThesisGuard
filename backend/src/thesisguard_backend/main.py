@@ -17,6 +17,11 @@ from thesisguard_backend.agent_adapters import build_default_agent
 from thesisguard_backend.config import get_settings
 from thesisguard_backend.db import initialize_local_database, session_factory
 from thesisguard_backend.evidence_history import refresh_all_evidence_history_files
+from thesisguard_backend.evidence_vector_store import (
+    backfill_evidence_vector_store,
+    close_evidence_vector_store,
+    get_evidence_vector_store,
+)
 from thesisguard_backend.observability import langfuse_status, shutdown_langfuse
 from thesisguard_backend.routers import (
     admin,
@@ -38,6 +43,7 @@ async def lifespan(app: FastAPI):
     await refresh_all_evidence_history_files(session_factory)
     async with session_factory() as db:
         await settings_service.seed_default_settings(db)
+    await backfill_evidence_vector_store(session_factory)
 
     # Wires C's ThesisGuardAgent with B's DB-backed ContextProvider and
     # MCP-backed ResearchTools exactly once, per docs/api.md.
@@ -62,6 +68,7 @@ async def lifespan(app: FastAPI):
             with suppress(asyncio.CancelledError):
                 await scheduler_task
         shutdown_langfuse()
+        await close_evidence_vector_store()
 
 
 app = FastAPI(title="ThesisGuard API", version="0.1.0", lifespan=lifespan)
@@ -93,4 +100,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "langfuse": langfuse_status(),
         "rag": "enabled" if rag_enabled else "disabled",
+        "evidence_vector_store": (
+            "enabled" if get_evidence_vector_store() is not None else "disabled"
+        ),
     }
