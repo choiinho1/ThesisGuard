@@ -1,19 +1,55 @@
-import { addMockHolding, addMockPortfolio, createMockThesis, getMockDashboard, getMockHoldingHistory, getMockMarketSnapshot, getMockPortfolioQuery, getMockThesisHistory, mockPortfolios, removeMockAlert, removeMockHolding, removeMockPortfolio, runMockAnalysis, updateMockHoldingPosition, updateMockHoldingWeight, updateMockThesis } from "@/lib/mockData";
+import {
+  addMockEvalScenario,
+  addMockHolding,
+  addMockPortfolio,
+  createMockThesis,
+  getMockAdminHealth,
+  getMockAdminSchedules,
+  getMockAppSettings,
+  getMockDashboard,
+  getMockEvalScenarios,
+  getMockHoldingHistory,
+  getMockLangfuseTraces,
+  getMockMarketSnapshot,
+  getMockPortfolioQuery,
+  getMockQaLogs,
+  getMockThesisHistory,
+  mockPortfolios,
+  removeMockAlert,
+  removeMockHolding,
+  removeMockPortfolio,
+  runMockAnalysis,
+  runMockEvalScenario,
+  updateMockAppSetting,
+  updateMockHoldingPosition,
+  updateMockHoldingWeight,
+  updateMockThesis,
+  updateMockThesisLogicOperator,
+} from "@/lib/mockData";
 import type {
   ApiMode,
+  AdminHealth,
+  AdminScheduleOverview,
   AnalysisSchedule,
   AnalysisScheduleInput,
+  AppSetting,
   CreateHoldingInput,
   DashboardHolding,
+  EvalRun,
+  EvalScenario,
+  EvalScenarioInput,
   Evidence,
   EvidenceHistoryGroup,
   HoldingAnalysisResponse,
   HoldingHistoryResponse,
+  LangfuseTrace,
+  LogicOperator,
   MarketSnapshot,
   Portfolio,
   PortfolioCreateInput,
   PortfolioDashboard,
   PortfolioQueryResponse,
+  QaLogEntry,
   Thesis,
   ThesisVersion,
   TickerQuote,
@@ -294,6 +330,22 @@ export async function updateHoldingThesis(
   });
 }
 
+export async function updateThesisLogicOperator(
+  thesisId: string,
+  nodeId: string,
+  operator: LogicOperator,
+  mode = getApiMode(),
+): Promise<Thesis> {
+  if (mode === "mock") {
+    await delay(180);
+    return updateMockThesisLogicOperator(thesisId, nodeId, operator);
+  }
+  return request<Thesis>(`/api/theses/${thesisId}/logic-operator`, {
+    method: "PATCH",
+    body: JSON.stringify({ node_id: nodeId, operator }),
+  });
+}
+
 export async function deletePortfolioHolding(
   holdingId: string,
   mode = getApiMode(),
@@ -389,6 +441,108 @@ export async function getHoldingHistory(
   return request<HoldingHistoryResponse>(
     `/api/holdings/${holdingId}/history?limit=${limit}&offset=${offset}`,
   );
+}
+
+// -------------------------------------------------------------------- Admin
+export async function listAdminSettings(mode = getApiMode()): Promise<AppSetting[]> {
+  if (mode === "mock") {
+    await delay();
+    return getMockAppSettings();
+  }
+  return request<AppSetting[]>("/api/admin/settings");
+}
+
+export async function updateAdminSetting(
+  key: string,
+  value: AppSetting["value"],
+  mode = getApiMode(),
+): Promise<AppSetting> {
+  if (mode === "mock") {
+    await delay();
+    return updateMockAppSetting(key, value);
+  }
+  return request<AppSetting>(`/api/admin/settings/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    body: JSON.stringify({ value }),
+  });
+}
+
+export async function listAdminSchedules(mode = getApiMode()): Promise<AdminScheduleOverview[]> {
+  if (mode === "mock") {
+    await delay();
+    return getMockAdminSchedules();
+  }
+  return request<AdminScheduleOverview[]>("/api/admin/schedules");
+}
+
+export async function getAdminHealth(mode = getApiMode()): Promise<AdminHealth> {
+  if (mode === "mock") {
+    await delay();
+    return getMockAdminHealth();
+  }
+  return request<AdminHealth>("/api/admin/health");
+}
+
+export async function listLangfuseTraces(mode = getApiMode()): Promise<LangfuseTrace[]> {
+  if (mode === "mock") {
+    await delay();
+    return getMockLangfuseTraces();
+  }
+  return request<LangfuseTrace[]>("/api/admin/langfuse/traces?limit=20");
+}
+
+export async function listEvalScenarios(mode = getApiMode()): Promise<EvalScenario[]> {
+  if (mode === "mock") {
+    await delay();
+    return getMockEvalScenarios();
+  }
+  return request<EvalScenario[]>("/api/admin/scenarios");
+}
+
+export async function createEvalScenario(
+  input: EvalScenarioInput,
+  mode = getApiMode(),
+): Promise<EvalScenario> {
+  if (mode === "mock") {
+    await delay();
+    return addMockEvalScenario(input);
+  }
+  return request<EvalScenario>("/api/admin/scenarios", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteEvalScenario(scenarioId: string, mode = getApiMode()): Promise<void> {
+  if (mode === "mock") {
+    await delay();
+    return;
+  }
+  await request<void>(`/api/admin/scenarios/${scenarioId}`, { method: "DELETE" });
+}
+
+export async function runEvalScenario(scenarioId: string, mode = getApiMode()): Promise<EvalRun> {
+  if (mode === "mock") {
+    await delay(700);
+    return runMockEvalScenario(scenarioId);
+  }
+  return request<EvalRun>(`/api/admin/scenarios/${scenarioId}/run`, { method: "POST" });
+}
+
+export async function importLegacyScenarios(mode = getApiMode()): Promise<EvalScenario[]> {
+  if (mode === "mock") {
+    await delay();
+    return [];
+  }
+  return request<EvalScenario[]>("/api/admin/scenarios/import-legacy", { method: "POST" });
+}
+
+export async function listQaLogs(mode = getApiMode()): Promise<QaLogEntry[]> {
+  if (mode === "mock") {
+    await delay();
+    return getMockQaLogs();
+  }
+  return request<QaLogEntry[]>("/api/admin/qa-logs?limit=100");
 }
 
 export { API_BASE_URL };

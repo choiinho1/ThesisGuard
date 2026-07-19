@@ -27,7 +27,9 @@ async def list_alerts(db: DbSession, current_user: CurrentUser) -> list[orm.Aler
 
 
 @router.patch("/alerts/{alert_id}/read", response_model=AlertResponse)
-async def mark_alert_read(alert_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> orm.Alert:
+async def mark_alert_read(
+    alert_id: uuid.UUID, db: DbSession, current_user: CurrentUser
+) -> orm.Alert:
     alert = await db.get(orm.Alert, alert_id)
     if alert is None or alert.user_id != current_user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "알림을 찾을 수 없습니다.")

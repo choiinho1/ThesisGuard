@@ -22,13 +22,14 @@ from agents.models import (
     EvidenceImpact,
     EvidenceNodeContribution,
     EvidenceSourceType,
+    LogicOperator,
     ThesisLogicGraph,
     ThesisScoreBreakdown,
     ThesisStatus,
 )
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from thesisguard_backend.models import AlertDelivery, TransactionType
+from thesisguard_backend.models import AlertDelivery, TransactionType, UserRole
 
 
 class ORMModel(BaseModel):
@@ -60,6 +61,7 @@ class UserResponse(ORMModel):
     id: uuid.UUID
     email: EmailStr
     name: str | None
+    role: UserRole
     created_at: datetime
 
 
@@ -181,6 +183,11 @@ class ThesisUpdateRequest(BaseModel):
     positive_signals: list[str] | None = None
     negative_signals: list[str] | None = None
     key_risks: list[str] | None = None
+
+
+class ThesisLogicOperatorUpdateRequest(BaseModel):
+    node_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    operator: LogicOperator
 
 
 class ThesisResponse(ORMModel):
@@ -400,3 +407,115 @@ class ScheduledAnalysisRunResponse(ORMModel):
     email_sent: bool
     retry_count: int
     error_message: str | None
+
+
+# ------------------------------------------------------------- Admin ----
+class AppSettingResponse(ORMModel):
+    key: str
+    category: str
+    value: object
+    description: str | None
+    updated_by_id: uuid.UUID | None
+    updated_at: datetime
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _unwrap_value(cls, value: object) -> object:
+        # settings_service.py stores {"v": <value>} so JSON scalars (bare
+        # numbers/booleans/strings) survive round-tripping through the JSON
+        # column type; unwrap it here for the API response.
+        if isinstance(value, dict) and set(value) == {"v"}:
+            return value["v"]
+        return value
+
+
+class AppSettingUpdateRequest(BaseModel):
+    value: object
+
+
+class AdminScheduleOverviewResponse(BaseModel):
+    schedule_id: uuid.UUID
+    holding_id: uuid.UUID
+    ticker: str
+    user_email: EmailStr
+    enabled: bool
+    next_run_at: datetime
+    last_run_at: datetime | None
+    latest_run_status: str | None
+    latest_run_error: str | None
+
+
+class AdminHealthResponse(BaseModel):
+    database: str
+    llm_provider: str
+    rag_enabled: bool
+    langfuse: str
+    langfuse_base_url: str
+    scheduler_enabled: bool
+    scheduler_poll_seconds: int
+
+
+class LangfuseTraceResponse(ORMModel):
+    id: str
+    name: str | None
+    timestamp: datetime | None
+    user_id: str | None
+    latency_seconds: float | None
+    total_cost: float | None
+    tags: list[str]
+
+
+class QaLogResponse(ORMModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    user_email: EmailStr
+    portfolio_id: uuid.UUID
+    question: str
+    answer: str
+    evidence_document_ids: list[str]
+    created_at: datetime
+
+
+class EvalScenarioCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    category: str = Field(min_length=1, max_length=40)
+    question: str = Field(min_length=1)
+    context_snapshot: dict = Field(default_factory=dict)
+    expected_document_ids: list[str] = Field(default_factory=list)
+    required_keywords: list[str] = Field(default_factory=list)
+    forbidden_terms: list[str] = Field(default_factory=list)
+    is_active: bool = True
+
+
+class EvalScenarioUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    question: str | None = Field(default=None, min_length=1)
+    context_snapshot: dict | None = None
+    expected_document_ids: list[str] | None = None
+    required_keywords: list[str] | None = None
+    forbidden_terms: list[str] | None = None
+    is_active: bool | None = None
+
+
+class EvalScenarioResponse(ORMModel):
+    id: uuid.UUID
+    name: str
+    category: str
+    question: str
+    context_snapshot: dict
+    expected_document_ids: list[str]
+    required_keywords: list[str]
+    forbidden_terms: list[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class EvalRunResponse(ORMModel):
+    id: uuid.UUID
+    scenario_id: uuid.UUID | None
+    settings_snapshot: dict
+    metrics: dict
+    status: str
+    error_message: str | None
+    created_at: datetime

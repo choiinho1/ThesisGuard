@@ -12,6 +12,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from agents.logic_graph import (
+    apply_logic_operator_guardrails,
     evaluate_evidence_graph,
     evidence_verdict,
     normalize_logic_graph,
@@ -184,6 +185,7 @@ def prepare_structured_thesis(thesis: StructuredThesis) -> StructuredThesis:
         main_thesis=thesis.main_thesis,
         key_assumptions=thesis.key_assumptions,
     )
+    graph = apply_logic_operator_guardrails(graph, raw_input=thesis.raw_input)
     normalized = thesis.model_copy(
         update={
             "logic_graph": graph,
@@ -199,18 +201,21 @@ def _signed_strength(
     assessment: AssumptionAssessment,
     impact: EvidenceImpact,
     relevance_score: float,
+    impact_strength: dict[EvidenceImpact, Decimal] | None = None,
 ) -> float:
     direction = {
         AssumptionAssessment.SUPPORT: Decimal("1"),
         AssumptionAssessment.CONTRADICT: Decimal("-1"),
     }.get(assessment, Decimal("0"))
-    strength = direction * _IMPACT_STRENGTH[impact] * Decimal(str(relevance_score))
+    weights = impact_strength or _IMPACT_STRENGTH
+    strength = direction * weights[impact] * Decimal(str(relevance_score))
     return float(strength.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP))
 
 
 def _node_contributions(
     graph: ThesisLogicGraph,
     item: EvidenceItem,
+    impact_strength: dict[EvidenceImpact, Decimal] | None = None,
 ) -> list[EvidenceNodeContribution]:
     """Return one matrix cell for every assumption node, including zero cells."""
 
@@ -252,7 +257,9 @@ def _node_contributions(
                 assessment=assessment,
                 impact=impact,
                 relevance_score=relevance_score,
-                signed_strength=_signed_strength(assessment, impact, relevance_score),
+                signed_strength=_signed_strength(
+                    assessment, impact, relevance_score, impact_strength
+                ),
             )
         )
     return result
@@ -409,6 +416,9 @@ def _attribute_score_delta(
 def calculate_score_breakdown(
     thesis: StructuredThesis,
     evidence: Iterable[EvidenceItem],
+    *,
+    impact_strength: dict[EvidenceImpact, Decimal] | None = None,
+    invalidation_streak_required: int | None = None,
 ) -> ThesisScoreBreakdown:
     """Aggregate every evidence-node cell, propagate graph state, and attribute movement."""
 
@@ -425,8 +435,10 @@ def calculate_score_breakdown(
     }
     evidence_items = list(evidence)
     contributions_by_document = {
-        item.document_id: _node_contributions(graph, item) for item in evidence_items
+        item.document_id: _node_contributions(graph, item, impact_strength)
+        for item in evidence_items
     }
+    streak_required = invalidation_streak_required or INVALIDATION_STREAK_REQUIRED
     assumption_scores: list[AssumptionScoreState] = []
 
     for node in graph.nodes:
@@ -491,7 +503,7 @@ def calculate_score_breakdown(
                 if severe_required_contradiction
                 else 0
             )
-            invalidation_triggered = invalidation_streak >= INVALIDATION_STREAK_REQUIRED
+            invalidation_triggered = invalidation_streak >= streak_required
         assumption_scores.append(
             AssumptionScoreState(
                 assumption=assumption,
@@ -660,10 +672,17 @@ def deterministic_change_reason(breakdown: ThesisScoreBreakdown) -> str:
     )
 
 
-def score_thesis(state: AnalysisState) -> dict:
+def score_thesis(
+    state: AnalysisState,
+    *,
+    impact_strength: dict[EvidenceImpact, Decimal] | None = None,
+    invalidation_streak_required: int | None = None,
+) -> dict:
     breakdown = calculate_score_breakdown(
         state["thesis_snapshot"],
         state.get("evidence_list", []),
+        impact_strength=impact_strength,
+        invalidation_streak_required=invalidation_streak_required,
     )
     conflicting = [
         item.assumption

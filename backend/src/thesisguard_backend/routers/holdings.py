@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from thesisguard_backend import models as orm
 from thesisguard_backend.agent_adapters import get_market_snapshot
 from thesisguard_backend.deps import CurrentUser, DbSession, get_owned_portfolio
+from thesisguard_backend.evidence_vector_store import delete_thesis_evidence_vectors
 from thesisguard_backend.schemas import (
     HoldingCreateRequest,
     HoldingResponse,
@@ -110,8 +111,11 @@ async def get_holding_market_snapshot(holding: OwnedHolding) -> MarketSnapshotRe
 
 @router.delete("/api/holdings/{holding_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_holding(holding: OwnedHolding, db: DbSession) -> None:
+    thesis_id = await db.scalar(select(orm.Thesis.id).where(orm.Thesis.holding_id == holding.id))
     await db.delete(holding)
     await db.commit()
+    if thesis_id is not None:
+        await delete_thesis_evidence_vectors(thesis_id)
 
 
 @router.post(

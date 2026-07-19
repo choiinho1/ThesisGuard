@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Coroutine
+from decimal import Decimal
 from typing import Any, Literal, TypeVar
 
 from langchain_core.runnables import RunnableConfig
@@ -12,6 +13,7 @@ from langgraph.graph import END, START, StateGraph
 
 from agents.contracts import AnalysisModel, ContextProvider, DocumentRetriever, ResearchTools
 from agents.models import (
+    EvidenceImpact,
     EvidenceItem,
     PortfolioQueryAnswer,
     PortfolioQueryEvidence,
@@ -54,10 +56,27 @@ def build_analysis_graph(config: WorkflowConfig):
     graph.add_node("debate_start", debate_start)
     graph.add_node("bull_agent", bull_agent)
     graph.add_node("bear_agent", bear_agent)
-    graph.add_node("score_thesis", score_thesis)
+
+    impact_strength = {
+        EvidenceImpact.LOW: Decimal(str(config.impact_weight_low)),
+        EvidenceImpact.MEDIUM: Decimal(str(config.impact_weight_medium)),
+        EvidenceImpact.HIGH: Decimal(str(config.impact_weight_high)),
+    }
+
+    def score_thesis_node(state: AnalysisState) -> dict:
+        return score_thesis(
+            state,
+            impact_strength=impact_strength,
+            invalidation_streak_required=config.invalidation_streak_required,
+        )
+
+    def alert_decision_node(state: AnalysisState) -> dict:
+        return alert_decision(state, major_movement_threshold=config.alert_major_movement_threshold)
+
+    graph.add_node("score_thesis", score_thesis_node)
     graph.add_node("judge_agent", judge_agent)
     graph.add_node("portfolio_agent", portfolio_agent)
-    graph.add_node("alert_decision", alert_decision)
+    graph.add_node("alert_decision", alert_decision_node)
     graph.add_node("finalize", finalize)
 
     graph.add_edge(START, "request_router")

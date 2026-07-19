@@ -133,3 +133,26 @@ async def test_direct_model_call_receives_request_local_runnable_config() -> Non
     assert "AND" in str(runnable.messages[-1].content)
     assert "CONTRIBUTING" in str(runnable.messages[-1].content)
     assert get_model_runnable_config() is None
+
+
+@pytest.mark.asyncio
+async def test_thesis_prompts_require_counterfactual_logic_operator_selection() -> None:
+    runnable = CapturingRunnable()
+    model = LangChainAnalysisModel(CapturingChatModel(runnable))  # type: ignore[arg-type]
+    agent = ThesisGuardAgent(
+        context_provider=object(),  # type: ignore[arg-type]
+        research_tools=object(),  # type: ignore[arg-type]
+        model=model,
+    )
+
+    await agent.astructure_thesis("Several independent growth drivers support the company.")
+
+    assert len(runnable.calls) == 2
+    for messages, _config in runnable.calls:
+        prompt = " ".join(str(messages[-1].content).split())
+        assert "does not by itself justify an AND operator" in prompt
+        assert "if this child were false while every sibling were true" in prompt
+        assert "if this child alone were true while every sibling were false" in prompt
+        assert "Do not force a mixed causal structure into one flat operator" in prompt
+        assert "minimum child support and maximum child contradiction" in prompt
+        assert "choose CONTRIBUTING" in prompt

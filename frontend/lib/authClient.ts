@@ -2,10 +2,30 @@ import type { AuthUser, LoginInput, SignupInput, TokenResponse } from "@/types/s
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 const TOKEN_KEY = "thesisguard_access_token";
+const AUTH_REQUEST_TIMEOUT_MS = 10_000;
+
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(
+    () => controller.abort(),
+    AUTH_REQUEST_TIMEOUT_MS,
+  );
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.");
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
+}
 
 async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = typeof window === "undefined" ? null : localStorage.getItem(TOKEN_KEY);
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

@@ -130,6 +130,13 @@ def _upgrade_legacy_local_schema(connection: Connection) -> None:
                 None,
             ),
         ),
+        "users": (
+            (
+                "role",
+                "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'",
+                None,
+            ),
+        ),
     }
     table_names = set(inspector.get_table_names())
     for table_name, columns in additive_columns.items():

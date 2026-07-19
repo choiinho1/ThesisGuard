@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import Script from "next/script";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Dashboard } from "@/components/Dashboard";
@@ -243,6 +244,7 @@ function AuthenticatedGate() {
           id: "demo-user",
           email: "demo@thesisguard.local",
           name: "Demo",
+          role: "admin",
           created_at: new Date(0).toISOString(),
         });
         setChecking(false);
@@ -275,6 +277,7 @@ function AuthenticatedGate() {
           id: "demo-user",
           email: "demo@thesisguard.local",
           name: "Demo",
+          role: "admin",
           created_at: new Date(0).toISOString(),
         })}
       />
@@ -285,6 +288,7 @@ function AuthenticatedGate() {
     <>
       <div className="auth-session-bar">
         <span>{user.name || user.email}</span>
+        {user.role === "admin" && <Link href="/admin">관리자</Link>}
         <button onClick={() => { logout(); setUser(null); }} type="button">로그아웃</button>
       </div>
       <Dashboard />

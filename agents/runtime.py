@@ -24,6 +24,14 @@ class WorkflowConfig:
     max_selected_news: int = 5
     max_selected_macro: int = 2
     rag_candidate_multiplier: int = 3
+    # Admin-tunable deterministic scoring/alert policy parameters (see
+    # backend/settings_service.py). Defaults mirror the previously hardcoded
+    # constants in agents/scoring.py and agents/policy.py.
+    impact_weight_low: float = 0.09
+    impact_weight_medium: float = 0.27
+    impact_weight_high: float = 0.54
+    invalidation_streak_required: int = 2
+    alert_major_movement_threshold: int = -2
 
     def __post_init__(self) -> None:
         if self.max_research_rounds < 1:
@@ -51,6 +59,12 @@ class WorkflowConfig:
             raise ValueError("selected source limits cannot be negative")
         if self.rag_candidate_multiplier < 1:
             raise ValueError("rag_candidate_multiplier must be at least 1")
+        if min(self.impact_weight_low, self.impact_weight_medium, self.impact_weight_high) < 0:
+            raise ValueError("impact weights cannot be negative")
+        if self.invalidation_streak_required < 1:
+            raise ValueError("invalidation_streak_required must be at least 1")
+        if self.alert_major_movement_threshold > 0:
+            raise ValueError("alert_major_movement_threshold must be <= 0")
 
 
 @dataclass(frozen=True, slots=True)

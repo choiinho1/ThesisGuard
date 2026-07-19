@@ -1,11 +1,19 @@
 import type {
+  AdminHealth,
+  AdminScheduleOverview,
   Alert,
   AnalysisResult,
+  AppSetting,
   CreateHoldingInput,
   DashboardHolding,
+  EvalRun,
+  EvalScenario,
+  EvalScenarioInput,
   Evidence,
   HoldingAnalysisResponse,
   HoldingHistoryResponse,
+  LangfuseTrace,
+  LogicOperator,
   MarketSnapshot,
   Portfolio,
   PortfolioCreateInput,
@@ -13,6 +21,7 @@ import type {
   PortfolioQueryEvidence,
   PortfolioQueryResponse,
   PortfolioQueryScope,
+  QaLogEntry,
   Thesis,
   ThesisVersion,
   UpdateHoldingPositionInput,
@@ -453,6 +462,42 @@ export function updateMockThesis(thesisId: string, rawInput: string): Thesis {
   return structuredClone(thesis);
 }
 
+export function updateMockThesisLogicOperator(
+  thesisId: string,
+  nodeId: string,
+  operator: LogicOperator,
+): Thesis {
+  const holding = dashboardState.holdings.find((item) => item.thesis?.id === thesisId);
+  if (!holding?.thesis?.logic_graph) throw new Error("변경할 논리 그래프를 찾을 수 없습니다.");
+
+  const target = holding.thesis.logic_graph.nodes.find((node) => node.node_id === nodeId);
+  if (!target || target.kind !== "CLAIM" || target.child_ids.length === 0) {
+    throw new Error("하위 노드를 연결하는 CLAIM 노드만 변경할 수 있습니다.");
+  }
+
+  const graph = {
+    ...holding.thesis.logic_graph,
+    nodes: holding.thesis.logic_graph.nodes.map((node) =>
+      node.node_id === nodeId ? { ...node, operator } : node,
+    ),
+  };
+  const thesis: Thesis = {
+    ...holding.thesis,
+    logic_graph: graph,
+    score_breakdown: mockScoreBreakdown(graph, 0),
+    confidence_score: 0,
+    status: "UNCHANGED",
+    updated_at: new Date().toISOString(),
+  };
+  dashboardState = {
+    ...dashboardState,
+    holdings: dashboardState.holdings.map((item) =>
+      item.id === holding.id ? { ...item, thesis } : item,
+    ),
+  };
+  return structuredClone(thesis);
+}
+
 export function runMockAnalysis(holdingId: string): HoldingAnalysisResponse {
   const holding = dashboardState.holdings.find((item) => item.id === holdingId);
   if (!holding?.thesis) throw new Error("분석할 Thesis가 없습니다.");
@@ -682,4 +727,182 @@ export function getMockPortfolioQuery(question: string): PortfolioQueryResponse 
     [],
     ["질문과 직접 관련된 저장 근거를 찾지 못했습니다."],
   );
+}
+
+// -------------------------------------------------------------- Admin mock
+let mockAppSettings: AppSetting[] = [
+  { key: "scoring.impact_weight_low", category: "scoring", value: 0.09, description: "LOW-impact evidence의 신호 강도 가중치", updated_by_id: null, updated_at: now },
+  { key: "scoring.impact_weight_medium", category: "scoring", value: 0.27, description: "MEDIUM-impact evidence의 신호 강도 가중치", updated_by_id: null, updated_at: now },
+  { key: "scoring.impact_weight_high", category: "scoring", value: 0.54, description: "HIGH-impact evidence의 신호 강도 가중치", updated_by_id: null, updated_at: now },
+  { key: "scoring.invalidation_streak_required", category: "scoring", value: 2, description: "논리 무효화(BROKEN) 판정에 필요한 연속 반박 근거 횟수", updated_by_id: null, updated_at: now },
+  { key: "policy.major_movement_threshold", category: "policy", value: -2, description: "MAJOR 알림으로 분류되는 상태 하락 폭", updated_by_id: null, updated_at: now },
+  { key: "scheduler.max_retries", category: "scheduler", value: 2, description: "예약 재분석 실패 시 최대 재시도 횟수", updated_by_id: null, updated_at: now },
+  { key: "scheduler.retry_delay_minutes_first", category: "scheduler", value: 5, description: "첫 번째 재시도까지 대기 시간(분)", updated_by_id: null, updated_at: now },
+  { key: "scheduler.retry_delay_minutes_second", category: "scheduler", value: 15, description: "두 번째 재시도까지 대기 시간(분)", updated_by_id: null, updated_at: now },
+  { key: "scheduler.stale_threshold_hours", category: "scheduler", value: 12, description: "이 시간을 넘긴 예약은 건너뛰고 SKIPPED 처리", updated_by_id: null, updated_at: now },
+  { key: "scheduler.poll_seconds", category: "scheduler", value: 60, description: "스케줄러가 예약 목록을 확인하는 주기(초)", updated_by_id: null, updated_at: now },
+  { key: "scheduler.min_confidence_delta_for_alert", category: "scheduler", value: 5, description: "예약 재분석에서 알림을 보낼 최소 신뢰도 변동폭", updated_by_id: null, updated_at: now },
+  { key: "llm.temperature", category: "llm", value: 0, description: "분석에 사용하는 LLM temperature", updated_by_id: null, updated_at: now },
+  { key: "llm.timeout_seconds", category: "llm", value: 30, description: "LLM 호출 타임아웃(초)", updated_by_id: null, updated_at: now },
+  { key: "llm.max_retries", category: "llm", value: 1, description: "LLM 호출 실패 시 재시도 횟수", updated_by_id: null, updated_at: now },
+  { key: "rag.dense_candidate_ratio", category: "rag", value: 0.2, description: "하이브리드 RAG에서 dense 검색이 차지하는 후보 비율", updated_by_id: null, updated_at: now },
+  { key: "qa.evidence_limit", category: "qa", value: 50, description: "포트폴리오 질의에 사용하는 최근 Evidence 최대 개수", updated_by_id: null, updated_at: now },
+];
+
+export function getMockAppSettings(): AppSetting[] {
+  return structuredClone(mockAppSettings);
+}
+
+export function updateMockAppSetting(key: string, value: AppSetting["value"]): AppSetting {
+  mockAppSettings = mockAppSettings.map((setting) =>
+    setting.key === key ? { ...setting, value, updated_at: new Date().toISOString() } : setting,
+  );
+  const updated = mockAppSettings.find((setting) => setting.key === key);
+  if (!updated) throw new Error(`알 수 없는 설정 키입니다: ${key}`);
+  return structuredClone(updated);
+}
+
+export function getMockAdminSchedules(): AdminScheduleOverview[] {
+  return [
+    {
+      schedule_id: "mock-schedule-1",
+      holding_id: "20000000-0000-4000-8000-000000000001",
+      ticker: "NVDA",
+      user_email: "demo@thesisguard.local",
+      enabled: true,
+      next_run_at: new Date(Date.now() + 3600_000).toISOString(),
+      last_run_at: now,
+      latest_run_status: "SUCCEEDED",
+      latest_run_error: null,
+    },
+    {
+      schedule_id: "mock-schedule-2",
+      holding_id: "20000000-0000-4000-8000-000000000002",
+      ticker: "AVGO",
+      user_email: "demo@thesisguard.local",
+      enabled: true,
+      next_run_at: new Date(Date.now() + 7200_000).toISOString(),
+      last_run_at: null,
+      latest_run_status: "FAILED",
+      latest_run_error: "LLM 요청이 타임아웃되었습니다.",
+    },
+  ];
+}
+
+export function getMockAdminHealth(): AdminHealth {
+  return {
+    database: "ok",
+    llm_provider: "openai",
+    rag_enabled: true,
+    langfuse: "disabled",
+    langfuse_base_url: "https://cloud.langfuse.com",
+    scheduler_enabled: true,
+    scheduler_poll_seconds: 60,
+  };
+}
+
+export function getMockLangfuseTraces(): LangfuseTrace[] {
+  return [
+    {
+      id: "mock-trace-1",
+      name: "thesisguard.analyze-holding",
+      timestamp: now,
+      user_id: userId,
+      latency_seconds: 4.82,
+      total_cost: 0.0123,
+      tags: ["thesisguard"],
+    },
+    {
+      id: "mock-trace-2",
+      name: "thesisguard.portfolio-query",
+      timestamp: now,
+      user_id: userId,
+      latency_seconds: 1.94,
+      total_cost: 0.0041,
+      tags: ["thesisguard"],
+    },
+  ];
+}
+
+let mockQaLogs: QaLogEntry[] = [
+  {
+    id: "mock-qa-1",
+    user_id: userId,
+    user_email: "demo@thesisguard.local",
+    portfolio_id: portfolioId,
+    question: "포트폴리오에서 가장 위험한 종목은?",
+    answer: "가장 최근 근거 기준으로는 AVGO의 고객사 발주 지연 이슈가 공통 리스크로 보입니다.",
+    evidence_document_ids: ["news-mock-avgo-risk-01"],
+    created_at: now,
+  },
+];
+
+export function getMockQaLogs(): QaLogEntry[] {
+  return structuredClone(mockQaLogs);
+}
+
+export function addMockQaLog(question: string, answer: string): void {
+  mockQaLogs = [
+    {
+      id: `mock-qa-${mockQaLogs.length + 1}`,
+      user_id: userId,
+      user_email: "demo@thesisguard.local",
+      portfolio_id: portfolioId,
+      question,
+      answer,
+      evidence_document_ids: [],
+      created_at: new Date().toISOString(),
+    },
+    ...mockQaLogs,
+  ];
+}
+
+let mockEvalScenarios: EvalScenario[] = [
+  {
+    id: "mock-scenario-1",
+    name: "NVDA capex 질문",
+    category: "portfolio_qa",
+    question: "NVDA 투자 논리를 뒷받침하는 최근 근거는?",
+    context_snapshot: {},
+    expected_document_ids: [],
+    required_keywords: ["최신순"],
+    forbidden_terms: ["투자 권유"],
+    is_active: true,
+    created_at: now,
+    updated_at: now,
+  },
+];
+
+export function getMockEvalScenarios(): EvalScenario[] {
+  return structuredClone(mockEvalScenarios);
+}
+
+export function addMockEvalScenario(input: EvalScenarioInput): EvalScenario {
+  const scenario: EvalScenario = {
+    id: `mock-scenario-${mockEvalScenarios.length + 1}`,
+    ...input,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  mockEvalScenarios = [scenario, ...mockEvalScenarios];
+  return structuredClone(scenario);
+}
+
+export function runMockEvalScenario(scenarioId: string): EvalRun {
+  const scenario = mockEvalScenarios.find((item) => item.id === scenarioId);
+  return {
+    id: `mock-run-${Date.now()}`,
+    scenario_id: scenarioId,
+    settings_snapshot: Object.fromEntries(mockAppSettings.map((s) => [s.key, s.value])),
+    metrics: {
+      citation_precision: 1,
+      citation_recall: scenario ? 0.8 : 0,
+      limitation_recall: 1,
+      forbidden_term_hits: 0,
+      answer: "(mock) 시나리오 실행 결과 예시 답변입니다.",
+    },
+    status: "SUCCEEDED",
+    error_message: null,
+    created_at: new Date().toISOString(),
+  };
 }

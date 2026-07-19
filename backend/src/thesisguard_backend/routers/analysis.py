@@ -11,21 +11,28 @@ import uuid
 from collections.abc import Callable
 from typing import Annotated
 
-from agents.graph import arun_analysis_workflow
+from agents.graph import arun_analysis_workflow, configure_agent
 from agents.logic_graph import normalize_logic_graph
-from agents.models import AlertDecision, EvidenceImpact, EvidenceItem
+from agents.models import AlertDecision, EvidenceImpact, EvidenceItem, PortfolioQueryEvidence
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from thesisguard_backend import models as orm
+from thesisguard_backend import settings_service
+from thesisguard_backend.agent_adapters import build_agent_from_settings
 from thesisguard_backend.alert_engine import handle_alert_decision
 from thesisguard_backend.config import get_settings
+from thesisguard_backend.db import session_factory
 from thesisguard_backend.deps import Agent, CurrentUser, DbSession, get_owned_portfolio
 from thesisguard_backend.evidence_history import (
     is_duplicate_placeholder,
     refresh_evidence_history_file,
     select_substantive_evidence,
+)
+from thesisguard_backend.evidence_vector_store import (
+    index_analysis_evidence,
+    search_portfolio_evidence,
 )
 from thesisguard_backend.observability import observe_llm_operation
 from thesisguard_backend.portfolio_analysis import (
@@ -143,6 +150,12 @@ async def run_analysis_and_save(
             key_assumptions=thesis.key_assumptions,
         ).model_dump(mode="json")
 
+    # Reanalysis intentionally keeps saved Evidence history. The workflow's
+    # ContextProvider uses it as non-scoring narrative context and as a set of
+    # already-seen document IDs/URLs, so clearing it here would destroy both
+    # continuity and duplicate detection. Evidence is reset only when the
+    # thesis logic itself changes (reset_evidence_for_logic_change).
+
     # Snapshot the thesis as it was BEFORE this analysis, shaped like the
     # frontend's Thesis interface (frontend/types/schema.ts) since
     # ThesisVersion.snapshot is typed as a full Thesis there. Built here —
@@ -190,6 +203,11 @@ async def run_analysis_and_save(
         },
         tags=["holding-analysis", holding.ticker.lower()],
     ) as trace:
+        # Rebuild the agent's WorkflowConfig from current AppSettings right
+        # before running so an admin's scoring/policy/LLM parameter change
+        # takes effect on this run without a redeploy (the graph is otherwise
+        # compiled once at app startup — see agent_adapters.build_agent_from_settings).
+        configure_agent(await build_agent_from_settings(session_factory, db))
         result = await arun_analysis_workflow(
             str(portfolio.id),
             str(holding.id),
@@ -288,6 +306,11 @@ async def run_analysis_and_save(
     await db.refresh(thesis)
     await db.refresh(thesis_version)
     await db.refresh(analysis_result)
+    await index_analysis_evidence(
+        evidence_rows=evidence_rows,
+        thesis=thesis,
+        holding=holding,
+    )
     await refresh_evidence_history_file(db, holding=holding, thesis=thesis)
 
     decision = (
@@ -475,16 +498,12 @@ async def unsave_evidence(evidence: OwnedEvidence, db: DbSession) -> None:
 async def query_portfolio(
     payload: NaturalLanguageQueryRequest, portfolio: OwnedPortfolio, db: DbSession, agent: Agent
 ) -> NaturalLanguageQueryResponse:
-    """PRD 5.14 — natural-language portfolio Q&A.
-
-    NOTE: evidence is picked by recency only (latest 50 rows across the
-    portfolio's theses), not by semantic relevance to the question — there is
-    no Vector Store wired up yet (ADR-0002 is still unresolved). Once one
-    exists, replace this with a similarity search over `question`.
-    """
+    """Answer with portfolio-filtered semantic Evidence retrieved from Qdrant."""
 
     holding_count = len(
-        list(await db.scalars(select(orm.Holding.id).where(orm.Holding.portfolio_id == portfolio.id)))
+        list(
+            await db.scalars(select(orm.Holding.id).where(orm.Holding.portfolio_id == portfolio.id))
+        )
     )
     thesis_rows = list(
         await db.execute(
@@ -498,27 +517,81 @@ async def query_portfolio(
     # thesis_id) can be traced back to the holding they belong to.
     holding_by_thesis = {row[0]: (row[1], row[2]) for row in thesis_rows}
 
-    evidence_rows = list(
+    evidence_limit = await settings_service.aget_setting(db, "qa.evidence_limit")
+    total_evidence_count = int(
+        await db.scalar(
+            select(func.count(orm.Evidence.id)).where(orm.Evidence.thesis_id.in_(thesis_ids))
+        )
+        or 0
+    )
+    theses_with_evidence = set(
         await db.scalars(
-            select(orm.Evidence)
-            .where(orm.Evidence.thesis_id.in_(thesis_ids))
-            .order_by(orm.Evidence.created_at.desc())
-            .limit(50)
+            select(orm.Evidence.thesis_id).where(orm.Evidence.thesis_id.in_(thesis_ids)).distinct()
         )
     )
+    matches = await search_portfolio_evidence(
+        payload.question,
+        portfolio_id=portfolio.id,
+        limit=evidence_limit * 3,
+    )
+    retrieval_limitations: list[str] = []
+    search_method = "QDRANT_SEMANTIC"
+    semantic_scores: dict[uuid.UUID, float] = {}
+    if matches is None:
+        search_method = "RECENCY_FALLBACK"
+        retrieval_limitations.append(
+            "의미 검색을 사용할 수 없어 최신 근거를 임시로 사용했습니다. "
+            "Vector Store와 임베딩 설정을 확인해 주세요."
+        )
+        evidence_rows = list(
+            await db.scalars(
+                select(orm.Evidence)
+                .where(orm.Evidence.thesis_id.in_(thesis_ids))
+                .order_by(orm.Evidence.created_at.desc())
+                .limit(evidence_limit)
+            )
+        )
+    else:
+        match_ids = [match.evidence_id for match in matches]
+        matched_rows = list(
+            await db.scalars(
+                select(orm.Evidence).where(
+                    orm.Evidence.id.in_(match_ids),
+                    orm.Evidence.thesis_id.in_(thesis_ids),
+                )
+            )
+        )
+        rows_by_id = {row.id: row for row in matched_rows}
+        evidence_rows = []
+        seen_semantic_document_ids: set[str] = set()
+        for match in matches:
+            row = rows_by_id.get(match.evidence_id)
+            if row is None or row.document_id in seen_semantic_document_ids:
+                continue
+            seen_semantic_document_ids.add(row.document_id)
+            semantic_scores[row.id] = match.score
+            evidence_rows.append(row)
+            if len(evidence_rows) >= evidence_limit:
+                break
+
     evidence = [
-        EvidenceItem(
-            document_id=row.document_id,
-            source_type=row.source_type,
-            source_url=row.source_url,
-            vector_doc_id=row.vector_doc_id,
-            content_snippet=row.content_snippet,
-            classification=row.classification,
-            impact=row.impact,
-            reason=row.reason,
-            related_assumptions=row.related_assumptions,
-            assumption_findings=row.assumption_findings,
-            published_at=row.published_at,
+        PortfolioQueryEvidence(
+            holding_id=str(holding_by_thesis[row.thesis_id][0]),
+            ticker=holding_by_thesis[row.thesis_id][1],
+            thesis_id=str(row.thesis_id),
+            evidence=EvidenceItem(
+                document_id=row.document_id,
+                source_type=row.source_type,
+                source_url=row.source_url,
+                vector_doc_id=row.vector_doc_id,
+                content_snippet=row.content_snippet,
+                classification=row.classification,
+                impact=row.impact,
+                reason=row.reason,
+                related_assumptions=row.related_assumptions,
+                assumption_findings=row.assumption_findings,
+                published_at=row.published_at,
+            ),
         )
         for row in evidence_rows
     ]
@@ -532,9 +605,13 @@ async def query_portfolio(
             "portfolio_id": portfolio.id,
             "holding_count": holding_count,
             "thesis_count": len(thesis_ids),
-            "candidate_evidence_count": len(evidence),
+            "candidate_evidence_count": total_evidence_count,
+            "retrieved_evidence_count": len(evidence),
             "question_length": len(payload.question),
-            "search_method": "RECENCY",
+            "search_method": search_method,
+            "semantic_scores": {
+                str(evidence_id): round(score, 6) for evidence_id, score in semantic_scores.items()
+            },
         },
         tags=["portfolio-query"],
     ) as trace:
@@ -576,18 +653,20 @@ async def query_portfolio(
             )
         )
 
-    limitations = list(answer.limitations)
+    limitations = [*answer.limitations, *retrieval_limitations]
     if holding_count > len(thesis_ids):
-        limitations.append("아직 투자 논리(Thesis)가 등록되지 않은 종목은 이번 답변에 반영되지 않았습니다.")
-    if not evidence_rows:
+        limitations.append(
+            "아직 투자 논리(Thesis)가 등록되지 않은 종목은 이번 답변에 반영되지 않았습니다."
+        )
+    if total_evidence_count == 0:
         limitations.append("포트폴리오에 저장된 근거가 아직 없습니다.")
     else:
-        theses_with_evidence = {row.thesis_id for row in evidence_rows}
         if len(theses_with_evidence) < len(thesis_ids):
             limitations.append("일부 종목은 근거가 없어 이번 답변에 반영되지 않았을 수 있습니다.")
-        if len(evidence_rows) >= 50:
-            limitations.append("최근 저장된 근거 중 최신 50건만 검토했습니다.")
-        limitations.append("근거는 질문과의 의미적 관련성이 아니라 최신순으로만 선택했습니다.")
+        if search_method == "QDRANT_SEMANTIC" and not evidence_rows:
+            limitations.append("질문과 의미적으로 가까운 포트폴리오 근거를 찾지 못했습니다.")
+        elif search_method == "RECENCY_FALLBACK" and len(evidence_rows) >= evidence_limit:
+            limitations.append(f"최근 저장된 근거 중 최신 {evidence_limit}건만 검토했습니다.")
         if any(item.source_url is None for item in detailed_evidence):
             limitations.append("일부 근거는 원문 링크가 없습니다.")
 
@@ -596,7 +675,7 @@ async def query_portfolio(
         default=None,
     )
 
-    return NaturalLanguageQueryResponse(
+    response = NaturalLanguageQueryResponse(
         answer=answer.answer,
         evidence_document_ids=answer.evidence_document_ids,
         evidence=detailed_evidence,
@@ -604,8 +683,23 @@ async def query_portfolio(
         scope=NaturalLanguageQueryScopeResponse(
             holding_count=holding_count,
             thesis_count=len(thesis_ids),
-            candidate_evidence_count=len(evidence_rows),
+            candidate_evidence_count=total_evidence_count,
             selected_evidence_count=len(detailed_evidence),
             latest_evidence_at=latest_evidence_at,
         ),
     )
+
+    # Every Q&A pair is logged for the admin console (training-data export),
+    # per PBL mentoring feedback — see docs/PORTFOLIO_QA_BACKEND_TASKS.md.
+    db.add(
+        orm.QaLog(
+            user_id=portfolio.user_id,
+            portfolio_id=portfolio.id,
+            question=payload.question,
+            answer=answer.answer,
+            evidence_document_ids=list(answer.evidence_document_ids),
+        )
+    )
+    await db.commit()
+
+    return response

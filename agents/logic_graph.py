@@ -13,6 +13,32 @@ from agents.models import (
 
 LOGIC_GRAPH_VERSION = "1.0.0"
 
+_EXPLICIT_JOINT_NECESSITY_MARKERS = (
+    "반드시",
+    "필수 조건",
+    "필수조건",
+    "필요 조건",
+    "필요조건",
+    "모두 충족",
+    "모두 성립",
+    "모든 조건",
+    "모든 가정",
+    "전부 충족",
+    "전부 성립",
+    "동시에 충족",
+    "해야만",
+    "경우에만",
+    "must all",
+    "all conditions must",
+    "all assumptions must",
+    "requires all",
+    "require all",
+    "each condition is necessary",
+    "each assumption is necessary",
+    "jointly necessary",
+    "only if all",
+)
+
 
 def build_fallback_logic_graph(
     main_thesis: str,
@@ -96,6 +122,44 @@ def normalize_logic_graph(
     if not visit(graph.root_id) or visited != set(nodes_by_id):
         return build_fallback_logic_graph(main_thesis, assumptions)
     return graph.model_copy(update={"graph_version": LOGIC_GRAPH_VERSION})
+
+
+def apply_logic_operator_guardrails(
+    graph: ThesisLogicGraph,
+    *,
+    raw_input: str,
+) -> ThesisLogicGraph:
+    """Soften unsupported broad AND groups without overriding explicit user necessity.
+
+    A model may turn a list of important drivers into one flat AND even though the user never
+    said every driver is indispensable. Such a group is especially damaging because AND uses
+    weakest-link support and strongest contradiction. Three or more direct assumption leaves
+    therefore require an explicit joint-necessity statement in the user's own text; otherwise
+    the group is treated as independent contributions.
+    """
+
+    normalized_input = " ".join(raw_input.casefold().split())
+    if any(marker in normalized_input for marker in _EXPLICIT_JOINT_NECESSITY_MARKERS):
+        return graph
+
+    nodes_by_id = {node.node_id: node for node in graph.nodes}
+    changed = False
+    guarded_nodes: list[ThesisLogicNode] = []
+    for node in graph.nodes:
+        children = [nodes_by_id.get(child_id) for child_id in node.child_ids]
+        is_unsupported_flat_and = (
+            node.kind == "CLAIM"
+            and node.operator == LogicOperator.AND
+            and len(children) >= 3
+            and all(child is not None and child.kind == "ASSUMPTION" for child in children)
+        )
+        if is_unsupported_flat_and:
+            guarded_nodes.append(node.model_copy(update={"operator": LogicOperator.CONTRIBUTING}))
+            changed = True
+        else:
+            guarded_nodes.append(node)
+
+    return graph.model_copy(update={"nodes": guarded_nodes}) if changed else graph
 
 
 def required_assumption_node_ids(graph: ThesisLogicGraph) -> set[str]:

@@ -9,6 +9,7 @@ import type {
   DashboardHolding,
   Evidence,
   HoldingAnalysisResponse,
+  LogicOperator,
 } from "@/types/schema";
 
 function finiteNumber(value: number | null | undefined, fallback = 0) {
@@ -23,6 +24,7 @@ interface ThesisDetailProps {
   onAnalyze: () => void;
   onRegister: (rawInput: string) => Promise<void>;
   onUpdate: (rawInput: string) => Promise<void>;
+  onOperatorChange: (nodeId: string, operator: LogicOperator) => Promise<void>;
 }
 
 export function ThesisDetail({
@@ -33,12 +35,14 @@ export function ThesisDetail({
   onAnalyze,
   onRegister,
   onUpdate,
+  onOperatorChange,
 }: ThesisDetailProps) {
   const [rawInput, setRawInput] = useState("");
   const [registering, setRegistering] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editInput, setEditInput] = useState(holding.thesis?.raw_input ?? "");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [regeneratingGraph, setRegeneratingGraph] = useState(false);
   const [savedEvidenceIds, setSavedEvidenceIds] = useState<Set<string>>(new Set());
   const [savingEvidenceIds, setSavingEvidenceIds] = useState<Set<string>>(new Set());
   const [evidenceSaveError, setEvidenceSaveError] = useState<string | null>(null);
@@ -193,7 +197,11 @@ export function ThesisDetail({
       </div>
 
       {thesis.logic_graph && thesis.score_breakdown && thesis.score_breakdown.node_scores.length > 0 && (
-        <CausalLogicGraph graph={thesis.logic_graph} scoreBreakdown={thesis.score_breakdown} />
+        <CausalLogicGraph
+          graph={thesis.logic_graph}
+          onOperatorChange={onOperatorChange}
+          scoreBreakdown={thesis.score_breakdown}
+        />
       )}
 
       {editing && (
@@ -306,6 +314,22 @@ export function ThesisDetail({
         <div className="thesis-action-buttons">
           <button className="secondary-button" disabled={analyzing} onClick={() => { setEditInput(thesis.raw_input); setEditing((current) => !current); }} type="button">
             {editing ? "수정 닫기" : "투자 논리 수정"}
+          </button>
+          <button
+            className="secondary-button"
+            disabled={analyzing || regeneratingGraph}
+            onClick={async () => {
+              setRegeneratingGraph(true);
+              try {
+                await onUpdate(thesis.raw_input);
+              } finally {
+                setRegeneratingGraph(false);
+              }
+            }}
+            title="원문은 유지하고 논리 노드와 연결 연산자만 다시 구성합니다."
+            type="button"
+          >
+            {regeneratingGraph ? "논리 구조 재생성 중…" : "논리 구조 재생성"}
           </button>
           <button className="primary-button" disabled={analyzing} onClick={onAnalyze} type="button">
             {analyzing ? "분석 파이프라인 실행 중…" : "새 정보로 재분석"}

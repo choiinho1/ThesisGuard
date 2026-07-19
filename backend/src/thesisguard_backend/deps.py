@@ -40,6 +40,15 @@ async def get_current_user(
 CurrentUser = Annotated[orm.User, Depends(get_current_user)]
 
 
+async def get_current_admin_user(current_user: CurrentUser) -> orm.User:
+    if current_user.role != orm.UserRole.ADMIN:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "관리자 권한이 필요합니다.")
+    return current_user
+
+
+AdminUser = Annotated[orm.User, Depends(get_current_admin_user)]
+
+
 def get_agent(request: Request) -> ThesisGuardAgent:
     """C exposes no module-level ``structure_thesis``, only instance methods.
 

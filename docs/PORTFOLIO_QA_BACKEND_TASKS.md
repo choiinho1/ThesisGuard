@@ -150,21 +150,14 @@ N+1 쿼리가 생기지 않도록 join 또는 `selectinload`를 사용한다.
 
 단계적으로 구현한다.
 
-#### MVP
+Qdrant 기반 영구 Evidence 검색을 사용한다.
 
-- 최근 Evidence 최대 50개 조회
-- 중복 `document_id` 제거
-- 출처 없는 근거와 지나치게 오래된 근거에 대한 결정론적 한계 문구 추가
-- 전체 후보를 에이전트에 전달하되 최대 입력 크기 제한
-
-#### 권장 개선
-
-- 질문을 임베딩하여 Evidence의 `content_snippet`, 관련 가정, 티커와 의미적 유사도 계산
-- 질문 관련 상위 근거만 에이전트에 전달
-- 종목 하나가 모든 근거 슬롯을 차지하지 않도록 종목별 상한 적용
-- 높은 관련성이 없는 경우 이를 `limitations`에 명시
-
-현재 저장 구조에 재사용 가능한 벡터가 없으면 작은 후보 집합에 대한 요청 시점 임베딩 또는 별도 Vector Store 중 하나를 ADR로 결정한다.
+- 분석 완료 Evidence를 `portfolio_id`, `holding_id`, `thesis_id`, `ticker` payload와 함께 인덱싱
+- 질문 임베딩과 cosine 유사도가 높은 Evidence를 `portfolio_id` 필터 안에서 검색
+- 중복 `document_id`를 제거하고 상위 `PORTFOLIO_QA_SEMANTIC_LIMIT`건만 에이전트에 전달
+- Qdrant 결과 ID를 DB 행과 다시 대조해 삭제되었거나 다른 포트폴리오인 근거를 제외
+- 서버 시작 시 기존 DB Evidence를 자동 백필
+- Vector Store 또는 임베딩 장애 시에만 최신 50건 fallback과 명시적인 limitation 사용
 
 ### 4.4 에이전트 입력 계약 확장 지원
 
@@ -304,4 +297,3 @@ raw document ID만 사용자에게 보여주도록 프론트엔드에 책임을 
 - [ ] 모델 장애가 일관된 재시도 가능 오류로 변환된다.
 - [ ] 후보·선택 근거 수와 검색 방식이 추적된다.
 - [ ] 관련 백엔드 테스트가 통과한다.
-

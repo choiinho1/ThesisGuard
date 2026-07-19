@@ -24,12 +24,14 @@ import {
   setApiMode,
   updateHoldingPosition,
   updateHoldingThesis,
+  updateThesisLogicOperator,
 } from "@/lib/apiClient";
 import type {
   ApiMode,
   CreateHoldingInput,
   DashboardHolding,
   HoldingAnalysisResponse,
+  LogicOperator,
   Portfolio,
   PortfolioDashboard,
   UpdateHoldingPositionInput,
@@ -87,7 +89,26 @@ export function Dashboard() {
       setSelected((current) => data.holdings.find((item) => item.id === current?.id) ?? data.holdings[0] ?? null);
       setAnalysis(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "데이터를 불러오지 못했습니다.");
+      const message = caught instanceof Error ? caught.message : "데이터를 불러오지 못했습니다.";
+      // Live mode needs a valid backend session. With a stale/expired token —
+      // or in the demo-bypass build, which never shows a login form to obtain
+      // one — nulling the dashboard would strand the user on an error screen
+      // that renders no mode switch, so there's no way back to mock. Fall back
+      // to mock automatically and explain why, keeping the app usable.
+      if (nextMode === "live") {
+        setApiMode("mock");
+        loadedModeRef.current = "mock";
+        setMode("mock");
+        const fallback = getMockDashboard();
+        setDashboard(fallback);
+        setSelected(fallback.holdings[0] ?? null);
+        setError(
+          "실시간(LIVE) 데이터를 불러오지 못해 데모(MOCK) 모드로 전환했습니다. " +
+            `실시간 모드는 로그인이 필요합니다. (원인: ${message})`,
+        );
+        return;
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -143,6 +164,9 @@ export function Dashboard() {
     const holdingId = selected.id;
     setAnalyzing(true);
     setError(null);
+    if (mode === "mock") {
+      window.localStorage.removeItem(`thesisguard_saved_evidence_${holdingId}`);
+    }
     try {
       const result = await analyzeHolding(holdingId, mode);
       setSelected((current) => current?.id === holdingId
@@ -225,6 +249,9 @@ export function Dashboard() {
     const thesisId = selected.thesis.id;
     setAnalyzing(true);
     setError(null);
+    if (mode === "mock") {
+      window.localStorage.removeItem(`thesisguard_saved_evidence_${holdingId}`);
+    }
     try {
       const updatedThesis = await updateHoldingThesis(thesisId, rawInput, mode);
       setSelected((current) => current?.id === holdingId
@@ -255,6 +282,33 @@ export function Dashboard() {
       throw new Error(message);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const updateLogicOperator = async (nodeId: string, operator: LogicOperator) => {
+    if (!selected?.thesis) return;
+    const holdingId = selected.id;
+    const thesisId = selected.thesis.id;
+    setError(null);
+    if (mode === "mock") {
+      window.localStorage.removeItem(`thesisguard_saved_evidence_${holdingId}`);
+    }
+    try {
+      const thesis = await updateThesisLogicOperator(thesisId, nodeId, operator, mode);
+      setAnalysis(null);
+      setSelected((current) => current?.id === holdingId ? { ...current, thesis } : current);
+      setDashboard((current) => current ? {
+        ...current,
+        holdings: current.holdings.map((item) =>
+          item.id === holdingId ? { ...item, thesis } : item,
+        ),
+      } : current);
+    } catch (caught) {
+      const message = caught instanceof Error
+        ? caught.message
+        : "논리 연결 방식을 변경하지 못했습니다.";
+      setError(message);
+      throw new Error(message);
     }
   };
 
@@ -314,7 +368,28 @@ export function Dashboard() {
   }
 
   if (loading && !dashboard) return <main className="loading-screen">ThesisGuard 데이터를 불러오는 중…</main>;
-  if (!dashboard) return <main className="loading-screen error-screen">{error ?? "대시보드를 표시할 수 없습니다."}</main>;
+  if (!dashboard) {
+    return (
+      <main className="loading-screen error-screen">
+        <p>{error ?? "대시보드를 표시할 수 없습니다."}</p>
+        <button
+          className="primary-button"
+          onClick={() => {
+            const fallback = getMockDashboard();
+            setApiMode("mock");
+            loadedModeRef.current = "mock";
+            setDashboard(fallback);
+            setSelected(fallback.holdings[0] ?? null);
+            setError(null);
+            setMode("mock");
+          }}
+          type="button"
+        >
+          데모(MOCK) 모드로 전환
+        </button>
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">
@@ -366,7 +441,7 @@ export function Dashboard() {
       {activeSection === "main" && selected && (
         <AutoAnalysisSchedule holding={selected} mode={mode} />
       )}
-      {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} holding={selected} mode={mode} onAnalyze={runAnalysis} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
+      {activeSection === "main" && selected && <ThesisDetail key={selected.id} analysis={analysis} analyzing={analyzing} holding={selected} mode={mode} onAnalyze={runAnalysis} onOperatorChange={updateLogicOperator} onRegister={registerThesis} onUpdate={updateThesisAndAnalyze} />}
       {activeSection === "qa" && (
         <PortfolioQueryPanel
           key={dashboard.portfolio.id}

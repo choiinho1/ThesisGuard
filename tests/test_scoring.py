@@ -71,9 +71,14 @@ def _graph(operator: LogicOperator = LogicOperator.CONTRIBUTING) -> ThesisLogicG
 
 
 def _thesis(operator: LogicOperator = LogicOperator.CONTRIBUTING) -> StructuredThesis:
+    raw_input = (
+        "All conditions must hold for long-term compounding."
+        if operator == LogicOperator.AND
+        else "Demand, share, and margins will support long-term compounding."
+    )
     return prepare_structured_thesis(
         StructuredThesis(
-            raw_input="Demand, share, and margins will support long-term compounding.",
+            raw_input=raw_input,
             main_thesis="The business compounds intrinsic value",
             key_assumptions=ASSUMPTIONS,
             logic_graph=_graph(operator),
@@ -220,6 +225,47 @@ def test_incomplete_model_claim_reaches_fallback_instead_of_raising() -> None:
 
     assert normalized.nodes[0].operator == LogicOperator.CONTRIBUTING
     assert normalized.nodes[0].child_ids == ["assumption_1", "assumption_2", "assumption_3"]
+
+
+def test_flat_multi_driver_and_is_softened_without_explicit_user_necessity() -> None:
+    raw_input = """AI 혁신의 중심 기업으로 여러 사업으로 확장 가능하며 강한 영향력을 가진다.
+매출과 이익 성장이 좋다.
+앞으로 GPU 수요가 지속될 것으로 예상된다.
+GPU 기술에서 독점적인 지위를 가지고 있다."""
+    prepared = prepare_structured_thesis(
+        StructuredThesis(
+            raw_input=raw_input,
+            main_thesis="여러 독립 성장동력이 장기 성장에 기여한다",
+            key_assumptions=ASSUMPTIONS,
+            logic_graph=_graph(LogicOperator.AND),
+        )
+    )
+
+    assert prepared.logic_graph is not None
+    assert prepared.logic_graph.nodes[0].operator == LogicOperator.CONTRIBUTING
+    assert prepared.score_breakdown is not None
+    assert all(not score.required for score in prepared.score_breakdown.node_scores)
+
+
+def test_flat_multi_driver_and_is_preserved_when_user_states_joint_necessity() -> None:
+    prepared = prepare_structured_thesis(
+        StructuredThesis(
+            raw_input="이 투자 논리는 세 가지 조건이 모두 충족되어야만 성립한다.",
+            main_thesis="세 조건이 함께 성립해야 장기 성장한다",
+            key_assumptions=ASSUMPTIONS,
+            logic_graph=_graph(LogicOperator.AND),
+        )
+    )
+
+    assert prepared.logic_graph is not None
+    assert prepared.logic_graph.nodes[0].operator == LogicOperator.AND
+    assert prepared.score_breakdown is not None
+    required = [
+        score.required
+        for score in prepared.score_breakdown.node_scores
+        if score.kind == "ASSUMPTION"
+    ]
+    assert all(required)
 
 
 def test_required_assumptions_are_derived_only_through_and_paths() -> None:

@@ -21,9 +21,7 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [
-            origin.strip().rstrip("/")
-            for origin in self.cors_origins.split(",")
-            if origin.strip()
+            origin.strip().rstrip("/") for origin in self.cors_origins.split(",") if origin.strip()
         ]
 
     # Google Identity Services web Client ID; must match frontend's
@@ -41,6 +39,15 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     upstage_embedding_model: str = "solar-embedding-1-large"
     rag_embedding_timeout_seconds: float = 20
+
+    # Persistent semantic index used by portfolio Q&A. With no URL, the
+    # official Qdrant client stores vectors on disk for zero-setup local use.
+    qdrant_url: str | None = None
+    qdrant_api_key: str | None = None
+    qdrant_path: Path = Path(__file__).resolve().parents[2] / "data" / "qdrant"
+    qdrant_evidence_collection: str = "thesisguard_evidence_v1"
+    portfolio_qa_semantic_limit: int = 20
+    portfolio_qa_score_threshold: float | None = None
 
     # Materialized, prompt-ready evidence history. Files are derived from DB
     # state and kept outside source control.

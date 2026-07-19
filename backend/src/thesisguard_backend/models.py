@@ -63,6 +63,18 @@ class ScheduledRunStatus(StrEnum):
     SKIPPED = "SKIPPED"
 
 
+class UserRole(StrEnum):
+    USER = "user"
+    ADMIN = "admin"
+
+
+class EvalRunStatus(StrEnum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+
+
 class UTCDateTime(TypeDecorator[datetime]):
     """Persist UTC datetimes and restore SQLite's discarded timezone metadata."""
 
@@ -109,6 +121,20 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str | None] = mapped_column(String(120))
+    role: Mapped[UserRole] = mapped_column(
+        # values_callable: SAEnum defaults to storing the Python enum *member
+        # name* ("USER"), but UserRole's values ("user") are lowercase and
+        # the Postgres "user_role" type (migration 0012) was created with
+        # those lowercase labels — store .value instead, matching every
+        # other StrEnum column that already uses this pattern indirectly by
+        # having name == value.
+        SAEnum(
+            UserRole, name="user_role", values_callable=lambda enum_cls: [e.value for e in enum_cls]
+        ),
+        default=UserRole.USER,
+        server_default=UserRole.USER.value,
+        nullable=False,
+    )
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
@@ -183,9 +209,7 @@ class AnalysisSchedule(Base):
     # PostgreSQL preserves timezone metadata natively. SQLite drops it on
     # round-trip, so UTCDateTime restores UTC before scheduler comparisons.
     last_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
-    next_run_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), nullable=False, index=True
-    )
+    next_run_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, index=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
@@ -433,3 +457,93 @@ class AlertSettings(Base):
     immediate_alerts_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     weekly_digest_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     updated_at: Mapped[datetime] = _updated_at()
+
+
+class AppSetting(Base):
+    """Admin-tunable runtime parameter (key/value), read by settings_service.
+
+    Lets scoring/alert/scheduler/LLM/RAG constants be changed from the admin
+    UI without a redeploy. Rows are seeded from the hardcoded defaults on
+    startup (see settings_service.seed_default_settings) and overridden here.
+    """
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    key: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    value: Mapped[dict] = mapped_column(_json_type(), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class QaLog(Base):
+    """Every portfolio Q&A question/answer pair, for later training use."""
+
+    __tablename__ = "qa_logs"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    portfolio_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_document_ids: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class EvalScenario(Base):
+    """Admin-curated regression scenario, mirrors agents/evaluation/datasets/*.json."""
+
+    __tablename__ = "eval_scenarios"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    context_snapshot: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
+    expected_document_ids: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    required_keywords: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    forbidden_terms: Mapped[list[str]] = mapped_column(_json_type(), default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+    runs: Mapped[list[EvalRun]] = relationship(
+        back_populates="scenario", cascade="all, delete-orphan"
+    )
+
+
+class EvalRun(Base):
+    """Result of running one (or all) EvalScenario against current AppSettings."""
+
+    __tablename__ = "eval_runs"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    scenario_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("eval_scenarios.id", ondelete="CASCADE"), index=True
+    )
+    triggered_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    settings_snapshot: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
+    metrics: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
+    status: Mapped[EvalRunStatus] = mapped_column(
+        SAEnum(EvalRunStatus, name="eval_run_status"),
+        default=EvalRunStatus.PENDING,
+        nullable=False,
+    )
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+    scenario: Mapped[EvalScenario | None] = relationship(back_populates="runs")

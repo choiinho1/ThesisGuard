@@ -8,11 +8,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from thesisguard_backend import models as orm
 from thesisguard_backend.config import get_settings
+from thesisguard_backend.evidence_vector_store import delete_thesis_evidence_vectors
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,7 +233,10 @@ async def refresh_evidence_history_file(
     evidence_rows = list(
         await session.scalars(
             select(orm.Evidence)
-            .where(orm.Evidence.thesis_id == thesis.id)
+            .where(
+                orm.Evidence.thesis_id == thesis.id,
+                orm.Evidence.saved_to_history.is_(True),
+            )
             .order_by(orm.Evidence.created_at.asc())
         )
     )
@@ -252,6 +256,49 @@ async def refresh_evidence_history_file(
         source_urls=source_urls,
         path=path,
     )
+
+
+async def clear_evidence_history(
+    session: AsyncSession,
+    *,
+    holding: orm.Holding,
+    thesis: orm.Thesis,
+    history_dir: Path | None = None,
+) -> None:
+    """Explicitly clear saved evidence and its derived context for one thesis.
+
+    This is a destructive user-level operation, not analysis-run setup. Normal
+    reanalysis must preserve history; thesis logic edits use
+    ``reset_evidence_for_logic_change`` instead.
+    """
+
+    await session.execute(
+        update(orm.Evidence)
+        .where(
+            orm.Evidence.thesis_id == thesis.id,
+            orm.Evidence.saved_to_history.is_(True),
+        )
+        .values(saved_to_history=False)
+    )
+    # The analysis workflow opens its own session, so the reset must be
+    # committed before it starts and loads the materialized history file.
+    await session.commit()
+    await asyncio.to_thread(_history_path(holding.id, history_dir).unlink, missing_ok=True)
+
+
+async def reset_evidence_for_logic_change(
+    session: AsyncSession,
+    *,
+    holding: orm.Holding,
+    thesis: orm.Thesis,
+    history_dir: Path | None = None,
+) -> None:
+    """Remove evidence assessed against a superseded thesis logic graph."""
+
+    await session.execute(delete(orm.Evidence).where(orm.Evidence.thesis_id == thesis.id))
+    await session.commit()
+    await delete_thesis_evidence_vectors(thesis.id)
+    await asyncio.to_thread(_history_path(holding.id, history_dir).unlink, missing_ok=True)
 
 
 async def refresh_all_evidence_history_files(

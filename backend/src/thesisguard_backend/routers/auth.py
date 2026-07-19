@@ -67,7 +67,9 @@ async def signup(payload: SignupRequest, db: DbSession) -> orm.User:
 async def login(payload: LoginRequest, db: DbSession) -> TokenResponse:
     user = await db.scalar(select(orm.User).where(orm.User.email == payload.email))
     if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다.")
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."
+        )
     return TokenResponse(access_token=create_access_token(subject=str(user.id)))
 
 
@@ -91,7 +93,9 @@ async def login_with_google(payload: GoogleLoginRequest, db: DbSession) -> Token
 
     email = claims.get("email")
     if not email:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Google 계정에서 이메일을 확인할 수 없습니다.")
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "Google 계정에서 이메일을 확인할 수 없습니다."
+        )
 
     user = await db.scalar(select(orm.User).where(orm.User.email == email))
     if user is None:
