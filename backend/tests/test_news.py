@@ -8,6 +8,7 @@ from agents.models import ResearchRequest, StructuredThesis
 from thesisguard_backend.agent_adapters import BackendResearchTools
 from thesisguard_backend.mcp_tools import news
 from thesisguard_backend.mcp_tools.news import NewsItem, _parse_items
+from thesisguard_backend.mcp_tools.sec import CompanyIdentity
 
 
 def test_bing_rss_parser_keeps_competitor_detail_and_publisher_url() -> None:
@@ -35,9 +36,16 @@ def test_bing_rss_parser_keeps_competitor_detail_and_publisher_url() -> None:
 async def test_backend_news_search_covers_each_key_assumption(monkeypatch) -> None:
     calls: list[str] = []
 
-    async def fake_company_name(ticker: str) -> str:
+    async def fake_company_identity(ticker: str) -> CompanyIdentity:
         assert ticker == "HOOD"
-        return "Robinhood Markets, Inc."
+        return CompanyIdentity(
+            cik="0001783879",
+            ticker="HOOD",
+            legal_name="Robinhood Markets, Inc.",
+            exchanges=("Nasdaq",),
+            aliases=("Robinhood Markets", "Robinhood"),
+            industry="Finance Services",
+        )
 
     async def fake_get_news(query: str, limit: int) -> list[NewsItem]:
         calls.append(query)
@@ -59,8 +67,8 @@ async def test_backend_news_search_covers_each_key_assumption(monkeypatch) -> No
         )
 
     monkeypatch.setattr(
-        "thesisguard_backend.agent_adapters.sec.get_company_name",
-        fake_company_name,
+        "thesisguard_backend.agent_adapters.sec.get_company_identity",
+        fake_company_identity,
     )
     monkeypatch.setattr(news, "get_news", fake_get_news)
     monkeypatch.setattr(
@@ -89,6 +97,10 @@ async def test_backend_news_search_covers_each_key_assumption(monkeypatch) -> No
     assert len(documents) == 4
     assert all("Meta Platforms" in document.content for document in documents)
     assert all(document.metadata["full_article_fetched"] is True for document in documents)
+    assert all(
+        document.metadata["company_identity"]["identifier"] == "0001783879"
+        for document in documents
+    )
 
 
 @pytest.mark.asyncio
@@ -98,8 +110,14 @@ async def test_backend_news_discards_stale_undated_and_future_items_before_fetch
     now = datetime.now(UTC)
     fetched_urls: list[str] = []
 
-    async def fake_company_name(ticker: str) -> str:
-        return ticker
+    async def fake_company_identity(ticker: str) -> CompanyIdentity:
+        return CompanyIdentity(
+            cik="0001783879",
+            ticker=ticker,
+            legal_name="Robinhood Markets, Inc.",
+            exchanges=("Nasdaq",),
+            aliases=("Robinhood Markets", "Robinhood"),
+        )
 
     async def fake_get_news(query: str, limit: int) -> list[NewsItem]:
         del query
@@ -139,8 +157,8 @@ async def test_backend_news_discards_stale_undated_and_future_items_before_fetch
         return "HOOD recent report with enough relevant article context."
 
     monkeypatch.setattr(
-        "thesisguard_backend.agent_adapters.sec.get_company_name",
-        fake_company_name,
+        "thesisguard_backend.agent_adapters.sec.get_company_identity",
+        fake_company_identity,
     )
     monkeypatch.setattr(news, "get_news", fake_get_news)
     monkeypatch.setattr(

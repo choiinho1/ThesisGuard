@@ -29,10 +29,6 @@ def _thesis() -> StructuredThesis:
     )
 
 
-def test_default_relevance_threshold_is_055() -> None:
-    assert WorkflowConfig().min_relevance_score == 0.55
-
-
 def test_source_lookback_cannot_exceed_thirty_days() -> None:
     with pytest.raises(ValueError, match="between 1 and 30"):
         WorkflowConfig(news_lookback_days=31)
@@ -244,7 +240,7 @@ def test_extract_relevant_passages_keeps_matching_section_within_budget() -> Non
     assert len(selected) <= 700
 
 
-class _LowRelevanceModel:
+class _UncitedDirectionalModel:
     def __init__(self) -> None:
         self.calls = 0
 
@@ -265,7 +261,7 @@ class _LowRelevanceModel:
 
 
 @pytest.mark.asyncio
-async def test_low_relevance_directional_result_is_neutralized_before_debate() -> None:
+async def test_uncited_directional_result_is_neutralized_before_debate() -> None:
     document = _document(
         "market-commentary",
         "General semiconductor market commentary",
@@ -274,8 +270,8 @@ async def test_low_relevance_directional_result_is_neutralized_before_debate() -
     dependencies = AgentDependencies(
         context_provider=None,  # type: ignore[arg-type]
         research_tools=None,  # type: ignore[arg-type]
-        model=_LowRelevanceModel(),  # type: ignore[arg-type]
-        config=WorkflowConfig(min_relevance_score=0.65),
+        model=_UncitedDirectionalModel(),  # type: ignore[arg-type]
+        config=WorkflowConfig(),
     )
 
     result = await classify_evidence(
@@ -299,7 +295,7 @@ async def test_historical_document_is_omitted_without_model_reclassification() -
         "The same fact collected in an earlier analysis.",
         published_at=datetime(2026, 7, 1, tzinfo=UTC),
     )
-    model = _LowRelevanceModel()
+    model = _UncitedDirectionalModel()
     dependencies = AgentDependencies(
         context_provider=None,  # type: ignore[arg-type]
         research_tools=None,  # type: ignore[arg-type]
@@ -326,7 +322,7 @@ async def test_historical_document_is_omitted_without_model_reclassification() -
 async def test_evidence_from_earlier_research_round_is_preserved() -> None:
     first_document = _document("round-1", "NVDA AI CAPEX round one")
     second_document = _document("round-2", "NVDA AI CAPEX round two")
-    model = _LowRelevanceModel()
+    model = _UncitedDirectionalModel()
     dependencies = AgentDependencies(
         context_provider=None,  # type: ignore[arg-type]
         research_tools=None,  # type: ignore[arg-type]

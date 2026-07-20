@@ -47,6 +47,10 @@ Evidence로 다시 저장하지 않는다. 소스 호출 실패, 빈 응답, RAG
 과거 분석 당시의 classification과 impact를 그대로 유지하지만 현재 점수 변화에는 재가산하지
 않는다. `NEW`는 이번 분석에서 새로 수집·평가된 근거다.
 
+신규 근거의 모델 출력은 가정별 `SUPPORT`/`CONTRADICT`/`NOT_ADDRESSED`와 원문 구간 번호로
+제한한다. API에 저장되는 `relevance_score`와 `impact`는 Agent 코드가 인용 유효성 및 출처
+유형의 고정 정책으로 산출한 값이며 모델이 직접 생성한 값이 아니다.
+
 모든 요청·응답 필드명은 `snake_case`를 사용한다. C는 `backend/mcp_tools/` 이외의 외부 데이터 API를
 직접 호출하지 않는다.
 

@@ -6,10 +6,9 @@ import pytest
 
 from agents.model import LangChainAnalysisModel
 from agents.models import (
-    AssumptionAssessment,
-    AssumptionFinding,
     EvidenceClassification,
     EvidenceImpact,
+    EvidenceModelFinding,
     EvidenceModelOutput,
     EvidenceSourceType,
     SourceDocument,
@@ -43,11 +42,13 @@ class _InvalidCitationModel(LangChainAnalysisModel):
     async def _invoke(self, schema, task):  # type: ignore[no-untyped-def]
         del schema, task
         return EvidenceModelOutput(
-            classification=EvidenceClassification.SUPPORT,
-            impact=EvidenceImpact.HIGH,
-            relevance_score=0.9,
-            reason="모델이 만든 검증 불가능한 인용문",
-            source_passage_indices=[999],
+            assumption_findings=[
+                EvidenceModelFinding(
+                    assumption="서비스 매출 성장",
+                    assessment="SUPPORT",
+                    source_passage_indices=[999],
+                )
+            ],
             content_snippet="애플의 현금 흐름이 성장한다는 근거입니다.",
         )
 
@@ -83,11 +84,13 @@ class _LongKoreanSummaryModel(LangChainAnalysisModel):
     async def _invoke(self, schema, task):  # type: ignore[no-untyped-def]
         del schema, task
         return EvidenceModelOutput(
-            classification=EvidenceClassification.SUPPORT,
-            impact=EvidenceImpact.MEDIUM,
-            relevance_score=0.9,
-            reason="서비스 매출 성장 근거",
-            source_passage_indices=[0],
+            assumption_findings=[
+                EvidenceModelFinding(
+                    assumption="서비스 매출 성장",
+                    assessment="SUPPORT",
+                    source_passage_indices=[0],
+                )
+            ],
             content_snippet="가" * 500,
         )
 
@@ -120,11 +123,13 @@ class _MultiplePassageModel(LangChainAnalysisModel):
     async def _invoke(self, schema, task):  # type: ignore[no-untyped-def]
         del schema, task
         return EvidenceModelOutput(
-            classification=EvidenceClassification.SUPPORT,
-            impact=EvidenceImpact.HIGH,
-            relevance_score=0.95,
-            reason="매출과 이익률이 함께 개선됐습니다.",
-            source_passage_indices=[0, 1],
+            assumption_findings=[
+                EvidenceModelFinding(
+                    assumption="서비스 매출 성장",
+                    assessment="SUPPORT",
+                    source_passage_indices=[0, 1],
+                )
+            ],
             content_snippet=(
                 "최근 분기 서비스 매출이 20% 증가했고 영업이익률도 개선됐습니다. "
                 "두 지표의 동반 개선은 서비스 성장과 현금 흐름 확대라는 핵심 전제를 지지합니다."
@@ -165,21 +170,13 @@ class _CompetitorSignalModel(LangChainAnalysisModel):
     async def _invoke(self, schema, task):  # type: ignore[no-untyped-def]
         del schema, task
         return EvidenceModelOutput(
-            classification=EvidenceClassification.NEUTRAL,
-            impact=EvidenceImpact.LOW,
-            relevance_score=0.2,
-            reason="주가 하락 기사입니다.",
             assumption_findings=[
-                AssumptionFinding(
+                EvidenceModelFinding(
                     assumption="경쟁자 없음",
-                    assessment=AssumptionAssessment.CONTRADICT,
-                    impact=EvidenceImpact.MEDIUM,
-                    relevance_score=0.9,
-                    reasoning="Meta가 경쟁 예측시장 앱을 개발 중이라고 보도했습니다.",
+                    assessment="CONTRADICT",
                     source_passage_indices=[0],
                 )
             ],
-            source_passage_indices=[0],
             content_snippet=(
                 "Meta가 Robinhood와 경쟁할 수 있는 예측시장 앱을 개발 중이라고 보도됐습니다. "
                 "출시 전 계획이므로 영향은 아직 확정되지 않았지만, 경쟁자가 없다는 "
@@ -210,9 +207,9 @@ async def test_assumption_finding_prevents_competitor_signal_from_being_neutrali
 
     assert result.classification == EvidenceClassification.CONTRADICT
     assert result.impact == EvidenceImpact.MEDIUM
-    assert result.relevance_score == 0.9
+    assert result.relevance_score == 1.0
     assert result.related_assumptions == ["경쟁자 없음"]
-    assert "Meta" in result.reason
+    assert "경쟁자 없음=CONTRADICT" in result.reason
 
 
 class _EnglishSummaryModel(LangChainAnalysisModel):
@@ -222,12 +219,13 @@ class _EnglishSummaryModel(LangChainAnalysisModel):
     async def _invoke(self, schema, task):  # type: ignore[no-untyped-def]
         del schema, task
         return EvidenceModelOutput(
-            classification=EvidenceClassification.SUPPORT,
-            impact=EvidenceImpact.MEDIUM,
-            relevance_score=0.9,
-            reason="Relevant operating evidence",
-            related_assumptions=[],
-            source_passage_indices=[0],
+            assumption_findings=[
+                EvidenceModelFinding(
+                    assumption="서비스 매출 성장",
+                    assessment="SUPPORT",
+                    source_passage_indices=[0],
+                )
+            ],
             content_snippet="English-only summary",
         )
 

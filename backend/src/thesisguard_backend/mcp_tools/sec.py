@@ -17,12 +17,15 @@ import httpx
 from thesisguard_backend.config import get_settings
 
 _TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+_TICKERS_EXCHANGE_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 _FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 _FULL_TEXT_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
 
 _cik_cache: dict[str, str] | None = None
 _company_name_cache: dict[str, str] | None = None
+_exchange_cache: dict[str, str] | None = None
+_submissions_cache: dict[str, dict] = {}
 
 
 def _headers() -> dict[str, str]:
@@ -36,6 +39,34 @@ class FilingRecord:
     filed_at: datetime | None
     title: str
     url: str
+    cik: str | None = None
+    company_name: str | None = None
+    exchange: str | None = None
+    company_identity: CompanyIdentity | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CompanyIdentity:
+    """Canonical SEC issuer identity attached to every retrieved company document."""
+
+    cik: str
+    ticker: str
+    legal_name: str
+    exchanges: tuple[str, ...] = ()
+    aliases: tuple[str, ...] = ()
+    industry: str | None = None
+
+    def as_metadata(self) -> dict[str, object]:
+        return {
+            "identifier_scheme": "SEC_CIK",
+            "identifier": self.cik,
+            "ticker": self.ticker,
+            "exchanges": list(self.exchanges),
+            "legal_name": self.legal_name,
+            "aliases": list(self.aliases),
+            "industry": self.industry or "",
+            "official_domains": [],
+        }
 
 
 @dataclass(slots=True)
@@ -48,20 +79,96 @@ class FilingSearchHit:
     url: str
 
 
-async def _lookup_cik(ticker: str) -> str | None:
-    global _cik_cache, _company_name_cache
-    if _cik_cache is None or _company_name_cache is None:
+async def _load_company_index() -> None:
+    global _cik_cache, _company_name_cache, _exchange_cache
+    if _cik_cache is not None and _company_name_cache is not None and _exchange_cache is not None:
+        return
+    try:
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(_TICKERS_URL, headers=_headers())
+            response = await client.get(_TICKERS_EXCHANGE_URL, headers=_headers())
             response.raise_for_status()
             payload = response.json()
+        fields = payload.get("fields", [])
+        rows = [dict(zip(fields, values, strict=False)) for values in payload.get("data", [])]
         _cik_cache = {
-            row["ticker"].upper(): str(row["cik_str"]).zfill(10) for row in payload.values()
+            str(row["ticker"]).upper(): str(row["cik"]).zfill(10)
+            for row in rows
+            if row.get("ticker") and row.get("cik") is not None
         }
         _company_name_cache = {
-            row["ticker"].upper(): str(row.get("title", "")).strip() for row in payload.values()
+            str(row["ticker"]).upper(): str(row.get("name", "")).strip()
+            for row in rows
+            if row.get("ticker")
         }
+        _exchange_cache = {
+            str(row["ticker"]).upper(): str(row.get("exchange", "")).strip()
+            for row in rows
+            if row.get("ticker")
+        }
+        return
+    except (httpx.HTTPError, KeyError, TypeError, ValueError):
+        pass
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(_TICKERS_URL, headers=_headers())
+        response.raise_for_status()
+        payload = response.json()
+    _cik_cache = {
+        row["ticker"].upper(): str(row["cik_str"]).zfill(10) for row in payload.values()
+    }
+    _company_name_cache = {
+        row["ticker"].upper(): str(row.get("title", "")).strip() for row in payload.values()
+    }
+    _exchange_cache = {ticker: "" for ticker in _cik_cache}
+
+
+async def _lookup_cik(ticker: str) -> str | None:
+    await _load_company_index()
+    if _cik_cache is None:
+        return None
     return _cik_cache.get(ticker.upper())
+
+
+async def _get_submissions(cik: str) -> dict:
+    if cik not in _submissions_cache:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(_SUBMISSIONS_URL.format(cik=cik), headers=_headers())
+            response.raise_for_status()
+            _submissions_cache[cik] = response.json()
+    return _submissions_cache[cik]
+
+
+def _company_aliases(legal_name: str, former_names: list[dict]) -> tuple[str, ...]:
+    names = [legal_name, *(str(item.get("name", "")).strip() for item in former_names)]
+    suffixes = {
+        "ag",
+        "co",
+        "company",
+        "corp",
+        "corporation",
+        "inc",
+        "incorporated",
+        "limited",
+        "llc",
+        "ltd",
+        "nv",
+        "plc",
+        "sa",
+    }
+    aliases: list[str] = []
+    for name in names:
+        normalized = " ".join(name.replace(",", " ").replace(".", " ").split())
+        if not normalized:
+            continue
+        aliases.append(normalized)
+        parts = normalized.split()
+        while parts and parts[-1].casefold() in suffixes:
+            parts.pop()
+        if parts:
+            aliases.append(" ".join(parts))
+            if len(parts[0]) >= 5:
+                aliases.append(parts[0])
+    return tuple(dict.fromkeys(aliases))
 
 
 async def get_company_name(ticker: str) -> str | None:
@@ -73,6 +180,44 @@ async def get_company_name(ticker: str) -> str | None:
             return None
         return _company_name_cache.get(ticker.upper()) or None
     except (httpx.HTTPError, KeyError, ValueError):
+        return None
+
+
+async def get_company_identity(ticker: str) -> CompanyIdentity | None:
+    """Return a market-scoped issuer profile, including aliases and exchange."""
+
+    try:
+        cik = await _lookup_cik(ticker)
+        if cik is None or _company_name_cache is None:
+            return None
+        payload = await _get_submissions(cik)
+        legal_name = str(
+            payload.get("name") or _company_name_cache.get(ticker.upper()) or ""
+        ).strip()
+        if not legal_name:
+            return None
+        exchanges = tuple(
+            dict.fromkeys(
+                value
+                for value in [
+                    *[str(item).strip() for item in payload.get("exchanges", [])],
+                    (_exchange_cache or {}).get(ticker.upper(), ""),
+                ]
+                if value
+            )
+        )
+        former_names = [
+            item for item in payload.get("formerNames", []) if isinstance(item, dict)
+        ]
+        return CompanyIdentity(
+            cik=cik,
+            ticker=ticker.upper(),
+            legal_name=legal_name,
+            exchanges=exchanges,
+            aliases=_company_aliases(legal_name, former_names),
+            industry=str(payload.get("sicDescription") or "").strip() or None,
+        )
+    except (httpx.HTTPError, KeyError, TypeError, ValueError):
         return None
 
 
@@ -107,10 +252,8 @@ async def get_filings(ticker: str, limit: int = 5) -> list[FilingRecord]:
         cik = await _lookup_cik(ticker)
         if cik is None:
             return []
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(_SUBMISSIONS_URL.format(cik=cik), headers=_headers())
-            response.raise_for_status()
-            payload = response.json()
+        payload = await _get_submissions(cik)
+        identity = await get_company_identity(ticker)
 
         recent = payload.get("filings", {}).get("recent", {})
         forms = recent.get("form", [])
@@ -137,6 +280,10 @@ async def get_filings(ticker: str, limit: int = 5) -> list[FilingRecord]:
                     filed_at=datetime.fromisoformat(filed_date) if filed_date else None,
                     title=f"{ticker.upper()} {form} ({filed_date})",
                     url=url,
+                    cik=cik,
+                    company_name=identity.legal_name if identity else None,
+                    exchange=identity.exchanges[0] if identity and identity.exchanges else None,
+                    company_identity=identity,
                 )
             )
         return _prioritize_filings(records, limit)

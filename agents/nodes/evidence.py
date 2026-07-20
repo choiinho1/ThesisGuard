@@ -6,6 +6,12 @@ import asyncio
 
 from langgraph.runtime import Runtime
 
+from agents.evidence_policy import (
+    classification_from_findings,
+    deterministic_finding,
+    impact_from_findings,
+    relevance_from_findings,
+)
 from agents.logic_graph import normalize_logic_graph, research_target_assumption_node_ids
 from agents.models import (
     AssumptionAssessment,
@@ -34,6 +40,7 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
                 unique_documents.setdefault(document.document_id, document)
 
     async def classify(document: SourceDocument) -> EvidenceItem:
+        model_failed = False
         try:
             assessment = await call_model(
                 runtime.context,
@@ -43,6 +50,7 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
                 state.get("evidence_history_summary", ""),
             )
         except Exception as exc:
+            model_failed = True
             assessment = EvidenceAssessment(
                 classification=EvidenceClassification.UNCERTAIN,
                 impact=EvidenceImpact.LOW,
@@ -81,68 +89,45 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
                 finding = AssumptionFinding(
                     assumption=assumption,
                     assessment=fallback_assessment,
-                    impact=(
-                        assessment.impact
-                        if fallback_assessment != AssumptionAssessment.NOT_ADDRESSED
-                        else EvidenceImpact.LOW
-                    ),
-                    relevance_score=(
-                        assessment.relevance_score
-                        if fallback_assessment != AssumptionAssessment.NOT_ADDRESSED
-                        else 0
-                    ),
+                    impact=EvidenceImpact.LOW,
+                    relevance_score=0,
                     reasoning=(
                         assessment.reason
                         if fallback_assessment != AssumptionAssessment.NOT_ADDRESSED
                         else "이 정보는 해당 가정을 직접 검증하지 않습니다."
                     ),
                 )
-            elif (
-                finding.assessment
-                in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
-                and not finding.source_passage_indices
-            ):
-                finding = finding.model_copy(
-                    update={
-                        "assessment": AssumptionAssessment.NOT_ADDRESSED,
-                        "impact": EvidenceImpact.LOW,
-                        "relevance_score": 0,
-                        "reasoning": (
-                            "해당 노드 판정을 뒷받침하는 원문 구간이 없어 점수에서 제외했습니다."
-                        ),
-                    }
-                )
-            elif (
-                finding.assessment
-                in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
-                and finding.relevance_score < runtime.context.config.min_relevance_score
-            ):
-                finding = finding.model_copy(
-                    update={
-                        "assessment": AssumptionAssessment.NOT_ADDRESSED,
-                        "impact": EvidenceImpact.LOW,
-                        "reasoning": (
-                            f"노드 관련도 {finding.relevance_score:.2f}로 판정 기준에 미달했습니다."
-                        ),
-                    }
-                )
-            assumption_findings.append(finding)
-        assessment = assessment.model_copy(update={"assumption_findings": assumption_findings})
-        directional = assessment.classification in {
-            EvidenceClassification.SUPPORT,
-            EvidenceClassification.CONTRADICT,
-        }
-        if directional and assessment.relevance_score < runtime.context.config.min_relevance_score:
-            assessment = assessment.model_copy(
-                update={
-                    "classification": EvidenceClassification.NEUTRAL,
-                    "impact": EvidenceImpact.LOW,
-                    "reason": (
-                        f"투자 논리 관련도 {assessment.relevance_score:.2f}로 "
-                        "판정 기준에 미달했습니다."
+            assumption_findings.append(
+                deterministic_finding(
+                    assumption=assumption,
+                    assessment=finding.assessment,
+                    source_passage_indices=list(finding.source_passage_indices),
+                    source_type=document.source_type,
+                    invalid_reason=(
+                        "해당 노드 판정을 뒷받침하는 원문 구간이 없어 점수에서 제외했습니다."
+                        if finding.assessment
+                        in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+                        else None
                     ),
-                }
+                )
             )
+        assessment = assessment.model_copy(
+            update={
+                "classification": (
+                    EvidenceClassification.UNCERTAIN
+                    if model_failed
+                    else classification_from_findings(assumption_findings)
+                ),
+                "impact": impact_from_findings(assumption_findings),
+                "relevance_score": relevance_from_findings(assumption_findings),
+                "related_assumptions": [
+                    finding.assumption
+                    for finding in assumption_findings
+                    if finding.assessment != AssumptionAssessment.NOT_ADDRESSED
+                ],
+                "assumption_findings": assumption_findings,
+            }
+        )
         assessment = assessment.model_copy(
             update={"content_snippet": normalize_korean_summary(assessment.content_snippet)}
         )
@@ -228,7 +213,6 @@ async def classify_evidence(state: AnalysisState, runtime: Runtime[AgentDependen
             finding.assumption
             for finding in item.assumption_findings
             if finding.assessment in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
-            and finding.relevance_score >= runtime.context.config.min_relevance_score
             and finding.source_passage_indices
         }
         # Compatibility for directional records created before per-assumption findings.

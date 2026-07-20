@@ -4,6 +4,7 @@ import pytest
 from agents.models import ResearchRequest, StructuredThesis
 
 from thesisguard_backend.agent_adapters import BackendResearchTools
+from thesisguard_backend.mcp_tools import sec
 from thesisguard_backend.mcp_tools.sec import FilingRecord, _prioritize_filings
 
 
@@ -33,6 +34,34 @@ def test_prioritize_filings_keeps_periodic_reports_ahead_of_extra_8k_items() -> 
 
 def test_prioritize_filings_respects_zero_limit() -> None:
     assert _prioritize_filings([_filing("10q", "10-Q", 12)], limit=0) == []
+
+
+@pytest.mark.asyncio
+async def test_company_identity_contains_cik_exchange_aliases_and_industry(monkeypatch) -> None:
+    monkeypatch.setattr(sec, "_cik_cache", {"NVDA": "0001045810"})
+    monkeypatch.setattr(sec, "_company_name_cache", {"NVDA": "NVIDIA CORP"})
+    monkeypatch.setattr(sec, "_exchange_cache", {"NVDA": "Nasdaq"})
+    monkeypatch.setattr(
+        sec,
+        "_submissions_cache",
+        {
+            "0001045810": {
+                "name": "NVIDIA CORP",
+                "tickers": ["NVDA"],
+                "exchanges": ["Nasdaq"],
+                "sicDescription": "Semiconductors & Related Device Manufacturing",
+                "formerNames": [{"name": "NVIDIA Corporation"}],
+            }
+        },
+    )
+
+    identity = await sec.get_company_identity("nvda")
+
+    assert identity is not None
+    assert identity.cik == "0001045810"
+    assert identity.exchanges == ("Nasdaq",)
+    assert "NVIDIA" in identity.aliases
+    assert identity.industry == "Semiconductors & Related Device Manufacturing"
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,7 @@ from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from agents.company_identity import identity_embedding_prefix
 from agents.contracts import EmbeddingModel
 from agents.models import EvidenceSourceType, SourceDocument, StructuredThesis
 from agents.sanitization import sanitize_source_text
@@ -44,7 +45,8 @@ class _ChunkDraft:
 
     @property
     def search_text(self) -> str:
-        return f"{self.document.title}\n{self.text}"
+        identity = identity_embedding_prefix(self.document)
+        return "\n".join(value for value in (identity, self.document.title, self.text) if value)
 
 
 @dataclass(frozen=True, slots=True)

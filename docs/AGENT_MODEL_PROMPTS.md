@@ -121,19 +121,20 @@ Write user-facing explanations in Korean while preserving official names and tic
 
 핵심 지시:
 
-- 한 문서를 Thesis와 비교해 `SUPPORT`, `CONTRADICT`, `NEUTRAL`, `UNCERTAIN` 중 하나로 분류한다.
-- `relevance_score`는 핵심 가정을 직접 검증하는 정도에 따라 `0.0~1.0`으로 설정한다.
-- 영향도는 `HIGH`, `MEDIUM`, `LOW` 중 하나로 설정한다.
 - 모든 번호가 붙은 원문 구간을 읽은 뒤 판단한다.
-- 모든 핵심 가정을 `SUPPORT`, `CONTRADICT`, `MIXED`, `NOT_ADD사실은 항상 `NOT_ADDRESSED`이며 반박이 아니다.
-- 가정을 지지하거나 반박하려RESSED`로 개별 평가한다.
+- 모든 핵심 가정을 `SUPPORT`, `CONTRADICT`, `NOT_ADDRESSED`로 개별 평가한다.
+- 모델은 `relevance_score`, `impact`, confidence, score를 출력하지 않는다.
 - 간접적인 인과 근거나 신뢰할 수 있는 미래 이벤트도 가정의 개연성을 실질적으로 바꾸면 반영한다.
 - 경쟁자의 제품 개발 발표는 아직 출시 전이라도 “경쟁자가 없다”는 절대적 가정을 반박할 수 있다.
 - 확인된 사실, 계획, 전망, 루머를 구분한다.
-- 문서에 정보가 없다는 면 해당 판단마다 원문 passage 번호를 인용해야 한다.
-- 과거 근거는 맥락에만 사용하고 현재 분류·영향도·관련성을 강화하거나 약화하는 데 사용하지 않는다.
-- 원문 passage 1~3개를 선택하고, 그 내용만으로 한국어 2~3문장·500자 이내 요약을 작성한다.
+- 문서에 정보가 없다는 사실은 항상 `NOT_ADDRESSED`이며 반박이 아니다.
+- 가정을 지지하거나 반박하려면 해당 finding에 원문 passage 번호를 인용해야 한다.
+- 과거 근거는 맥락에만 사용하고 현재 방향성 판정을 바꾸는 데 사용하지 않는다.
+- finding별 원문 passage 1~3개를 선택하고, 그 내용만으로 한국어 2~3문장·500자 이내 요약을 작성한다.
 - 근거 없는 세부사항이나 투자 조언을 추가하지 않는다.
+
+Agent는 유효한 방향성 인용에 관련도 `1.0`, 그 외에는 `0.0`을 부여한다. 영향도는
+출처 유형에 따른 고정 정책으로 계산하며 모델 출력에 맡기지 않는다.
 
 동적 입력:
 
@@ -152,30 +153,10 @@ numbered_passages:
 </source_document>
 ```
 
-### 4.4 누락 가정 보정 호출
+### 4.4 누락 가정 처리
 
-호출 위치: `classify_evidence()` 내부  
-출력 스키마: `AssumptionFinding`
-
-Evidence Classifier의 첫 응답에 특정 핵심 가정이 빠진 경우, 누락 가정마다 별도의 보정 호출을 실행한다.
-
-핵심 지시:
-
-- 지정된 단일 가정만 평가한다.
-- 원문이 가정을 직접 검증하고 passage 번호를 제시할 수 있을 때만 `SUPPORT` 또는 `CONTRADICT`를 반환한다.
-- 정보가 없으면 `NOT_ADDRESSED`, `LOW`, 관련성 `0`, passage 인덱스 없음으로 반환한다.
-- 언급이 없다는 사실은 반박이 아니다.
-- 가정 문구는 원문 그대로 복사한다.
-- 가정의 의미상 반대 내용을 말하는 passage가 있으면 `CONTRADICT`로 처리한다.
-
-동적 입력:
-
-```xml
-<assumption>{누락된 가정 하나}</assumption>
-<numbered_passages>
-{문서의 번호가 붙은 원문 구간 전체}
-</numbered_passages>
-```
+Evidence Classifier 응답에서 빠진 핵심 가정은 추가 모델 호출 없이 코드가
+`NOT_ADDRESSED`, 관련도 `0.0`, 영향도 `LOW`, passage 인덱스 없음으로 채운다.
 
 ### 4.5 Bull Agent
 
