@@ -195,6 +195,21 @@ class BackendResearchTools:
                     published_at=record.filed_at,
                     metadata={
                         "form": record.form,
+                        "company_name": record.company_name or "",
+                        "company_identity": (
+                            record.company_identity.as_metadata()
+                            if record.company_identity is not None
+                            else {
+                                "identifier_scheme": "SEC_CIK",
+                                "identifier": record.cik or "",
+                                "ticker": request.ticker.upper(),
+                                "exchanges": [record.exchange] if record.exchange else [],
+                                "legal_name": record.company_name or "",
+                                "aliases": [],
+                                "industry": "",
+                                "official_domains": [],
+                            }
+                        ),
                         "original_chars": len(content),
                         "selected_chars": len(selected_content),
                     },
@@ -204,7 +219,8 @@ class BackendResearchTools:
 
     async def get_news(self, request: ResearchRequest) -> list[SourceDocument]:
         collected_at = datetime.now(UTC)
-        company_name = await sec.get_company_name(request.ticker)
+        company_identity = await sec.get_company_identity(request.ticker)
+        company_name = company_identity.legal_name if company_identity else None
         company_query = f'"{company_name}" {request.ticker}' if company_name else request.ticker
         focus_terms = list(dict.fromkeys([*request.focus_points, *request.thesis.key_assumptions]))[
             :4
@@ -277,6 +293,20 @@ class BackendResearchTools:
                     metadata={
                         "source": item.source,
                         "company_name": company_name or "",
+                        "company_identity": (
+                            company_identity.as_metadata()
+                            if company_identity is not None
+                            else {
+                                "identifier_scheme": "TICKER",
+                                "identifier": request.ticker.upper(),
+                                "ticker": request.ticker.upper(),
+                                "exchanges": [],
+                                "legal_name": company_name or "",
+                                "aliases": [company_name] if company_name else [],
+                                "industry": "",
+                                "official_domains": [],
+                            }
+                        ),
                         "search_query": query,
                         "full_article_fetched": bool(article_text),
                         "original_chars": len(article_text or summary),

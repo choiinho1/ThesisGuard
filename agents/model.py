@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import TypeVar
 
@@ -10,9 +9,14 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
+from agents.evidence_policy import (
+    classification_from_findings,
+    deterministic_finding,
+    impact_from_findings,
+    relevance_from_findings,
+)
 from agents.models import (
     AssumptionAssessment,
-    AssumptionFinding,
     DebateReport,
     EvidenceAssessment,
     EvidenceClassification,
@@ -149,7 +153,6 @@ class LangChainAnalysisModel:
 
     def __init__(self, model: BaseChatModel) -> None:
         self._model = model
-        self._repair_missing_assumption_findings = True
 
     async def _invoke(self, schema: type[SchemaT], task: str) -> SchemaT:
         runnable = self._model.with_structured_output(schema)
@@ -245,33 +248,32 @@ original user input.
         result = await self._invoke(
             EvidenceModelOutput,
             f"""
-Compare one document with the thesis. Classification must be SUPPORT, CONTRADICT,
-NEUTRAL, or UNCERTAIN. Set relevance_score from 0.0 to 1.0 based on whether the
-document directly tests at least one key assumption. Impact represents materiality
-and must be HIGH, MEDIUM, or LOW. Unrelated market commentary must be NEUTRAL with
-LOW impact. Read every numbered passage before deciding. Evaluate every key assumption
-separately in assumption_findings using its exact input text and SUPPORT, CONTRADICT,
-MIXED, or NOT_ADDRESSED. Indirect causal evidence and credible forward-looking events
-count when they materially change an assumption's plausibility. In particular, a named
+Compare one document with the thesis. Read every numbered passage before deciding. Evaluate
+every key assumption separately in assumption_findings using its exact input text and only
+SUPPORT, CONTRADICT, or NOT_ADDRESSED. Do not output relevance, impact, confidence, score,
+or any other numeric judgment; trusted code derives all scoring inputs. Indirect causal
+evidence and credible forward-looking events count when they directly test an assumption.
+In particular, a named
 competitor's announced or reported product development directly contradicts a categorical
 "no competitor" assumption even if the product has not launched yet. Separate confirmed
-facts from plans, forecasts, and rumors when assigning impact and relevance.
+facts from plans, forecasts, and rumors when choosing the direction.
 The absence of information about an assumption is always NOT_ADDRESSED, never CONTRADICT.
 Every SUPPORT or CONTRADICT assumption finding must cite at least one supporting numbered
 passage in its own source_passage_indices. Do not reuse the document-level direction for an
 assumption that the cited passages do not independently address.
 
 Read historical_context first to understand the holding's story and connect the current
-document to prior developments. The classification, impact, and relevance fields must still
-describe only the incremental information in the current source document. Historical facts
-may explain context but must not increase or decrease those fields by themselves.
+document to prior developments. Each direction must still describe only the incremental
+information in the current source document; use only the incremental information for the
+current findings. Historical facts may explain context but must
+not change a current finding by themselves.
 
-Select one to three supplied source passages by returning their integer indexes
-in source_passage_indices. content_snippet must explain only those passages in two or three
-Korean sentences within 500 characters. Include the core fact, concrete figures or dates
-when present, and the result for each addressed assumption. Do not add unsupported details,
-translate a free-form quotation, claim that an assumption is unaddressed before checking all
-passages, or give investment advice.
+For each addressed assumption, select one to three supplied source passages by returning
+their integer indexes in that finding's source_passage_indices. content_snippet must explain
+only the cited passages in two or three Korean sentences within 500 characters. Include the
+core fact, concrete figures or dates when present, and the result for each addressed
+assumption. Do not add unsupported details, translate a free-form quotation, claim that an
+assumption is unaddressed before checking all passages, or give investment advice.
 
 <thesis>{_json(thesis)}</thesis>
 <historical_context role="narrative_only_non_scoring">
@@ -286,50 +288,15 @@ numbered_passages:
 """.strip(),
         )
         allowed_assumptions = set(thesis.key_assumptions)
-        findings = [
-            finding
+        model_findings = {
+            finding.assumption: finding
             for finding in result.assumption_findings
             if finding.assumption in allowed_assumptions
-        ]
-        existing_assumptions = {finding.assumption for finding in findings}
-        missing_assumptions = [
-            assumption
-            for assumption in thesis.key_assumptions
-            if assumption not in existing_assumptions
-        ]
-        if missing_assumptions and getattr(self, "_repair_missing_assumption_findings", False):
-
-            async def assess_one_assumption(assumption: str) -> AssumptionFinding:
-                finding = await self._invoke(
-                    AssumptionFinding,
-                    f"""
-Assess only the single investment-thesis assumption below against the numbered passages.
-Return SUPPORT or CONTRADICT only when at least one passage directly tests the assumption,
-and cite those passage indexes in source_passage_indices. If the passages do not contain
-information about the assumption, return NOT_ADDRESSED with LOW impact, relevance_score 0,
-and no passage indexes. Absence of mention is never contradiction. Copy the assumption text
-exactly and do not evaluate any other assumption. A passage that states the semantic opposite
-of the assumption directly tests it and must be CONTRADICT, not NOT_ADDRESSED. For example,
-if the assumption says valuation is low and a passage says valuation is high or rich, return
-CONTRADICT and cite that passage.
-
-<assumption>{assumption}</assumption>
-<numbered_passages>
-{numbered_passages}
-</numbered_passages>
-""".strip(),
-                )
-                return finding.model_copy(update={"assumption": assumption})
-
-            findings.extend(
-                await asyncio.gather(
-                    *(assess_one_assumption(assumption) for assumption in missing_assumptions)
-                )
-            )
-        selected_indices = list(dict.fromkeys(result.source_passage_indices))
+        }
         cited_indices = [
-            *selected_indices,
-            *(index for finding in findings for index in finding.source_passage_indices),
+            index
+            for finding in model_findings.values()
+            for index in finding.source_passage_indices
         ]
         if any(index >= len(passages) for index in cited_indices):
             return EvidenceAssessment(
@@ -341,48 +308,46 @@ CONTRADICT and cite that passage.
                 source_excerpt=passages[0],
                 content_snippet="원문 구간을 검증할 수 없어 근거 요약을 제공하지 않습니다.",
             )
-        directional_findings = [
-            finding
+        findings = []
+        for assumption in thesis.key_assumptions:
+            model_finding = model_findings.get(assumption)
+            assessment = (
+                AssumptionAssessment(model_finding.assessment)
+                if model_finding is not None
+                else AssumptionAssessment.NOT_ADDRESSED
+            )
+            findings.append(
+                deterministic_finding(
+                    assumption=assumption,
+                    assessment=assessment,
+                    source_passage_indices=(
+                        list(model_finding.source_passage_indices) if model_finding else []
+                    ),
+                    source_type=document.source_type,
+                    invalid_reason=(
+                        "방향성 판정을 뒷받침하는 원문 구간이 없어 점수에서 제외했습니다."
+                        if model_finding is not None
+                        and assessment
+                        in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+                        else None
+                    ),
+                )
+            )
+        selected_indices = list(
+            dict.fromkeys(
+                index for finding in findings for index in finding.source_passage_indices
+            )
+        )
+        classification = classification_from_findings(findings)
+        impact = impact_from_findings(findings)
+        relevance_score = relevance_from_findings(findings)
+        related_assumptions = [
+            finding.assumption
             for finding in findings
-            if finding.assessment in {AssumptionAssessment.SUPPORT, AssumptionAssessment.CONTRADICT}
+            if finding.assessment != AssumptionAssessment.NOT_ADDRESSED
         ]
-        classification = result.classification
-        if classification in {
-            EvidenceClassification.NEUTRAL,
-            EvidenceClassification.UNCERTAIN,
-        }:
-            finding_directions = {finding.assessment for finding in directional_findings}
-            if finding_directions == {AssumptionAssessment.SUPPORT}:
-                classification = EvidenceClassification.SUPPORT
-            elif finding_directions == {AssumptionAssessment.CONTRADICT}:
-                classification = EvidenceClassification.CONTRADICT
-        impact_rank = {
-            EvidenceImpact.LOW: 0,
-            EvidenceImpact.MEDIUM: 1,
-            EvidenceImpact.HIGH: 2,
-        }
-        impact = max(
-            [result.impact, *(finding.impact for finding in directional_findings)],
-            key=lambda item: impact_rank[item],
-        )
-        relevance_score = max(
-            [result.relevance_score, *(finding.relevance_score for finding in directional_findings)]
-        )
-        related_assumptions = (
-            [
-                finding.assumption
-                for finding in findings
-                if finding.assessment != AssumptionAssessment.NOT_ADDRESSED
-            ]
-            if findings
-            else result.related_assumptions
-        )
-        finding_reason = " | ".join(
-            f"{finding.assumption}: {finding.assessment.value} - {finding.reasoning}"
-            for finding in findings
-        )
-        reason = (
-            f"{result.reason} 가정별 검토: {finding_reason}" if finding_reason else result.reason
+        reason = "가정별 직접 근거 판정: " + " | ".join(
+            f"{finding.assumption}={finding.assessment.value}" for finding in findings
         )
         return EvidenceAssessment(
             classification=classification,
@@ -391,7 +356,11 @@ CONTRADICT and cite that passage.
             reason=reason,
             related_assumptions=list(dict.fromkeys(related_assumptions)),
             assumption_findings=findings,
-            source_excerpt="\n".join(passages[index] for index in selected_indices),
+            source_excerpt=(
+                "\n".join(passages[index] for index in selected_indices)
+                if selected_indices
+                else passages[0]
+            ),
             content_snippet=normalize_korean_summary(result.content_snippet),
         )
 

@@ -336,16 +336,18 @@ class EvidenceAssessment(ContractModel):
     content_snippet: str = Field(min_length=1, max_length=500)
 
 
-class EvidenceModelOutput(ContractModel):
-    """Structured model output; the selected passage is resolved by trusted code."""
+class EvidenceModelFinding(ContractModel):
+    """Score-free model output for one assumption."""
 
-    classification: EvidenceClassification
-    impact: EvidenceImpact
-    relevance_score: float = Field(ge=0, le=1)
-    reason: str = Field(min_length=1)
-    related_assumptions: list[str] = Field(default_factory=list)
-    assumption_findings: list[AssumptionFinding] = Field(default_factory=list)
-    source_passage_indices: list[NonNegativeInt] = Field(min_length=1, max_length=3)
+    assumption: str = Field(min_length=1)
+    assessment: Literal["SUPPORT", "CONTRADICT", "NOT_ADDRESSED"]
+    source_passage_indices: list[NonNegativeInt] = Field(default_factory=list, max_length=3)
+
+
+class EvidenceModelOutput(ContractModel):
+    """Score-free structured output; trusted code derives every scoring input."""
+
+    assumption_findings: list[EvidenceModelFinding] = Field(default_factory=list)
     content_snippet: str = Field(min_length=1, max_length=500)
 
 

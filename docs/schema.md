@@ -33,16 +33,23 @@ DB 테이블과 Alembic은 B가 소유한다. C는 아래 enum과 필드명을 �
 ```
 
 `selected_documents`는 Source Selector가 생성하는 그래프 내부 후보 목록이다. DB/API에는
-노출하지 않는다. `EvidenceAssessment.relevance_score`는 0.0~1.0의 모델 출력이며,
-기본 0.55 미만의 SUPPORT/CONTRADICT 판정은 Evidence 노드에서 NEUTRAL/LOW로 강등한다.
-`impact`는 별도 materiality 필드를 추가하지 않고 기존 HIGH/MEDIUM/LOW 중요도 계약을
-그대로 사용한다.
+노출하지 않는다. 회사별 문서의 `metadata.company_identity`에는 `identifier_scheme`,
+`identifier`, `ticker`, `exchanges`, `legal_name`, `aliases`, `industry`, `official_domains`를
+저장한다. 뉴스 사전 선별 결과는 `metadata.identity_match`의 `status`, `confidence`, `signals`에
+기록하며 `status=MATCH`인 문서만 RAG로 전달한다. 현재 미국 기업은 `SEC_CIK`를 사용하고,
+동일 계약에 DART `corp_code` 등 다른 시장 식별 체계를 추가할 수 있다.
+
+모델은 관련도나 영향도를 출력하지 않는다. 가정별 SUPPORT/CONTRADICT가
+유효한 원문 구간을 인용하면 Agent가 `relevance_score=1.0`을 부여하고, 그렇지 않으면
+`NOT_ADDRESSED`, `relevance_score=0.0`으로 처리한다. 방향성 근거의 `impact`는 출처 유형만으로
+결정한다. `SEC_FILING`·`EARNINGS`·`IR`은 HIGH, `NEWS`·`MACRO`는 MEDIUM이며,
+비방향성 근거는 LOW다.
 `EvidenceModelOutput.assumption_findings`는 각 핵심 가정을 원문 전체와 대조한 내부 판정이다.
-각 항목은 가정 원문, SUPPORT/CONTRADICT/MIXED/NOT_ADDRESSED, 영향도, 관련도, 판단 이유와
-근거 구간 번호를 가진다. 방향성 가정 판정이 있으면 문서 전체 판정이 NEUTRAL이더라도 Agent가
-방향성을 다시 일치시켜 단편적인 종합 판정이 핵심 신호를 덮지 않도록 한다.
-모델 내부 출력인 `EvidenceModelOutput.source_passage_indices`는 Agent가 미리 번호를 붙인 원문
-구간 중 최대 3개를 가리킨다. Agent는 이 번호로 실제 구간을 다시 찾아 `EvidenceAssessment.source_excerpt`에
+각 항목은 가정 원문, SUPPORT/CONTRADICT/NOT_ADDRESSED, 근거 구간 번호만 가진다.
+문서 전체 classification도 가정별 판정에서 코드가 도출한다. 모두 지지면 SUPPORT, 모두
+반박이면 CONTRADICT, 방향이 섞이면 UNCERTAIN, 방향성 근거가 없으면 NEUTRAL이다.
+각 finding의 `source_passage_indices`는 Agent가 미리 번호를 붙인 원문 구간 중 최대 3개를
+가리킨다. Agent는 이 번호로 실제 구간을 다시 찾아 `EvidenceAssessment.source_excerpt`에
 넣으므로, 모델이 원문을 글자 단위로 재현할 필요가 없다. 표시용 한국어 요약만
 `EvidenceItem.content_snippet`에 저장하며 요약 생성 실패는 분류 결과와 분리해서 처리한다.
 

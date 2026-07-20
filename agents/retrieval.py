@@ -7,6 +7,7 @@ from collections.abc import Collection, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from agents.company_identity import CompanyMatchStatus, resolve_company_identity
 from agents.models import EvidenceSourceType, SourceDocument, StructuredThesis
 from agents.sanitization import sanitize_source_text
 from agents.state import ResearchData
@@ -217,10 +218,10 @@ def preselect_documents(
                 lookback_days=effective_lookback_days,
             ):
                 continue
+            identity_resolution = None
             if key == "news":
-                identity_tokens = _company_identity_tokens(document)
-                document_tokens = _tokens([document.title, document.content[:4000]])
-                if identity_tokens and not identity_tokens & document_tokens:
+                identity_resolution = resolve_company_identity(document, ticker=ticker)
+                if identity_resolution.status != CompanyMatchStatus.MATCH:
                     continue
 
             canonical_url = _canonical_url(document)
@@ -252,6 +253,8 @@ def preselect_documents(
             if key == "news" and score < min_news_score:
                 continue
             metadata = {**document.metadata, "selection_score": round(score, 4)}
+            if identity_resolution is not None:
+                metadata["identity_match"] = identity_resolution.as_metadata()
             candidates[key].append((score, document.model_copy(update={"metadata": metadata})))
 
     selected: list[SourceDocument] = []

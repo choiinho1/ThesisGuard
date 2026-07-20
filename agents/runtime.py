@@ -16,7 +16,6 @@ class WorkflowConfig:
     max_research_rounds: int = 2
     min_grounded_evidence: int = 2
     model_max_attempts: int = 2
-    min_relevance_score: float = 0.55
     min_news_selection_score: float = 0.30
     news_lookback_days: int = 30
     news_candidate_limit: int = 15
@@ -40,8 +39,6 @@ class WorkflowConfig:
             raise ValueError("min_grounded_evidence must be at least 1")
         if self.model_max_attempts < 1:
             raise ValueError("model_max_attempts must be at least 1")
-        if not 0 <= self.min_relevance_score <= 1:
-            raise ValueError("min_relevance_score must be between 0 and 1")
         if not 0 <= self.min_news_selection_score <= 1:
             raise ValueError("min_news_selection_score must be between 0 and 1")
         if not 1 <= self.news_lookback_days <= 30:
